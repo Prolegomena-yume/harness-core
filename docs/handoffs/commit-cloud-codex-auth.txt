@@ -1,0 +1,19 @@
+feat(cloud): Codex auth portable で cloud session の Codex 主経路復活
+
+OpenAI 公式 portable auth flow を採用し、local `~/.codex/auth.json` 全文を `CODEX_AUTH_JSON` env var(cloud UI secret 欄)経由で cloud に持ち込む経路を整備。`CODEX_AUTH_JSON` 有り時は cloud でも Codex Bash 直叩きを実装主経路として復活(モデルレベル物理分離維持)、無し時は従来通り Claude 内サブエージェントへフォールバック。
+
+変更:
+- .claude/hooks/session-install.sh: Phase 3 追加(CODEX_AUTH_JSON → ~/.codex/auth.json 冪等書き出し + 最小 config.toml seed)
+- .claude/cloud_setup_script.sh: Phase 3 追加(npm install -g @openai/codex)、Phase 4 env vars check に CODEX_AUTH_JSON 追加、Phase 5 完了案内に secret 注意・排他運用注記
+- CLAUDE.md § Cloud override: 三層並存表を 2 経路化(CODEX_AUTH_JSON 有り/無し)、env vars 表に CODEX_AUTH_JSON 行 + 取得 PowerShell snippet + 排他運用注意追記
+- docs/codex_implementer_protocol.md § 10: §10.1 撤回(Codex CLI cloud 利用可)/ §10.2 2 経路化 / §10.3 モデルレベル分離保持 / §10.4 機能扱い更新 / §10.5 6 項目セルフチェック改訂 / §10.6 新設(認証 portable flow + 既知 risk + 未検証要素表)/ §12 改訂履歴 2026-06-28 エントリ追加
+
+既知 risk:
+- local/cloud 同時 active で refresh token 競合(openai/codex#15502 報告)── 排他運用必須(人見承認済)
+- JWT 漏洩 risk ── secret 欄投入必須、commit / log / chat 出力厳禁
+
+未検証(初回 cloud Codex 利用時に実機確認、結果を §10.6 表に追記予定):
+- cloud Linux v0.141.0 での `-s workspace-write` flag / `sandbox_mode` config 挙動
+- `--dangerously-bypass-approvals-and-sandbox` flag が cloud Linux で必要か否か
+
+canonical = docs/codex_implementer_protocol.md §10

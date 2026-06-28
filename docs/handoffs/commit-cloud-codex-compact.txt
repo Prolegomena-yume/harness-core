@@ -1,0 +1,31 @@
+docs(cloud): CODEX_AUTH_JSON 投入手順を compact JSON + 環境変数欄に訂正
+
+2026-06-28 cloud session 実機検証で 2 点判明、ドキュメント訂正。
+
+(1) cloud Claude Code on the web には secret 専用欄が無い(anthropics/claude-code#32733
+    feature request 段階、未実装)── 環境変数欄(plaintext + collaborator 共有可視)が
+    唯一の投入経路。UI 警告「機密情報や認証情報は追加しないでください」を無視して投入、
+    prolegomena cloud environment の collaborator は人見単独前提(人見承認済)。
+    collaborator add 時は cloud Codex 主経路退役。
+
+(2) auth.json を Get-Content -Raw で取った整形済 multi-line JSON を環境変数欄に raw
+    で貼ると、保存時 .env 形式パーサが改行で行を切り value 後半が silently truncate
+    される(2026-06-28 検証で再現、value が消える現象として顕在化)。必ず
+    ConvertTo-Json -Compress で 1 行 compact 化してから貼付。
+
+変更:
+- CLAUDE.md § Cloud 必要 env vars: CODEX_AUTH_JSON 行の取得 snippet を
+  ConvertTo-Json -Compress 採用、投入欄を「secret 欄」→「環境変数欄(.env 形式)」に
+  訂正、運用注意に secret 機能不在・truncate 対策・collaborator 0 名前提を追記
+- docs/codex_implementer_protocol.md §10.6 認証 portable flow / 既知 risk 表: 同上反映、
+  既知 risk 表に「cloud UI に secret 専用欄なし」「multi-line raw JSON 投入で
+  silently truncate」の 2 行追加、ChatGPT plan を free → Pro に訂正
+  (auth.json の chatgpt_plan_type は login スナップショット注記)
+- .claude/cloud_setup_script.sh Phase 5 完了案内: notes を訂正後の運用に合わせて
+  書き換え、取得 snippet と truncate 注意を出力
+
+未検証(commit 3b5d718 から継続、cloud session 起動後に確定):
+- cloud Linux v0.141.0 での sandbox flag / config 挙動
+- --dangerously-bypass-approvals-and-sandbox flag が cloud Linux で必要か否か
+
+canonical = docs/codex_implementer_protocol.md §10.6

@@ -53,6 +53,7 @@ harness-core/
 │   └── harness.schema.json    ── .harness.json schema(JSON Schema draft-07)
 └── docs/
     ├── example.harness.json   ── prolegomena 想定値の参考実装
+    ├── handoffs/              ── 着地済 session/PR からの handoff 文書群(cloud verification 等)
     └── consumer_setup.md      ── consumer 起こし手順(P6 で本格化)
 ```
 
