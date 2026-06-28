@@ -7,7 +7,8 @@ Reusable Claude Code harness ── SessionStart hook、Cloud Setup script、rol
 - **初版骨格 commit 着地済**(P0)── 現 prolegomena の `.claude/` 配下を未変数化のまま 1:1 copy
 - **`.harness.json` schema 確定 + 3 script JSON 駆動化 着地済**(P1+P2)── `schema/harness.schema.json` / `docs/example.harness.json` / `hooks/session-init.sh` / `hooks/session-install.sh` / `setup/cloud_setup_script.sh`、graceful fallback 動作確認済
 - **Codex auth portable JSON 駆動化 着地済**(P1+P2 ext、2026-06-28)── `cloud.npmGlobalPackages` + `cloud.codex.{enabled,authEnvVar,workspaceWrite,trustRepo}` schema 拡張、cloud_setup_script.sh に Phase 3 npm global install + Phase 番号スライド、session-install.sh 末尾に Codex auth bootstrap phase 追加(`~/.codex/auth.json` 冪等 + `config.toml` seed、JWT 値は log 非露出)
-- **第 1 consumer 化(prolegomena)**(P3)── 別 Linear issue、別 session
+- **第 1 consumer 化(prolegomena)着地済**(P3、2026-06-28)── prolegomena に `.claude/_core/` submodule マウント + `.harness.json` 起草 + 旧 .claude/hooks/cloud_setup_script/roles 削除 + CLAUDE.md 改訂、local mode 動作確認 pass(`.harness.json` 駆動で Linear/sessions/mirror/canonical 全節 OK)、cloud verify 別 session で実施予定
+- **submodule fetch 吸収 + bubblewrap apt 追加 着地済**(P4、2026-06-28)── cloud_setup_script.sh に Phase 0 = `git submodule update --init --recursive` 追加(consumer 側で `git clone --recurse-submodules` 漏れた場合の保険、冪等)、example.harness.json の `cloud.aptPackages` に `bubblewrap` 追加(Codex CLI の cosmetics warning 解消、cloud Linux Codex 実体験 = handoff [pr-cloud-codex-verification.md](docs/handoffs/pr-cloud-codex-verification.md) で確認)
 - **submodule fetch 吸収 / consumer_setup.md / template repo 化**(P4+P6)── 別 Linear issue
 
 ## .harness.json schema 概要

@@ -17,6 +17,19 @@ fi
 
 REPO_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 
+echo ""
+echo "--- [Phase 0] git submodule update ---"
+if [ -f "$REPO_ROOT/.gitmodules" ]; then
+  if git -C "$REPO_ROOT" submodule update --init --recursive 2>&1; then
+    echo "OK: submodule update --init --recursive done"
+  else
+    echo "ERROR: git submodule update failed (consumer needs .claude/_core for hooks)"
+    exit 1
+  fi
+else
+  echo "No .gitmodules found; skipping submodule update"
+fi
+
 find_python() {
   if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
     printf '%s\n' python3

@@ -33,7 +33,7 @@
     "closeSessionReminder": "close-session 時:[CLAUDE.md](CLAUDE.md) §「セッションサマリ git canonical 化」+ `scripts/mirror.ps1`"
   },
   "cloud": {
-    "aptPackages": ["build-essential", "libpq-dev", "postgresql-client"],
+    "aptPackages": ["build-essential", "libpq-dev", "postgresql-client", "bubblewrap"],
     "nodeMinVersion": 20,
     "requiredEnvVars": ["LINEAR_TOKEN", "DATABASE_URL", "DB_DRIVER", "DRIVER"],
     "optionalEnvVars": [
