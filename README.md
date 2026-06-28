@@ -6,6 +6,7 @@ Reusable Claude Code harness ── SessionStart hook、Cloud Setup script、rol
 
 - **初版骨格 commit 着地済**(P0)── 現 prolegomena の `.claude/` 配下を未変数化のまま 1:1 copy
 - **`.harness.json` schema 確定 + 3 script JSON 駆動化 着地済**(P1+P2)── `schema/harness.schema.json` / `docs/example.harness.json` / `hooks/session-init.sh` / `hooks/session-install.sh` / `setup/cloud_setup_script.sh`、graceful fallback 動作確認済
+- **Codex auth portable JSON 駆動化 着地済**(P1+P2 ext、2026-06-28)── `cloud.npmGlobalPackages` + `cloud.codex.{enabled,authEnvVar,workspaceWrite,trustRepo}` schema 拡張、cloud_setup_script.sh に Phase 3 npm global install + Phase 番号スライド、session-install.sh 末尾に Codex auth bootstrap phase 追加(`~/.codex/auth.json` 冪等 + `config.toml` seed、JWT 値は log 非露出)
 - **第 1 consumer 化(prolegomena)**(P3)── 別 Linear issue、別 session
 - **submodule fetch 吸収 / consumer_setup.md / template repo 化**(P4+P6)── 別 Linear issue
 
