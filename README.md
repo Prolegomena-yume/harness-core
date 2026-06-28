@@ -5,9 +5,27 @@ Reusable Claude Code harness ── SessionStart hook、Cloud Setup script、rol
 ## 現状(2026-06-28)
 
 - **初版骨格 commit 着地済**(P0)── 現 prolegomena の `.claude/` 配下を未変数化のまま 1:1 copy
-- **`.harness.json` schema 確定 + JSON 駆動化**(P1+P2)── 次 commit
+- **`.harness.json` schema 確定 + 3 script JSON 駆動化 着地済**(P1+P2)── `schema/harness.schema.json` / `docs/example.harness.json` / `hooks/session-init.sh` / `hooks/session-install.sh` / `setup/cloud_setup_script.sh`、graceful fallback 動作確認済
 - **第 1 consumer 化(prolegomena)**(P3)── 別 Linear issue、別 session
 - **submodule fetch 吸収 / consumer_setup.md / template repo 化**(P4+P6)── 別 Linear issue
+
+## .harness.json schema 概要
+
+詳細は `schema/harness.schema.json`(JSON Schema draft-07)、実例は `docs/example.harness.json`。主要 field:
+
+| field | 型 | 用途 |
+|---|---|---|
+| `project.name` | string (required) | 内部識別子 |
+| `linear.teamName` | string | Linear team 名(無ければ Linear 節 skip) |
+| `linear.tokenSource.{envVar,fileFallback}` | string | Linear token 取得経路 |
+| `linear.issueStates` | string[] | GraphQL state.type.in フィルタ |
+| `sessions.{dir,dailySummaryFilename}` | string | session_summary 配置 |
+| `mirror.{enabled,stateFile}` | bool/string | Drive mirror 設定 |
+| `canonical.links[]` | object[] | 起動チェックリマインダ link |
+| `cloud.{aptPackages,nodeMinVersion,requiredEnvVars,optionalEnvVars}` | array/num | Cloud Setup script 駆動値 |
+| `install.buildTargets` | string[] | session-install.sh の `npm run build -w` workspaces |
+
+`.harness.json` 不在 / parse error 時は全 script が compat default で graceful fallback、exit 0 維持(SessionStart hook を fail させない)。
 
 ## ファイル構造
 
