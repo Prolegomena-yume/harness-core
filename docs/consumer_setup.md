@@ -298,9 +298,13 @@ bash .claude/_core/hooks/session-init.sh
 
 ## 11. 実例
 
-- **prolegomena**(monorepo、npm workspaces、cloud session フル機能):[prolegomena-yume/Prolegomena](https://github.com/Prolegomena-yume/Prolegomena) の `.harness.json` / `.claude/settings.json` / `.claude/commands/role-*.md` 参照
-- **stella**(小規模 monorepo、stella 想定値):[prolegomena-yume/stella](https://github.com/Prolegomena-yume/stella) の `.harness.json` 参照(本書整備時 = 2 件目実例として trace)
-- **harness-starter**(空骨格 template):[prolegomena-yume/harness-starter](https://github.com/Prolegomena-yume/harness-starter) を template clone
+| consumer | repo | visibility | initial commit | 用途 |
+|---|---|---|---|---|
+| **prolegomena**(#1) | [prolegomena-yume/Prolegomena](https://github.com/Prolegomena-yume/Prolegomena) | public | dev branch `0f10910`(P3 consumer 化) | monorepo、npm workspaces、cloud Codex フル機能、Linear team=Prolegomena、Drive mirror 有効 |
+| **stella**(#2) | [prolegomena-yume/stella](https://github.com/Prolegomena-yume/stella) | private | main `a56a59c` | 技術 monorepo、cloud Codex 有効、Linear team=Stella、Drive mirror 無効(必要なら有効化) |
+| **harness-starter** | [prolegomena-yume/harness-starter](https://github.com/Prolegomena-yume/harness-starter) | public, **Template Repository** | main `3e3e992` | 空骨格 template、Use this template で新規 consumer を 5 分以内に起こせる |
+
+各 consumer の `.harness.json` を比較すると **field の有無 / 値の違いだけで挙動が変わる**(SessionStart hook / Cloud Setup script 本体は core 共通)── これが harness-core JSON 駆動化の効果。
 
 ## 12. 退役 / 切戻し
 
