@@ -55,7 +55,7 @@ harness-core/
 └── docs/
     ├── example.harness.json   ── prolegomena 想定値の参考実装
     ├── handoffs/              ── 着地済 session/PR からの handoff 文書群(cloud verification 等)
-    └── consumer_setup.md      ── consumer 起こし手順(P6 で本格化)
+    └── consumer_setup.md      ── consumer 起こし手順(v0.1-draft 着地、P6)
 ```
 
 ## consumer 側使い方(P3+ で確定、現状は雛形)
