@@ -41,6 +41,7 @@ defaults = {
     "nodeMinVersion": 20,
     "requiredEnvVars": [],
     "optionalEnvVars": [],
+    "npmGlobalPackages": [],
 }
 
 def emit(config):
@@ -89,13 +90,14 @@ else:
         "nodeMinVersion": int(node_min),
         "requiredEnvVars": string_list("requiredEnvVars"),
         "optionalEnvVars": string_list("optionalEnvVars"),
+        "npmGlobalPackages": string_list("npmGlobalPackages"),
     })
 PY
 )"
 fi
 
 if [ -z "$config_b64" ]; then
-  config_b64="eyJhcHRQYWNrYWdlcyI6IFtdLCAibm9kZU1pblZlcnNpb24iOiAyMCwgInJlcXVpcmVkRW52VmFycyI6IFtdLCAib3B0aW9uYWxFbnZWYXJzIjogW119"
+  config_b64="eyJhcHRQYWNrYWdlcyI6IFtdLCAibm9kZU1pblZlcnNpb24iOiAyMCwgInJlcXVpcmVkRW52VmFycyI6IFtdLCAib3B0aW9uYWxFbnZWYXJzIjogW10sICJucG1HbG9iYWxQYWNrYWdlcyI6IFtdfQ=="
 fi
 
 if [ -z "$PY" ]; then
@@ -103,6 +105,7 @@ if [ -z "$PY" ]; then
   APT_PACKAGES=()
   REQUIRED_ENV_VARS=()
   OPTIONAL_ENV_VARS=()
+  NPM_GLOBAL_PACKAGES=()
 else
   mapfile -t config_lines < <("$PY" - "$config_b64" <<'PY'
 import base64
@@ -111,13 +114,15 @@ import sys
 
 cfg = json.loads(base64.b64decode(sys.argv[1]).decode())
 print(cfg["nodeMinVersion"])
-for key in ("aptPackages", "requiredEnvVars", "optionalEnvVars"):
+for key in ("aptPackages", "requiredEnvVars", "optionalEnvVars", "npmGlobalPackages"):
     values = cfg[key]
     print(len(values))
     for value in values:
         print(value)
 PY
 )
+  cr=$'\r'
+  config_lines=("${config_lines[@]%$cr}")
 
   idx=0
   NODE_MIN_VERSION="${config_lines[$idx]}"
@@ -144,6 +149,14 @@ PY
   OPTIONAL_ENV_VARS=()
   for _ in $(seq 1 "$optional_count"); do
     OPTIONAL_ENV_VARS+=("${config_lines[$idx]}")
+    idx=$((idx + 1))
+  done
+
+  npm_global_count="${config_lines[$idx]:-0}"
+  idx=$((idx + 1))
+  NPM_GLOBAL_PACKAGES=()
+  for _ in $(seq 1 "$npm_global_count"); do
+    NPM_GLOBAL_PACKAGES+=("${config_lines[$idx]}")
     idx=$((idx + 1))
   done
 fi
@@ -174,6 +187,27 @@ if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt "$NODE_MIN_VERSION" ]; then
 fi
 echo "OK: Node ${NODE_RAW}, npm $(npm --version)"
 
+echo ""
+echo "--- [Phase 3] npm global packages ---"
+if [ "${#NPM_GLOBAL_PACKAGES[@]}" -eq 0 ] || [ -z "${NPM_GLOBAL_PACKAGES[0]:-}" ]; then
+  echo "No npm global packages configured; skipping Phase 3"
+else
+  for pkg in "${NPM_GLOBAL_PACKAGES[@]}"; do
+    if npm list -g "$pkg" --depth=0 2>/dev/null | grep -q "$pkg@"; then
+      echo "OK: npm global package already installed: $pkg"
+      continue
+    fi
+
+    echo "Installing npm global package: $pkg"
+    if install_output="$(npm install -g "$pkg" 2>&1)"; then
+      echo "OK: installed npm global package: $pkg"
+    else
+      echo "WARNING: npm install -g $pkg failed; continuing Phase 3" >&2
+      printf '%s\n' "$install_output" | tail -5 >&2
+    fi
+  done
+fi
+
 check_required() {
   if [ -z "${!1:-}" ]; then
     echo "  [X] $1 NOT SET (REQUIRED)"
@@ -192,7 +226,7 @@ check_optional() {
 }
 
 echo ""
-echo "--- [Phase 3] Environment vars check ---"
+echo "--- [Phase 4] Environment vars check ---"
 if [ "${#REQUIRED_ENV_VARS[@]}" -eq 0 ] || [ -z "${REQUIRED_ENV_VARS[0]:-}" ]; then
   echo "No required env vars configured; skipping required check"
 else
@@ -213,11 +247,16 @@ else
 fi
 
 echo ""
+echo "--- [Phase 5] Complete ---"
 echo "=== Setup complete: $(date -u '+%Y-%m-%d %H:%M:%S UTC') ==="
 echo ""
 echo "Next: launch Claude Code so SessionStart hooks can run:"
 echo "  - hooks/session-init.sh     context injection"
 echo "  - hooks/session-install.sh  npm ci and configured workspace builds"
+echo ""
+echo "Notes:"
+echo "  - CODEX_AUTH_JSON contains JWT tokens; put it in a secret field only, and never commit or log it."
+echo "  - Codex auth local/cloud simultaneous use can cause refresh token conflicts; use it exclusively in one environment."
 echo ""
 
 exit 0

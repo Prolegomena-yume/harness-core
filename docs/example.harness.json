@@ -37,11 +37,19 @@
     "nodeMinVersion": 20,
     "requiredEnvVars": ["LINEAR_TOKEN", "DATABASE_URL", "DB_DRIVER", "DRIVER"],
     "optionalEnvVars": [
+      "CODEX_AUTH_JSON",
       "VITE_AWS_REGION",
       "VITE_COGNITO_HOSTED_UI_DOMAIN",
       "VITE_OWNER_CLIENT_ID",
       "VITE_MCP_API_URL"
-    ]
+    ],
+    "npmGlobalPackages": ["@openai/codex"],
+    "codex": {
+      "enabled": true,
+      "authEnvVar": "CODEX_AUTH_JSON",
+      "workspaceWrite": true,
+      "trustRepo": true
+    }
   },
   "install": {
     "buildTargets": ["@prolegomena/iceml-core", "@prolegomena/commit-handler"]

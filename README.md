@@ -23,6 +23,10 @@ Reusable Claude Code harness ── SessionStart hook、Cloud Setup script、rol
 | `mirror.{enabled,stateFile}` | bool/string | Drive mirror 設定 |
 | `canonical.links[]` | object[] | 起動チェックリマインダ link |
 | `cloud.{aptPackages,nodeMinVersion,requiredEnvVars,optionalEnvVars}` | array/num | Cloud Setup script 駆動値 |
+| `cloud.npmGlobalPackages` | string[] | Phase 3 で `npm install -g` する package list |
+| `cloud.codex.enabled` | boolean | true で Codex auth bootstrap 実行 |
+| `cloud.codex.authEnvVar` | string | auth.json source env var 名(default `CODEX_AUTH_JSON`) |
+| `cloud.codex.{workspaceWrite,trustRepo}` | boolean | config.toml seed フラグ |
 | `install.buildTargets` | string[] | session-install.sh の `npm run build -w` workspaces |
 
 `.harness.json` 不在 / parse error 時は全 script が compat default で graceful fallback、exit 0 維持(SessionStart hook を fail させない)。
