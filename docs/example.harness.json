@@ -1,0 +1,49 @@
+{
+  "$schema": "./.claude/_core/schema/harness.schema.json",
+  "project": {
+    "name": "prolegomena",
+    "displayName": "Prolegomena"
+  },
+  "linear": {
+    "teamName": "Prolegomena",
+    "tokenSource": {
+      "envVar": "LINEAR_TOKEN",
+      "fileFallback": ".claude/.linear-token"
+    },
+    "issueStates": ["backlog", "unstarted", "started"],
+    "limit": 30
+  },
+  "sessions": {
+    "dir": "docs/_sessions",
+    "dailySummaryFilename": "daily_summary.md"
+  },
+  "mirror": {
+    "enabled": true,
+    "stateFile": "MIRROR_STATE.txt"
+  },
+  "canonical": {
+    "links": [
+      { "label": "CLAUDE.md", "path": "CLAUDE.md" },
+      { "label": "AGENTS.md", "path": "AGENTS.md" },
+      {
+        "label": "docs/operations/harness_redesign_step1_2026-06-26.md",
+        "path": "docs/operations/harness_redesign_step1_2026-06-26.md"
+      }
+    ],
+    "closeSessionReminder": "close-session 時:[CLAUDE.md](CLAUDE.md) §「セッションサマリ git canonical 化」+ `scripts/mirror.ps1`"
+  },
+  "cloud": {
+    "aptPackages": ["build-essential", "libpq-dev", "postgresql-client"],
+    "nodeMinVersion": 20,
+    "requiredEnvVars": ["LINEAR_TOKEN", "DATABASE_URL", "DB_DRIVER", "DRIVER"],
+    "optionalEnvVars": [
+      "VITE_AWS_REGION",
+      "VITE_COGNITO_HOSTED_UI_DOMAIN",
+      "VITE_OWNER_CLIENT_ID",
+      "VITE_MCP_API_URL"
+    ]
+  },
+  "install": {
+    "buildTargets": ["@prolegomena/iceml-core", "@prolegomena/commit-handler"]
+  }
+}

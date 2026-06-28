@@ -1,29 +1,10 @@
-#!/bin/bash
-# ============================================================================
-# prolegomena Cloud SessionStart install hook
-#   Target: Claude Code on the web(cloud session のみ発火、local は no-op)
-#   Canonical: PRL-25 / CLAUDE.md § Cloud
-#   2026-06-27 鷹野(PDM)起草、Setup script から repo dependency install を分離
-#
-# 役割: cloud session で repo dependency(npm ci)を冪等実行
-#   - local(CLAUDE_CODE_REMOTE 未設定 or false)は no-op で exit 0
-#   - 初回 + package-lock.json hash 変化時のみ npm ci 実行
-#   - 2 回目以降は node_modules 存在 + hash 一致で skip(~0 秒)
-#
-# 環境前提:
-#   - cloud: root user、Node 20+ install 済(Setup script Phase 2 で確認済)
-#   - $CLAUDE_PROJECT_DIR = repo root(SessionStart hook では確実に set)
-#
-# settings.json での登録:
-#   .claude/settings.json の hooks.SessionStart 配列に session-init.sh と並列で追加
-#   matcher: "startup|resume|clear|compact"、timeout: 180(初回 npm ci ~60 秒、余裕)
-#
-# Hash file: .claude/.npm-install-hash(.gitignore 済、cloud container 内のみ存在)
-# ============================================================================
+#!/usr/bin/env bash
+# Cloud SessionStart install hook.
+# Local sessions are no-op. Cloud sessions run npm ci idempotently and build
+# workspaces listed in .harness.json install.buildTargets.
 
 set -eu
 
-# cloud session 限定発火、local は no-op
 if [ "${CLAUDE_CODE_REMOTE:-false}" != "true" ]; then
   exit 0
 fi
@@ -36,7 +17,57 @@ fi
 
 cd "$REPO_ROOT"
 
-# 冪等性チェック: node_modules 存在 + package-lock.json hash 一致なら skip
+find_python() {
+  if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+    printf '%s\n' python3
+  elif command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+    printf '%s\n' python
+  fi
+}
+
+PY="$(find_python)"
+
+build_targets_b64=""
+if [ -z "$PY" ]; then
+  echo "[session-install] no usable python; build phase skipped" >&2
+else
+  build_targets_b64="$("$PY" - "$REPO_ROOT/.harness.json" <<'PY'
+import base64
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+except FileNotFoundError:
+    print("WARN:.harness.json missing; build phase skipped", file=sys.stderr)
+    print("")
+    sys.exit(0)
+except Exception as exc:
+    print(f"WARN:.harness.json parse error: {type(exc).__name__}: {exc}; build phase skipped", file=sys.stderr)
+    print("")
+    sys.exit(0)
+
+try:
+    targets = raw.get("install", {}).get("buildTargets", [])
+except AttributeError:
+    print("WARN:.harness.json root/install must be objects; build phase skipped", file=sys.stderr)
+    print("")
+    sys.exit(0)
+
+if targets is None:
+    targets = []
+if not isinstance(targets, list) or not all(isinstance(item, str) for item in targets):
+    print("WARN:install.buildTargets must be a string array; build phase skipped", file=sys.stderr)
+    print("")
+    sys.exit(0)
+
+print(base64.b64encode(json.dumps(targets).encode()).decode())
+PY
+)"
+fi
+
 HASH_FILE=".claude/.npm-install-hash"
 LOCK_HASH="$(sha256sum package-lock.json 2>/dev/null | awk '{print $1}')"
 LAST_HASH="$(cat "$HASH_FILE" 2>/dev/null || echo '')"
@@ -46,16 +77,37 @@ if [ -d node_modules ] && [ -n "$LOCK_HASH" ] && [ "$LOCK_HASH" = "$LAST_HASH" ]
 else
   echo "[session-install] npm ci start (lock hash changed or first run)" >&2
   npm ci --loglevel=warn
+  mkdir -p "$(dirname "$HASH_FILE")"
   echo "$LOCK_HASH" > "$HASH_FILE"
   echo "[session-install] npm ci complete, hash saved" >&2
 fi
 
-# Phase 2: packages build(iceml-core / commit-handler、Vite resolve に dist/ 必須)
-# turbo cache 効く ── 変更なければ ~0 秒、初回 ~10-30 秒。
-# turbo dev task は ^build 待たないため、Vite が dist/ 不在 = workspace import resolve fail。
-# 2026-06-27 v4(cloud 検証で iceml-block-detection.ts 解決 fail 判明、PRL-25 v4)。
-echo "[session-install] building required packages (iceml-core / commit-handler)" >&2
-npm run build -w @prolegomena/iceml-core -w @prolegomena/commit-handler 2>&1 | tail -3 >&2
-echo "[session-install] packages build done" >&2
+if [ -z "$build_targets_b64" ]; then
+  echo "[session-install] no install.buildTargets configured; build phase skipped" >&2
+  exit 0
+fi
+
+mapfile -t build_targets < <("$PY" - "$build_targets_b64" <<'PY'
+import base64
+import json
+import sys
+
+for item in json.loads(base64.b64decode(sys.argv[1]).decode()):
+    print(item)
+PY
+)
+
+if [ "${#build_targets[@]}" -eq 0 ]; then
+  echo "[session-install] install.buildTargets empty; build phase skipped" >&2
+  exit 0
+fi
+
+echo "[session-install] building workspaces: ${build_targets[*]}" >&2
+build_args=(run build)
+for target in "${build_targets[@]}"; do
+  build_args+=(-w "$target")
+done
+npm "${build_args[@]}" 2>&1 | tail -3 >&2
+echo "[session-install] workspace build done" >&2
 
 exit 0

@@ -1,53 +1,189 @@
 #!/usr/bin/env bash
-# .claude/hooks/session-init.sh
-#
 # Claude Code SessionStart hook.
-# Emits a JSON document on stdout matching the SessionStart hookSpecificOutput
-# contract so the additionalContext is injected into the new session's context.
-#
-# Responsibilities:
-#   1. git: current branch / recent commits / working-tree summary
-#   2. session: latest docs/_sessions/<date>/ + daily_summary path
-#   3. mirror: head of MIRROR_STATE.txt (Drive code mirror freshness)
-#   4. Linear: open issues for team=Prolegomena (Personal API Key, GraphQL)
-#   5. reminders: which canonical docs to consult
-#
-# Linear token contract (env-first, file fallback for backward compat):
-#   1. $LINEAR_TOKEN env var (cloud: Claude Code on the web の env vars UI)
-#   2. ${CLAUDE_PROJECT_DIR}/.claude/.linear-token  (local: plain text, gitignored)
-#   Personal API Key from https://linear.app/settings/api (lin_api_*).
-#   Missing / empty / unreachable -> graceful fallback (reminder only).
-#
-# Env contract:
-#   CLAUDE_PROJECT_DIR is set by Claude Code when the hook fires. If absent
-#   (manual invocation), fall back to $PWD.
-#   CLAUDE_CODE_REMOTE=true → cloud session (Claude Code on the web,
-#   Ubuntu 24.04 LTS container). Triggers cloud-mode branches:
-#   skip MIRROR_STATE / simpler python lookup / env identification line.
-#
-# Output contract (https://docs.claude.com/en/docs/claude-code/hooks):
-#   {
-#     "hookSpecificOutput": {
-#       "hookEventName": "SessionStart",
-#       "additionalContext": "<markdown>"
-#     }
-#   }
+# Reads .harness.json from the consumer repository root and emits a single
+# SessionStart hookSpecificOutput JSON object on stdout. Config errors are
+# reported in additionalContext and never make the hook fail.
 
 set -uo pipefail
 
-# Cloud session 検出(Claude Code on the web では CLAUDE_CODE_REMOTE=true)
 IS_CLOUD="${CLAUDE_CODE_REMOTE:-false}"
-
 REPO_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
+
 cd "$REPO_ROOT" 2>/dev/null || {
   printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"session-init.sh: failed to cd to %s"}}\n' "$REPO_ROOT"
   exit 0
 }
 
-# Force UTF-8 on git output. On Windows git defaults to writing commit
-# subjects in the system code page (CP932 / SJIS for ja-JP installs); piping
-# that into our UTF-8 JSON breaks the additionalContext payload. The
-# i18n.* config keys override the per-repo defaults without persisting.
+find_python() {
+  if [ "$IS_CLOUD" = "true" ]; then
+    command -v python3 || command -v python || true
+    return
+  fi
+  if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
+    printf '%s\n' python
+  elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+    printf '%s\n' python3
+  fi
+}
+
+PY="$(find_python)"
+if [ -z "$PY" ]; then
+  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"session-init.sh: no usable python on PATH; skipped enrichment"}}\n'
+  exit 0
+fi
+export PYTHONIOENCODING=UTF-8
+
+config_b64="$("$PY" - "$REPO_ROOT/.harness.json" <<'PY'
+import base64
+import json
+import sys
+
+path = sys.argv[1]
+
+SESSION_DEFAULTS = {
+    "project_name": "prolegomena",
+    "linear_team": "Prolegomena",
+    "linear_token_env": "LINEAR_TOKEN",
+    "linear_token_file": ".claude/.linear-token",
+    "linear_issue_states": ["backlog", "unstarted", "started"],
+    "linear_limit": 30,
+    "sessions_dir": "docs/_sessions",
+    "daily_summary_filename": "daily_summary.md",
+    "mirror_enabled": True,
+    "mirror_state_file": "MIRROR_STATE.txt",
+    "canonical_links": [
+        {"label": "CLAUDE.md", "path": "CLAUDE.md"},
+        {"label": "AGENTS.md", "path": "AGENTS.md"},
+        {
+            "label": "docs/operations/harness_redesign_step1_2026-06-26.md",
+            "path": "docs/operations/harness_redesign_step1_2026-06-26.md",
+        },
+    ],
+    "close_session_reminder": "close-session 時:[CLAUDE.md](CLAUDE.md) §「セッションサマリ git canonical 化」+ `scripts/mirror.ps1`",
+}
+
+def fail(message):
+    cfg = dict(SESSION_DEFAULTS)
+    cfg["config_status"] = "error" if message != "missing" else "missing"
+    cfg["config_message"] = message
+    print(base64.b64encode(json.dumps(cfg, ensure_ascii=False).encode()).decode())
+    sys.exit(0)
+
+try:
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+except FileNotFoundError:
+    fail("missing")
+except Exception as exc:
+    fail(f"{type(exc).__name__}: {exc}")
+
+errors = []
+if not isinstance(raw, dict):
+    errors.append("root must be an object")
+
+def obj(name):
+    value = raw.get(name, {}) if isinstance(raw, dict) else {}
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        errors.append(f"{name} must be an object")
+        return {}
+    return value
+
+def string_at(container, key, path_name, default=None):
+    value = container.get(key, default)
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        errors.append(f"{path_name} must be a string")
+        return default
+    return value
+
+def bool_at(container, key, path_name, default=False):
+    value = container.get(key, default)
+    if value is None:
+        return default
+    if not isinstance(value, bool):
+        errors.append(f"{path_name} must be a boolean")
+        return default
+    return value
+
+def number_at(container, key, path_name, default):
+    value = container.get(key, default)
+    if value is None:
+        return default
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        errors.append(f"{path_name} must be a number")
+        return default
+    return int(value)
+
+def string_list_at(container, key, path_name, default):
+    value = container.get(key, default)
+    if value is None:
+        return default
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        errors.append(f"{path_name} must be a string array")
+        return default
+    return value
+
+project = obj("project")
+linear = obj("linear")
+token_source = linear.get("tokenSource", {})
+if token_source is None:
+    token_source = {}
+if not isinstance(token_source, dict):
+    errors.append("linear.tokenSource must be an object")
+    token_source = {}
+sessions = obj("sessions")
+mirror = obj("mirror")
+canonical = obj("canonical")
+
+links = canonical.get("links", [])
+if links is None:
+    links = []
+if not isinstance(links, list):
+    errors.append("canonical.links must be an array")
+    links = []
+else:
+    normalized = []
+    for idx, item in enumerate(links):
+        if not isinstance(item, dict):
+            errors.append(f"canonical.links[{idx}] must be an object")
+            continue
+        label = item.get("label")
+        path_value = item.get("path")
+        if not isinstance(label, str) or not isinstance(path_value, str):
+            errors.append(f"canonical.links[{idx}] requires string label and path")
+            continue
+        normalized.append({"label": label, "path": path_value})
+    links = normalized
+
+if "project" in raw and "name" not in project:
+    errors.append("project.name is required when project is set")
+
+if errors:
+    fail("; ".join(errors))
+
+cfg = {
+    "config_status": "ok",
+    "config_message": "",
+    "project_name": string_at(project, "name", "project.name", SESSION_DEFAULTS["project_name"]),
+    "linear_team": string_at(linear, "teamName", "linear.teamName", ""),
+    "linear_token_env": string_at(token_source, "envVar", "linear.tokenSource.envVar", "LINEAR_TOKEN"),
+    "linear_token_file": string_at(token_source, "fileFallback", "linear.tokenSource.fileFallback", ".claude/.linear-token"),
+    "linear_issue_states": string_list_at(linear, "issueStates", "linear.issueStates", ["backlog", "unstarted", "started"]),
+    "linear_limit": number_at(linear, "limit", "linear.limit", 30),
+    "sessions_dir": string_at(sessions, "dir", "sessions.dir", "docs/_sessions"),
+    "daily_summary_filename": string_at(sessions, "dailySummaryFilename", "sessions.dailySummaryFilename", "daily_summary.md"),
+    "mirror_enabled": bool_at(mirror, "enabled", "mirror.enabled", False),
+    "mirror_state_file": string_at(mirror, "stateFile", "mirror.stateFile", "MIRROR_STATE.txt"),
+    "canonical_links": links,
+    "close_session_reminder": string_at(canonical, "closeSessionReminder", "canonical.closeSessionReminder", ""),
+}
+print(base64.b64encode(json.dumps(cfg, ensure_ascii=False).encode()).decode())
+PY
+)"
+
 GIT_OPTS=(-c i18n.logOutputEncoding=UTF-8 -c i18n.commitEncoding=UTF-8 -c core.quotePath=false)
 
 git_branch=$(git "${GIT_OPTS[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(unknown)")
@@ -57,220 +193,210 @@ if [ -z "$git_status" ]; then
   git_status="(clean working tree)"
 fi
 
-latest_session_dir=""
-if [ -d docs/_sessions ]; then
-  latest_session_dir=$(ls -1d docs/_sessions/*/ 2>/dev/null | sort -r | head -n 1 | sed 's:/$::' || true)
-fi
-daily_summary_status=""
-if [ -n "${latest_session_dir:-}" ]; then
-  ds_path="${latest_session_dir}/daily_summary.md"
-  if [ -f "$ds_path" ]; then
-    daily_summary_status="$ds_path"
-  else
-    daily_summary_status="$latest_session_dir (daily_summary.md not yet)"
-  fi
-else
-  latest_session_dir="(none)"
-  daily_summary_status="(none)"
-fi
+"$PY" - "$config_b64" "$IS_CLOUD" "$REPO_ROOT" "$git_branch" <<'PY'
+import base64
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
 
-mirror_state="(MIRROR_STATE.txt not found)"
-if [ "$IS_CLOUD" = "true" ]; then
-  mirror_state="(cloud では skip ── Drive mirror は local PowerShell 専用)"
-elif [ -f MIRROR_STATE.txt ]; then
-  mirror_state=$(head -n 5 MIRROR_STATE.txt 2>/dev/null || echo "(MIRROR_STATE.txt unreadable)")
-fi
+cfg = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+is_cloud = sys.argv[2] == "true"
+repo_root = sys.argv[3]
+git_branch = sys.argv[4]
 
-# Environment identification line (cloud / local)
-if [ "$IS_CLOUD" = "true" ]; then
-  env_mode_md=$(cat <<'EOF'
-### environment
-- mode: **cloud**(Claude Code on the web、CLAUDE_CODE_REMOTE=true)
-- 主実装層 cloud override = Claude 内サブエージェント(Codex 不可)
-- Drive mirror skip / agmsg 退役(別 issue Phase 1+)
-EOF
-)
-else
-  env_mode_md="### environment
-- mode: local(Windows / WSL / Linux)"
-fi
+def run_git(args, fallback):
+    try:
+        return subprocess.check_output(
+            ["git", "-c", "i18n.logOutputEncoding=UTF-8", "-c", "i18n.commitEncoding=UTF-8", "-c", "core.quotePath=false"] + args,
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+        ).decode("utf-8", errors="replace").rstrip() or fallback
+    except Exception:
+        return fallback
 
-# Compose the base markdown context (git / session / mirror / reminders).
-# Linear section is appended by the python stage below.
-context_md=$(cat <<EOF
-## SessionStart context (auto-injected by .claude/hooks/session-init.sh)
+git_log = run_git(["log", "-5", "--oneline", "--no-decorate"], "(git log unavailable)")
+git_status = run_git(["status", "--short"], "(clean working tree)")
 
-${env_mode_md}
+sessions_dir = cfg["sessions_dir"]
+daily_name = cfg["daily_summary_filename"]
+latest_session_dir = "(none)"
+daily_summary_status = "(none)"
+session_abs = os.path.join(repo_root, sessions_dir)
+if os.path.isdir(session_abs):
+    children = [
+        os.path.join(sessions_dir, name).replace("\\", "/")
+        for name in os.listdir(session_abs)
+        if os.path.isdir(os.path.join(session_abs, name))
+    ]
+    if children:
+        latest_session_dir = sorted(children, reverse=True)[0]
+        ds_path = f"{latest_session_dir}/{daily_name}"
+        if os.path.isfile(os.path.join(repo_root, ds_path)):
+            daily_summary_status = ds_path
+        else:
+            daily_summary_status = f"{latest_session_dir} ({daily_name} not yet)"
+
+mirror_md = ""
+if is_cloud:
+    mirror_md = "### mirror state\n(cloud mode: skipped)\n"
+elif not cfg["mirror_enabled"]:
+    mirror_md = "### mirror state\n(mirror disabled)\n"
+else:
+    state_file = cfg["mirror_state_file"]
+    state_abs = os.path.join(repo_root, state_file)
+    if os.path.isfile(state_abs):
+        try:
+            with open(state_abs, encoding="utf-8", errors="replace") as f:
+                state = "".join(f.readlines()[:5]).rstrip() or "(empty)"
+        except Exception as exc:
+            state = f"({state_file} unreadable: {exc})"
+    else:
+        state = f"({state_file} not found)"
+    mirror_md = f"### mirror state ({state_file})\n```\n{state}\n```\n"
+
+if is_cloud:
+    env_mode_md = "\n".join([
+        "### environment",
+        "- mode: **cloud** (CLAUDE_CODE_REMOTE=true)",
+        "- implementation layer: Claude subagent/workflow",
+        "- Drive mirror skipped",
+    ])
+else:
+    env_mode_md = "### environment\n- mode: local"
+
+config_section = ""
+if cfg["config_status"] == "missing":
+    config_section = "\n### .harness.json missing\n- warning: .harness.json not found; using compatibility defaults\n"
+elif cfg["config_status"] == "error":
+    config_section = f"\n### .harness.json error\n- warning: {cfg['config_message']}\n- fallback: using compatibility defaults\n"
+
+canonical_lines = []
+for link in cfg["canonical_links"]:
+    canonical_lines.append(f"- [{link['label']}]({link['path']})")
+close_reminder = cfg["close_session_reminder"]
+if close_reminder:
+    canonical_lines.append(f"- {close_reminder}")
+canonical_md = "\n".join(canonical_lines) if canonical_lines else "- (no canonical links configured)"
+
+ctx = f"""## SessionStart context (auto-injected by hooks/session-init.sh)
+{config_section}
+{env_mode_md}
 
 ### git
-- branch: \`${git_branch}\`
+- branch: `{git_branch}`
 - recent commits:
-\`\`\`
-${git_log}
-\`\`\`
+```
+{git_log}
+```
 - working tree:
-\`\`\`
-${git_status}
-\`\`\`
+```
+{git_status}
+```
 
 ### session
-- latest session dir: \`${latest_session_dir}\`
-- daily_summary: \`${daily_summary_status}\`
+- sessions dir: `{sessions_dir}`
+- daily_summary filename: `{daily_name}`
+- latest session dir: `{latest_session_dir}`
+- daily_summary: `{daily_summary_status}`
 
-### mirror state (Drive code mirror, scripts/mirror.ps1)
-\`\`\`
-${mirror_state}
-\`\`\`
-
-### 起動チェックリマインダ
-- 進行中 issue 詳細 → Linear MCP \`get_issue PRL-N\`(本 hook は team open issue 一覧を自動取得、詳細取得は手動)
-- 主要 canonical:
-  - [CLAUDE.md](CLAUDE.md)
-  - [AGENTS.md](AGENTS.md)
-  - [docs/operations/harness_redesign_step1_2026-06-26.md](docs/operations/harness_redesign_step1_2026-06-26.md)
-- close-session 時:[CLAUDE.md](CLAUDE.md) §「セッションサマリ git canonical 化」+ \`scripts/mirror.ps1\`
-EOF
-)
-
-# Encode as JSON for the SessionStart hookSpecificOutput contract.
-#
-# On Windows the WindowsApps shim `python3` is a Store stub that prints "Python"
-# and exits 49 when invoked non-interactively, so we prefer `python` (real
-# CPython on PATH) first and only fall back to `python3` when that points at a
-# real interpreter -- confirmed by a `--version` probe. On cloud (Linux
-# container) there's no WindowsApps stub, so a simple lookup suffices.
-PY=""
-if [ "$IS_CLOUD" = "true" ]; then
-  PY="$(command -v python3 || command -v python || true)"
-else
-  if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
-    PY=python
-  elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
-    PY=python3
-  fi
-fi
-if [ -z "$PY" ]; then
-  # Last-ditch fallback: emit a JSON envelope with a notice instead of failing.
-  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"session-init.sh: no usable python on PATH; skipped enrichment"}}\n'
-  exit 0
-fi
-
-# Round-trip the markdown through base64 to keep it byte-exact across the
-# bash -> MSYS -> Win32 python argv boundary (otherwise UTF-8 JP characters
-# get mangled to CP932). And write the JSON to stdout via the binary buffer
-# so python doesn't re-encode it through the console code page.
-ctx_b64=$(printf '%s' "$context_md" | base64 -w 0)
-
-# Linear token: env var 優先(cloud) → file fallback(local、後方互換)
-LINEAR_TOKEN="${LINEAR_TOKEN:-}"
-LINEAR_TOKEN_SOURCE="env(LINEAR_TOKEN)"
-if [ -z "$LINEAR_TOKEN" ] && [ -f "${REPO_ROOT}/.claude/.linear-token" ]; then
-  LINEAR_TOKEN="$(tr -d '[:space:]' < "${REPO_ROOT}/.claude/.linear-token")"
-  LINEAR_TOKEN_SOURCE="file(.claude/.linear-token)"
-fi
-if [ -z "$LINEAR_TOKEN" ]; then
-  LINEAR_TOKEN_SOURCE="(none)"
-fi
-# base64 round-trip the token too, to keep it byte-exact across the argv boundary
-token_b64=$(printf '%s' "$LINEAR_TOKEN" | base64 -w 0)
-
-"$PY" - "$ctx_b64" "$token_b64" "$LINEAR_TOKEN_SOURCE" <<'PY'
-import base64, json, sys
-import urllib.request, urllib.error
-
-ctx = base64.b64decode(sys.argv[1]).decode("utf-8")
-token = base64.b64decode(sys.argv[2]).decode("utf-8").strip()
-token_source = sys.argv[3]
+{mirror_md}
+### startup reminders
+{canonical_md}
+"""
 
 PRIORITY = {0: "None", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low"}
 
-def sanitize(s):
-    # Linear can store strings containing lone UTF-16 surrogates (e.g. \udc8X
-    # without a matching high surrogate). Python keeps them in str but
-    # str.encode("utf-8") in strict mode raises UnicodeEncodeError, which
-    # would crash the JSON envelope. Round-trip through utf-8 with replace
-    # so any lone surrogate becomes U+FFFD instead of taking down the hook.
-    if s is None:
+def sanitize(value):
+    if value is None:
         return ""
-    return s.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+    return str(value).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
 
 def fetch_linear():
+    team = cfg["linear_team"]
+    if not team:
+        return ""
+    env_var = cfg["linear_token_env"] or "LINEAR_TOKEN"
+    token_file = cfg["linear_token_file"] or ".claude/.linear-token"
+    token = os.environ.get(env_var, "").strip()
+    token_source = f"env({env_var})"
     if not token:
-        return None, "token not set (env LINEAR_TOKEN or .claude/.linear-token)"
+        token_path = os.path.join(repo_root, token_file)
+        if os.path.isfile(token_path):
+            with open(token_path, encoding="utf-8", errors="replace") as f:
+                token = "".join(f.read().split())
+            token_source = f"file({token_file})"
+    if not token:
+        err = f"token not set (env {env_var} or {token_file})"
+        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- fallback: use Linear MCP manually\n"
 
-    query = (
-        "query {\n"
-        "  issues(\n"
-        "    filter: {\n"
-        '      team: { name: { eq: "Prolegomena" } }\n'
-        '      state: { type: { in: ["backlog", "unstarted", "started"] } }\n'
-        "    }\n"
-        "    first: 30\n"
-        "    orderBy: updatedAt\n"
-        "  ) {\n"
-        "    nodes {\n"
-        "      identifier\n"
-        "      title\n"
-        "      priority\n"
-        "      state { name type }\n"
-        "      assignee { name }\n"
-        "    }\n"
-        "  }\n"
-        "}"
-    )
-    payload = json.dumps({"query": query}).encode("utf-8")
+    states = cfg["linear_issue_states"] or ["backlog", "unstarted", "started"]
+    limit = cfg["linear_limit"] or 30
+    query = """
+query($teamName: String!, $states: [String!], $limit: Int!) {
+  issues(
+    filter: {
+      team: { name: { eq: $teamName } }
+      state: { type: { in: $states } }
+    }
+    first: $limit
+    orderBy: updatedAt
+  ) {
+    nodes {
+      identifier
+      title
+      priority
+      state { name type }
+      assignee { name }
+    }
+  }
+}
+"""
+    payload = json.dumps({"query": query, "variables": {"teamName": team, "states": states, "limit": limit}}).encode("utf-8")
     req = urllib.request.Request(
         "https://api.linear.app/graphql",
         data=payload,
         method="POST",
-        headers={
-            "Authorization": token,
-            "Content-Type": "application/json",
-        },
+        headers={"Authorization": token, "Content-Type": "application/json"},
     )
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.load(resp)
-    except urllib.error.HTTPError as e:
-        return None, "HTTP %d: %s" % (e.code, e.reason)
-    except urllib.error.URLError as e:
-        return None, "network: %s" % e.reason
-    except Exception as e:
-        return None, "unexpected: %s: %s" % (type(e).__name__, e)
-
+    except urllib.error.HTTPError as exc:
+        err = f"HTTP {exc.code}: {exc.reason}"
+        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- token source: {token_source}\n"
+    except urllib.error.URLError as exc:
+        err = f"network: {exc.reason}"
+        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- token source: {token_source}\n"
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"
+        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- token source: {token_source}\n"
     if "errors" in data:
-        return None, "graphql: %s" % json.dumps(data["errors"], ensure_ascii=False)
+        err = json.dumps(data["errors"], ensure_ascii=False)
+        return f"\n### Linear open issues (team={team})\n- fetch failed: graphql: {err}\n- token source: {token_source}\n"
     nodes = data.get("data", {}).get("issues", {}).get("nodes", [])
-    return nodes, None
-
-def fmt_linear(nodes, err):
-    lines = ["", "### Linear open issues (team=Prolegomena)"]
-    if err:
-        lines.append("- 取得失敗: %s" % err)
-        lines.append("- fallback: MCP `list_issues` を手動で")
-        return "\n".join(lines)
+    lines = [f"", f"### Linear open issues (team={team})"]
     if not nodes:
-        lines.append("- (open issue なし)")
-        return "\n".join(lines)
-    for n in nodes:
-        ident = sanitize(n.get("identifier") or "?")
-        title = sanitize((n.get("title") or "").strip())
-        state = sanitize((n.get("state") or {}).get("name") or "?")
-        pri = PRIORITY.get(n.get("priority", 0), "?")
-        assignee_obj = n.get("assignee") or {}
-        assignee = sanitize(assignee_obj.get("name") or "(unassigned)")
-        lines.append("- **%s** [%s] (P:%s, @%s) ─ %s" % (ident, state, pri, assignee, title))
-    return "\n".join(lines)
+        lines.append("- (open issue none)")
+    for item in nodes:
+        ident = sanitize(item.get("identifier") or "?")
+        title = sanitize((item.get("title") or "").strip())
+        state = sanitize((item.get("state") or {}).get("name") or "?")
+        priority = PRIORITY.get(item.get("priority", 0), "?")
+        assignee = sanitize((item.get("assignee") or {}).get("name") or "(unassigned)")
+        lines.append(f"- **{ident}** [{state}] (P:{priority}, @{assignee}) - {title}")
+    return "\n".join(lines) + "\n"
 
-nodes, err = fetch_linear()
-linear_md = fmt_linear(nodes, err)
-ctx_full = ctx + "\n" + linear_md + "\n"
-
-out = json.dumps({
+ctx += fetch_linear()
+out = {
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",
-        "additionalContext": ctx_full,
+        "additionalContext": ctx,
     }
-}, ensure_ascii=False) + "\n"
-sys.stdout.buffer.write(out.encode("utf-8"))
+}
+sys.stdout.buffer.write((json.dumps(out, ensure_ascii=False) + "\n").encode("utf-8"))
 PY
+
+exit 0

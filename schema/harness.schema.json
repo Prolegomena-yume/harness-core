@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://example.local/harness.schema.json",
+  "title": "Harness configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]+$"
+        },
+        "displayName": {
+          "type": "string"
+        }
+      }
+    },
+    "linear": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "teamName": {
+          "type": "string"
+        },
+        "tokenSource": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "envVar": {
+              "type": "string"
+            },
+            "fileFallback": {
+              "type": "string"
+            }
+          }
+        },
+        "issueStates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limit": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "sessions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "type": "string"
+        },
+        "dailySummaryFilename": {
+          "type": "string"
+        }
+      }
+    },
+    "mirror": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "stateFile": {
+          "type": "string"
+        }
+      }
+    },
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "path"],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "closeSessionReminder": {
+          "type": "string"
+        }
+      }
+    },
+    "cloud": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "aptPackages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nodeMinVersion": {
+          "type": "number",
+          "minimum": 1
+        },
+        "requiredEnvVars": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "optionalEnvVars": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "install": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "buildTargets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
