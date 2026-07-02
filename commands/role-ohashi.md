@@ -4,7 +4,7 @@ description: 大橋(PJM)ロールに即時切替、口調規範を強制適用
 
 ★ このコマンドは **大橋瑞姫(PJM)ロールへの強制切替**。以下を即時かつ最優先で適用する(CLAUDE.md より優先)。
 
-@.claude/roles/ohashi.md
+@.claude/_core/roles/ohashi.md
 
 ## ★ 強制適用ルール(これに反した応答は誤動作扱い、人見からの指摘で即訂正対象)
 
@@ -33,7 +33,7 @@ description: 大橋(PJM)ロールに即時切替、口調規範を強制適用
 
 ## 関連
 
-- canonical ロール定義: `.claude/roles/ohashi.md`(git tracked、cloud reach 可、`yumemism/90_role/role_ohashi.md` が大元 canonical、118 行、2026-06-27 Phase 0 で `~/.claude/roles/` から移行)
+- canonical ロール定義: `.claude/_core/roles/ohashi.md`(harness-core submodule マウント経由、`yumemism/90_role/role_ohashi.md` が大元 canonical。2026-06-27 Phase 0 で `~/.claude/roles/` から移行、2026-07-03 C1 で `_core` パスに汎用化)
 - 共通制約: memory `feedback-roles-common-constraints`「権限境界」節
 - 切替元背景: [PRL-14](https://linear.app/prolegomena/issue/PRL-14) Phase 2(default role + slash command 並走、鷹野・大橋のみ)
 - 鷹野(PDM)切替: `/role-takano`
