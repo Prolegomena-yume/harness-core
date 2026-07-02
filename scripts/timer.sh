@@ -94,9 +94,6 @@ last_heartbeat=$start_epoch
 while :; do
   now_epoch=$(date +%s)
   elapsed=$((now_epoch - start_epoch))
-  if [ "$elapsed" -ge "$dur" ]; then
-    break
-  fi
 
   for log in "${logs[@]}"; do
     [ -f "$log" ] || continue
@@ -131,6 +128,10 @@ while :; do
   done
 
   # heartbeat: 実時間ベース、最後の heartbeat から HEARTBEAT_INTERVAL 秒経過で出力
+  if [ "$elapsed" -ge "$dur" ]; then
+    break
+  fi
+
   now_epoch=$(date +%s)
   elapsed=$((now_epoch - start_epoch))
   if [ $((now_epoch - last_heartbeat)) -ge "$HEARTBEAT_INTERVAL" ] && [ "$elapsed" -lt "$dur" ]; then
