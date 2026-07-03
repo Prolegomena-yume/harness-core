@@ -39,6 +39,17 @@ label="${2:-timer}"
 shift $(( $# >= 2 ? 2 : $# ))
 logs=("$@")
 
+# 異常終了(無言死)根絶用 trap。ERR trap で落ちた行番号を控え、EXIT trap で
+# exit code が非 0 の場合のみ 1 行通知してから終了する(正常 exit 0 では出さない)。
+__err_line=""
+trap '__err_line="$LINENO"' ERR
+trap '
+  __exit_code=$?
+  if [ "$__exit_code" -ne 0 ]; then
+    echo "[${label:-timer}] [$(date "+%H:%M:%S")] タイマー異常終了 exit_code=${__exit_code} line=${__err_line:-unknown}"
+  fi
+' EXIT
+
 PAT_DONE='tokens used'
 PAT_NOTE='\[impl-done\]'
 PAT_ERR='^Error:|^FAILED|^panic|Connection reset|^ERR_'
@@ -82,7 +93,8 @@ echo "[$label] [$(ts)] タイマー起動 残=${dur}秒 監視log=${logs[*]}"
 declare -A read_lines
 for log in "${logs[@]}"; do
   if [ -f "$log" ]; then
-    read_lines["$log"]=$(wc -l < "$log" | tr -d ' ')
+    read_lines["$log"]=$(wc -l < "$log" 2>/dev/null | tr -d ' ') || read_lines["$log"]=0
+    [ -n "${read_lines[$log]}" ] || read_lines["$log"]=0
   else
     read_lines["$log"]=0
   fi
@@ -92,17 +104,26 @@ err_count=0
 last_heartbeat=$start_epoch
 
 while :; do
-  now_epoch=$(date +%s)
+  now_epoch=$(date +%s 2>/dev/null) || now_epoch="$last_heartbeat"
+  [ -n "$now_epoch" ] || now_epoch="$last_heartbeat"
   elapsed=$((now_epoch - start_epoch))
 
   for log in "${logs[@]}"; do
     [ -f "$log" ] || continue
-    cur=$(wc -l < "$log" | tr -d ' ')
     prev="${read_lines[$log]}"
+    # wc -l 等の外部コマンドが一時的に失敗しても(ファイルロック等)スクリプトを
+    # 即死させず、前回値へフォールバックして今回周回をスキップする。
+    cur=$(wc -l < "$log" 2>/dev/null | tr -d ' ') || cur=""
+    if [ -z "$cur" ]; then
+      cur="$prev"
+    fi
     if [ "$cur" -le "$prev" ]; then
       continue
     fi
-    new_block=$(tail -n +"$((prev + 1))" "$log" | head -n "$((cur - prev))")
+    # SIGPIPE(tail|head の早期終了による exit 141)回避のため単一プロセスで
+    # 行範囲を切り出す。cur を上限に切るので、この間に追記された行は
+    # 次周回の wc -l で cur が更新されて拾われる(取りこぼしなし)。
+    new_block=$(awk -v s="$((prev + 1))" -v e="$cur" 'NR >= s && NR <= e' "$log" 2>/dev/null) || new_block=""
     read_lines["$log"]=$cur
 
     [ -n "$new_block" ] || continue
@@ -132,7 +153,8 @@ while :; do
     break
   fi
 
-  now_epoch=$(date +%s)
+  now_epoch=$(date +%s 2>/dev/null) || now_epoch="$last_heartbeat"
+  [ -n "$now_epoch" ] || now_epoch="$last_heartbeat"
   elapsed=$((now_epoch - start_epoch))
   if [ $((now_epoch - last_heartbeat)) -ge "$HEARTBEAT_INTERVAL" ] && [ "$elapsed" -lt "$dur" ]; then
     echo "[$label] [$(ts)] 監視中 経過=${elapsed}秒 残=$((dur - elapsed))秒 累計エラー=$err_count"
