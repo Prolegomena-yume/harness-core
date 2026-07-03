@@ -5,7 +5,9 @@
 #   log...:   監視する codex .session.log path を 1 つ以上(任意、可変長)
 #
 # log を 1 つ以上渡すと、起動時点の行数を 0 起点として新規追記行のみ判定し、
-# 下記マーカーを検出した時点で stdout に日本語通知する:
+# 下記マーカーを検出した時点で stdout に日本語通知する。判定は行単位の grep
+# パイプラインではなく awk 単一パスで新規行を走査し、hit 行のみタグ付きで
+# 抽出する(大量追記時の fork 圧回避):
 #   正常終端       : "tokens used"        → 即解除(累計 1 回)
 #   着地報告(継続) : "[impl-done]"        → 記録のみ、解除しない
 #   エラー         : "^Error:" | "^FAILED" | "^panic" | "Connection reset" | "^ERR_"
@@ -50,9 +52,6 @@ trap '
   fi
 ' EXIT
 
-PAT_DONE='tokens used'
-PAT_NOTE='\[impl-done\]'
-PAT_ERR='^Error:|^FAILED|^panic|Connection reset|^ERR_'
 ERR_THRESHOLD=3
 HEARTBEAT_INTERVAL=30
 
@@ -123,20 +122,32 @@ while :; do
     # SIGPIPE(tail|head の早期終了による exit 141)回避のため単一プロセスで
     # 行範囲を切り出す。cur を上限に切るので、この間に追記された行は
     # 次周回の wc -l で cur が更新されて拾われる(取りこぼしなし)。
-    new_block=$(awk -v s="$((prev + 1))" -v e="$cur" 'NR >= s && NR <= e' "$log" 2>/dev/null) || new_block=""
+    # 新規行の切り出しと 3 パターン判定を awk 単一パスに畳み込む。hit した行
+    # のみ DONE:/NOTE:/ERR: タグを付けて出力(通常 0〜数行)。判定優先順は
+    # DONE > NOTE > ERR(元の if/elif 順を踏襲)。行末アンカーは使わない
+    # (ログは CRLF 混在のため)。
+    hit_block=$(awk -v s="$((prev + 1))" -v e="$cur" '
+      NR >= s && NR <= e {
+        if ($0 ~ /tokens used/) { print "DONE:" $0; next }
+        if ($0 ~ /\[impl-done\]/) { print "NOTE:" $0; next }
+        if ($0 ~ /^Error:|^FAILED|^panic|Connection reset|^ERR_/) { print "ERR:" $0; next }
+      }
+    ' "$log" 2>/dev/null) || hit_block=""
     read_lines["$log"]=$cur
 
-    [ -n "$new_block" ] || continue
+    [ -n "$hit_block" ] || continue
 
-    while IFS= read -r line; do
-      if printf '%s\n' "$line" | grep -qE "$PAT_DONE"; then
+    while IFS= read -r tagged; do
+      tag="${tagged%%:*}"
+      line="${tagged#*:}"
+      if [ "$tag" = "DONE" ]; then
         echo "[$label] [$(ts)] 正常終端を検知 log=$log 内容=\"$line\""
         end=$(date -Iseconds)
         echo "[$label] [$(ts)] タイマー終了 理由=正常終端解除 開始=$start 終了=$end 経過=$(($(date +%s) - start_epoch))秒 log=$log"
         exit 0
-      elif printf '%s\n' "$line" | grep -qE "$PAT_NOTE"; then
+      elif [ "$tag" = "NOTE" ]; then
         echo "[$label] [$(ts)] 着地報告を捕捉(継続中) log=$log 内容=\"$line\""
-      elif printf '%s\n' "$line" | grep -qE "$PAT_ERR"; then
+      elif [ "$tag" = "ERR" ]; then
         err_count=$((err_count + 1))
         echo "[$label] [$(ts)] エラー検知 累計=$err_count log=$log 内容=\"$line\""
         if [ "$err_count" -ge "$ERR_THRESHOLD" ]; then
@@ -145,7 +156,7 @@ while :; do
           exit 0
         fi
       fi
-    done <<< "$new_block"
+    done <<< "$hit_block"
   done
 
   # heartbeat: 実時間ベース、最後の heartbeat から HEARTBEAT_INTERVAL 秒経過で出力
