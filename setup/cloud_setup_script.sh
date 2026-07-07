@@ -179,7 +179,9 @@ echo "--- [Phase 1] apt packages ---"
 if [ "${#APT_PACKAGES[@]}" -eq 0 ] || [ -z "${APT_PACKAGES[0]:-}" ]; then
   echo "No apt packages configured; skipping Phase 1"
 else
-  apt-get update -qq
+  # --allow-releaseinfo-change: PPA 側の InRelease metadata 変更(Label 等)で
+  # update が exit 1 になるのを防ぐ(2026-07-07 ondrej/php PPA Label 変更で本線 routine 死亡の実績)
+  apt-get update -qq --allow-releaseinfo-change
   apt-get install -y "${APT_PACKAGES[@]}"
   echo "OK: installed apt packages: ${APT_PACKAGES[*]}"
 fi
