@@ -26,6 +26,10 @@
       { "label": "CLAUDE.md", "path": "CLAUDE.md" },
       { "label": "AGENTS.md", "path": "AGENTS.md" },
       {
+        "label": "Harness Constitution",
+        "path": ".claude/_core/docs/harness_constitution.md"
+      },
+      {
         "label": "docs/operations/harness_redesign_step1_2026-06-26.md",
         "path": "docs/operations/harness_redesign_step1_2026-06-26.md"
       }

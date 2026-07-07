@@ -115,7 +115,11 @@ setup 完了後の consumer 配下:
   "canonical": {
     "links": [
       { "label": "CLAUDE.md", "path": "CLAUDE.md" },
-      { "label": "AGENTS.md", "path": "AGENTS.md" }
+      { "label": "AGENTS.md", "path": "AGENTS.md" },
+      {
+        "label": "Harness Constitution",
+        "path": ".claude/_core/docs/harness_constitution.md"
+      }
     ]
   },
   "cloud": {
