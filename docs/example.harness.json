@@ -4,14 +4,9 @@
     "name": "prolegomena",
     "displayName": "Prolegomena"
   },
-  "linear": {
-    "teamName": "Prolegomena",
-    "tokenSource": {
-      "envVar": "LINEAR_TOKEN",
-      "fileFallback": ".claude/.linear-token"
-    },
-    "issueStates": ["backlog", "unstarted", "started"],
-    "limit": 30
+  "neon": {
+    "urlFile": "~/.ssh/neon-harness-index-url.txt",
+    "limit": 10
   },
   "sessions": {
     "dir": "docs/_sessions",
@@ -39,7 +34,7 @@
   "cloud": {
     "aptPackages": ["build-essential", "libpq-dev", "postgresql-client", "bubblewrap"],
     "nodeMinVersion": 20,
-    "requiredEnvVars": ["LINEAR_TOKEN", "DATABASE_URL", "DB_DRIVER", "DRIVER"],
+    "requiredEnvVars": ["DATABASE_URL", "DB_DRIVER", "DRIVER"],
     "optionalEnvVars": [
       "CODEX_AUTH_JSON",
       "VITE_AWS_REGION",

@@ -42,11 +42,8 @@ path = sys.argv[1]
 
 SESSION_DEFAULTS = {
     "project_name": "prolegomena",
-    "linear_team": "Prolegomena",
-    "linear_token_env": "LINEAR_TOKEN",
-    "linear_token_file": ".claude/.linear-token",
-    "linear_issue_states": ["backlog", "unstarted", "started"],
-    "linear_limit": 30,
+    "neon_url_file": "",
+    "neon_limit": 10,
     "sessions_dir": "docs/_sessions",
     "daily_summary_filename": "daily_summary.md",
     "mirror_enabled": True,
@@ -112,28 +109,13 @@ def number_at(container, key, path_name, default):
     value = container.get(key, default)
     if value is None:
         return default
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        errors.append(f"{path_name} must be a number")
-        return default
-    return int(value)
-
-def string_list_at(container, key, path_name, default):
-    value = container.get(key, default)
-    if value is None:
-        return default
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        errors.append(f"{path_name} must be a string array")
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        errors.append(f"{path_name} must be a positive integer")
         return default
     return value
 
 project = obj("project")
-linear = obj("linear")
-token_source = linear.get("tokenSource", {})
-if token_source is None:
-    token_source = {}
-if not isinstance(token_source, dict):
-    errors.append("linear.tokenSource must be an object")
-    token_source = {}
+neon = obj("neon")
 sessions = obj("sessions")
 mirror = obj("mirror")
 canonical = obj("canonical")
@@ -161,6 +143,8 @@ else:
 if "project" in raw and "name" not in project:
     errors.append("project.name is required when project is set")
 
+neon_url_file = string_at(neon, "urlFile", "neon.urlFile", "")
+neon_limit = number_at(neon, "limit", "neon.limit", 10)
 if errors:
     fail("; ".join(errors))
 
@@ -168,11 +152,8 @@ cfg = {
     "config_status": "ok",
     "config_message": "",
     "project_name": string_at(project, "name", "project.name", SESSION_DEFAULTS["project_name"]),
-    "linear_team": string_at(linear, "teamName", "linear.teamName", ""),
-    "linear_token_env": string_at(token_source, "envVar", "linear.tokenSource.envVar", "LINEAR_TOKEN"),
-    "linear_token_file": string_at(token_source, "fileFallback", "linear.tokenSource.fileFallback", ".claude/.linear-token"),
-    "linear_issue_states": string_list_at(linear, "issueStates", "linear.issueStates", ["backlog", "unstarted", "started"]),
-    "linear_limit": number_at(linear, "limit", "linear.limit", 30),
+    "neon_url_file": neon_url_file,
+    "neon_limit": neon_limit,
     "sessions_dir": string_at(sessions, "dir", "sessions.dir", "docs/_sessions"),
     "daily_summary_filename": string_at(sessions, "dailySummaryFilename", "sessions.dailySummaryFilename", "daily_summary.md"),
     "mirror_enabled": bool_at(mirror, "enabled", "mirror.enabled", False),
@@ -197,10 +178,9 @@ fi
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 
 cfg = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
 is_cloud = sys.argv[2] == "true"
@@ -307,89 +287,57 @@ ctx = f"""## SessionStart context (auto-injected by hooks/session-init.sh)
 {canonical_md}
 """
 
-PRIORITY = {0: "None", 1: "Urgent", 2: "High", 3: "Medium", 4: "Low"}
-
-def sanitize(value):
-    if value is None:
+def fetch_neon():
+    url_file = cfg["neon_url_file"]
+    if not url_file:
         return ""
-    return str(value).encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-
-def fetch_linear():
-    team = cfg["linear_team"]
-    if not team:
-        return ""
-    env_var = cfg["linear_token_env"] or "LINEAR_TOKEN"
-    token_file = cfg["linear_token_file"] or ".claude/.linear-token"
-    token = os.environ.get(env_var, "").strip()
-    token_source = f"env({env_var})"
-    if not token:
-        token_path = os.path.join(repo_root, token_file)
-        if os.path.isfile(token_path):
-            with open(token_path, encoding="utf-8", errors="replace") as f:
-                token = "".join(f.read().split())
-            token_source = f"file({token_file})"
-    if not token:
-        err = f"token not set (env {env_var} or {token_file})"
-        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- fallback: use Linear MCP manually\n"
-
-    states = cfg["linear_issue_states"] or ["backlog", "unstarted", "started"]
-    limit = cfg["linear_limit"] or 30
-    query = """
-query($teamName: String!, $states: [String!], $limit: Int!) {
-  issues(
-    filter: {
-      team: { name: { eq: $teamName } }
-      state: { type: { in: $states } }
-    }
-    first: $limit
-    orderBy: updatedAt
-  ) {
-    nodes {
-      identifier
-      title
-      priority
-      state { name type }
-      assignee { name }
-    }
-  }
-}
-"""
-    payload = json.dumps({"query": query, "variables": {"teamName": team, "states": states, "limit": limit}}).encode("utf-8")
-    req = urllib.request.Request(
-        "https://api.linear.app/graphql",
-        data=payload,
-        method="POST",
-        headers={"Authorization": token, "Content-Type": "application/json"},
-    )
+    heading = "\n### Neon recent documents (harness_index_db)"
+    url_path = os.path.expanduser(url_file)
+    if not os.path.isfile(url_path):
+        return f"{heading}\n- fetch failed: urlFile not found: {url_file}\n"
+    if shutil.which("psql") is None:
+        return f"{heading}\n- fetch failed: psql not found on PATH\n"
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.load(resp)
-    except urllib.error.HTTPError as exc:
-        err = f"HTTP {exc.code}: {exc.reason}"
-        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- token source: {token_source}\n"
-    except urllib.error.URLError as exc:
-        err = f"network: {exc.reason}"
-        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- token source: {token_source}\n"
+        with open(url_path, encoding="utf-8", errors="replace") as f:
+            url = f.readline().strip()
     except Exception as exc:
-        err = f"{type(exc).__name__}: {exc}"
-        return f"\n### Linear open issues (team={team})\n- fetch failed: {err}\n- token source: {token_source}\n"
-    if "errors" in data:
-        err = json.dumps(data["errors"], ensure_ascii=False)
-        return f"\n### Linear open issues (team={team})\n- fetch failed: graphql: {err}\n- token source: {token_source}\n"
-    nodes = data.get("data", {}).get("issues", {}).get("nodes", [])
-    lines = [f"", f"### Linear open issues (team={team})"]
-    if not nodes:
-        lines.append("- (open issue none)")
-    for item in nodes:
-        ident = sanitize(item.get("identifier") or "?")
-        title = sanitize((item.get("title") or "").strip())
-        state = sanitize((item.get("state") or {}).get("name") or "?")
-        priority = PRIORITY.get(item.get("priority", 0), "?")
-        assignee = sanitize((item.get("assignee") or {}).get("name") or "(unassigned)")
-        lines.append(f"- **{ident}** [{state}] (P:{priority}, @{assignee}) - {title}")
+        return f"{heading}\n- fetch failed: urlFile unreadable: {exc}\n"
+    if not url:
+        return f"{heading}\n- fetch failed: urlFile is empty: {url_file}\n"
+    limit = cfg["neon_limit"] or 10
+    query = f"SELECT path, coalesce(title,''), to_char(updated_at, 'MM-DD HH24:MI') FROM documents ORDER BY updated_at DESC LIMIT {limit};"
+    try:
+        result = subprocess.run(
+            ["psql", url, "-X", "-tA", "-F", "\t", "-c", query],
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            check=True,
+        )
+    except subprocess.TimeoutExpired:
+        return f"{heading}\n- fetch failed: timed out after 10 seconds\n"
+    except subprocess.CalledProcessError as exc:
+        reason = (exc.stderr or "").strip().splitlines()
+        reason = reason[-1] if reason else f"psql exited with status {exc.returncode}"
+        return f"{heading}\n- fetch failed: {reason}\n"
+    except Exception as exc:
+        return f"{heading}\n- fetch failed: {type(exc).__name__}: {exc}\n"
+    lines = ["", "### Neon recent documents (harness_index_db)"]
+    for row in result.stdout.splitlines():
+        fields = row.split("\t", 2)
+        if len(fields) == 3:
+            path_value, title, updated = fields
+            lines.append(f"- {updated} {path_value} ── {title}")
+    if len(lines) == 2:
+        lines.append("- (documents none)")
+    lines.append('- semantic 検索: bash scripts/search-docs.sh "<query>" [N]')
     return "\n".join(lines) + "\n"
 
-ctx += fetch_linear()
+ctx += fetch_neon()
 out = {
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",

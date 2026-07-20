@@ -23,33 +23,15 @@
         }
       }
     },
-    "linear": {
+    "neon": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "teamName": {
+        "urlFile": {
           "type": "string"
         },
-        "tokenSource": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "envVar": {
-              "type": "string"
-            },
-            "fileFallback": {
-              "type": "string"
-            }
-          }
-        },
-        "issueStates": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "limit": {
-          "type": "number",
+          "type": "integer",
           "minimum": 1
         }
       }
