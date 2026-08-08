@@ -34,7 +34,7 @@ Claude Code からは `/role-<名前>` で切り替える。各 consumer リポ(
 ## 関連
 
 - AI セッションの最上位規範:[../docs/harness_constitution.md](../docs/harness_constitution.md)
-- 会社憲章(未起草、**この規範の上位に立つ**):`company/keiei/charter/`
+- 会社憲章(未起草、**この規範の上位に立つ**):`company/keiei/constitution/`
 
 ## 改訂履歴
 
