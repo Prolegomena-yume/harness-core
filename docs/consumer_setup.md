@@ -60,6 +60,7 @@ setup 完了後の consumer 配下:
 <consumer-root>/
 ├── .claude/
 │   ├── _core/                    ── harness-core submodule(commit pin)
+│   ├── agents -> _core/agents    ── 委譲人格 symlink(§6.1、任意)
 │   ├── commands/
 │   │   ├── role-takano.md        ── /role-takano wrapper(任意)
 │   │   └── role-ohashi.md        ── /role-ohashi wrapper(任意)
@@ -227,6 +228,20 @@ description: 鷹野(PDM)ロールに即時切替、口調規範を強制適用
 
 最小 wrapper としては `@.claude/_core/roles/takano.md` の 1 行 import だけで動く。強制適用ルールも consumer 側に展開したい場合は harness-core の `commands/role-takano.md` を参照 + 必要部分を copy。
 
+## 6.1 委譲人格 agent の配線(symlink)
+
+鷹野(PDM)がサブエージェントへ委譲する人格(水無瀬 / 真壁 / 柏木)を使う場合、`.claude/agents/` を core へ向ける:
+
+```bash
+cd <consumer-repo-root>
+ln -s _core/agents .claude/agents
+git add .claude/agents && git commit -m "feat(harness): 委譲人格 agent を core へ配線"
+```
+
+**wrapper ではなく symlink を使う。**agent 定義は frontmatter(`tools` / `model`)が本体なので、wrapper を置くと consumer の数だけモデル指定が複製され、モデル世代を上げるときに全 consumer を触ることになる。
+
+配線後、Agent tool から `subagent_type: minase` / `makabe` / `kashiwagi` が解決する。**反映は次回セッション開始時**(agent 定義はセッション開始時に読まれる)。一覧と方針は [../agents/README.md](../agents/README.md)、実装委譲の手順は [codex_delegation.md](codex_delegation.md)。
+
 ## 7. Linear token 運用
 
 `linear.teamName` を設定した場合、SessionStart hook が Linear GraphQL を直叩きする。token 取得経路:
@@ -333,3 +348,4 @@ git commit -m "chore(harness): remove harness-core submodule"
 ## 改訂履歴
 
 - 2026-06-28 v0.1-draft 起草(鷹野(PDM))── PRL-30 P6 の最初の deliverable。harness-starter template repo 化(別 deliverable)+ stella 2 件目実例化 trace 反映予定。
+- 2026-08-11 §6.1 追加(委譲人格 agent の symlink 配線)、§2 ディレクトリ構成に `.claude/agents` を反映

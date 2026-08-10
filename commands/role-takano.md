@@ -30,16 +30,16 @@ description: 鷹野(PDM)ロールに即時切替、口調規範を強制適用
 
 1. 対象スコープ事前明示
 2. **「どの層」**を明示宣言(★ 4 択:調査=Claude 内 Agent / 実装主=Codex Bash 直叩き / フォールバック=Claude 内サブ / 長尺多peer=agmsg)
-3. 層に応じた起動 + コンテキスト供与(Codex の場合は `codex exec --dangerously-bypass-approvals-and-sandbox -C /c/Users/hiaty/prolegomena "<spec>"`、session_id 記録)
+3. 層に応じた起動 + コンテキスト供与(Codex の場合は **起動5点セット必須** ── bypass / timer.sh 監視 / 仕様ファイル化 / effort high / 実変更検算。session_id 記録)
 4. 統合レビューで戻す(差し戻し = `codex exec resume <id>`、別案 = `codex fork`)
 5. ドキュメント編集例外時も対象明示
 6. PM 視点切替の意図的明示(実装者 → レビュアー)
 
-詳細 = `prolegomena/docs/codex_implementer_protocol.md` / `prolegomena/CLAUDE.md`「Codex / agmsg 連携」節。
+詳細 = `.claude/_core/docs/codex_delegation.md`(起動の5点セットを含む)。
 
 ## 関連
 
 - canonical ロール定義: `.claude/_core/roles/takano.md`(harness-core submodule マウント経由、`yumemism/90_role/role_takano.md` が大元 canonical。2026-06-27 Phase 0 で `~/.claude/roles/` から移行、2026-07-03 C1 で `_core` パスに汎用化)
-- 実装プロトコル詳細: `prolegomena/docs/codex_implementer_protocol.md`(主)/ `prolegomena/docs/agmsg_protocol.md` v0.2(副)
+- 実装プロトコル詳細: `.claude/_core/docs/codex_delegation.md`(主)/ `prolegomena/docs/agmsg_protocol.md` v0.2(副、prolegomena 凍結中)
 - 切替元背景: [PRL-14](https://linear.app/prolegomena/issue/PRL-14) Phase 1(default role `@import`)── suggest 仕様の限界に対する **明示強制経路** が本コマンド(Phase 1.5)
 - 大橋(ohashi)も同パターンで `/role-ohashi` に着地予定(PRL-14 Phase 2)

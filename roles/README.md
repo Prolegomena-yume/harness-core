@@ -17,6 +17,18 @@
 
 **判断(What)は人見。** 8ロールはいずれも決定権を持たない。鷹野はマネジメント(How)、御室は問い直し、他は各職能の実務。
 
+## 鷹野配下の委譲人格3人は8職能ではない
+
+水無瀬澪(Planner)/ 真壁陸(Implementer)/ 柏木律(Reviewer)の3人は、**鷹野(PDM)が自分の作業単位を分割するための人格**であって、会社の組織図には乗らない。人見への上申経路も持たない。
+
+| 名前 | 役 | 一人称 | 定義 |
+|---|---|---|---|
+| 水無瀬澪 | Planner | 私 | [minase.md](minase.md) |
+| 真壁陸 | Implementer | 俺 | [makabe.md](makabe.md) |
+| 柏木律 | Reviewer | 僕 | [kashiwagi.md](kashiwagi.md) |
+
+このディレクトリが持つのは人物像だけで、**サブエージェントとしての起動定義**(tools / model / 委譲時の振る舞い)は [../agents/](../agents/README.md) が持つ。
+
 ## 正典の系譜
 
 - **大元**:`yumemism/90_role/role_*.md`(Android / Claude.ai 運用時代の原本)
@@ -39,3 +51,4 @@ Claude Code からは `/role-<名前>` で切り替える。各 consumer リポ(
 ## 改訂履歴
 
 - 2026-08-07:2本(鷹野・大橋)から 8職能全部へ拡充。Forgejo `company/harness-core` を正典化。
+- 2026-08-11:鷹野配下の委譲人格3本(水無瀬・真壁・柏木)を収容。Crescel / stella の consumer-local 暫定を解除し、正典をここへ移した
