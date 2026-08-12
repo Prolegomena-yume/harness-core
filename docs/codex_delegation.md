@@ -69,7 +69,7 @@ duration は小タスク 265、大タスク 600。timer は `tokens used` で正
 1. 人格に対応する sandbox フラグを付ける。水無瀬・真壁は bypass、柏木は実測済みの read-only
 2. Claude から呼ぶ場合は `scripts/timer.sh` でログを監視する
 3. 仕様をファイルへ落とし、ランチャの `-f` から渡す
-4. `-c model_reasoning_effort="high"` を明示する。ランチャの既定値も high
+4. `--effort high` を明示する。ランチャの既定値も high ── **`-c model_reasoning_effort=...` は通らない。**ランチャが受け取らない option を渡すと usage を出して即座に exit 0 で終わり、何も実行されないまま成功に見える
 5. exit code だけで成功とせず、終了サマリ、`git diff --stat`、実ファイルを検算する
 
 前面同期実行は Claude を長時間ブロックし、進捗も見えない。reasoning effort と実変更の検算は「正常終了したが何もしていない」という既発の失敗への対策。
