@@ -1,12 +1,14 @@
-# 委譲人格(サブエージェント定義)── 正典
+# 委譲人格の Claude Agent tool 定義
 
-**鷹野(PDM)がサブエージェントへ委譲するとき、必ずここで定義した人格を明示指定する。**生成物を「鷹野推奨」のような匿名帰属にせず、委譲先インスタンスを追跡可能にするための機構。
+**水無瀬・真壁・柏木の主経路は Codex 起動であり、本ディレクトリの Agent tool 版はフォールバック。**3人とも同じ人物像で Codex 起動できる。配線と使い方は [../codex/README.md](../codex/README.md) を参照する。
+
+鷹野(PDM)が Claude 内サブエージェントへフォールバック委譲するときは、ここで定義した人格を明示指定する。生成物を「鷹野推奨」のような匿名帰属にせず、委譲先インスタンスを追跡可能にするための機構。
 
 | 人格 | 役 | `subagent_type` | 用途 | 定義 |
 |---|---|---|---|---|
-| 水無瀬澪 | Planner | `minase` | 設計案の複数提示、仕様分解、影響範囲の洗い出し | [minase.md](minase.md) |
+| 水無瀬澪 | Planner | `minase` | Codex が使えない場面の設計・調査 | [minase.md](minase.md) |
 | 真壁陸 | Implementer | `makabe` | 実装・テスト記述(**Codex が使えない場面のフォールバック**) | [makabe.md](makabe.md) |
-| 柏木律 | Reviewer | `kashiwagi` | 仕様突合、エッジケース、既存コードとの整合性 | [kashiwagi.md](kashiwagi.md) |
+| 柏木律 | Reviewer | `kashiwagi` | Codex が使えない場面の仕様突合・整合性確認 | [kashiwagi.md](kashiwagi.md) |
 
 序列は鷹野 >>> 水無瀬 > 真壁・柏木。現行運用は鷹野が三者へ直接委譲するフラット構成で、水無瀬から真壁/柏木への再帰委譲は tools に含めていない。
 
@@ -18,9 +20,9 @@
 
 3人とも `model: claude-opus-5`(人見指示、2026-08-11)。**エイリアス `opus` を使わない** ── 世代が上がったときにどの実体を指すか曖昧になるため、モデル ID で固定する。従来の Sonnet 指定はこの指示で失効。
 
-## 実装の主経路は Codex であって真壁ではない
+## 3人格の主経路は Codex
 
-`makabe` はフォールバック。実装をサブエージェントへ流す前に、Codex Bash 直叩きで足りないかを必ず確認する。手順の正典は [../docs/codex_delegation.md](../docs/codex_delegation.md)。
+`minase`、`makabe`、`kashiwagi` は全員フォールバック。Claude 内 Agent tool へ流す前に Codex 起動で足りないかを確認する。委譲手順の正典は [../docs/codex_delegation.md](../docs/codex_delegation.md)。
 
 ## consumer からの配線はシンボリックリンク一本
 
