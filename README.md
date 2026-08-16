@@ -41,6 +41,12 @@ git submodule add https://git.yumemism.com/company/harness-core.git .claude/_cor
 
 **不在・parse error でも全 script は compat default で走り exit 0 を保つ。**SessionStart hook を fail させないため。例外は `orch` で、実装層のトークン置き場が引けなければ明示エラーで止まる ── 個人環境のパスを既定値としてこのリポへ焼かないため。
 
-## この層は退役する
+## ここが開発の場
 
-**harness-core は Agent SDK 移行完了までの開発時ハーネス**(2026-07-20 人見裁定、`yumemism/harness` の kickoff)。移行後に畳む。したがってここへ長期資産を積まない ── 人物像と規範は残るが、配線は移行先が引き取る。
+**harness-core 自体で開発する**(2026-08-16 人見裁定)。**「Agent SDK 移行完了までの暫定層、移行後に退役」という旧来の位置付けは失効した** ── 移行先だった `yumemism/harness` が凍結されたため。したがってここへ長期資産を積んでよい。
+
+## consumer は4本
+
+**面倒を見るのは `satellite/yumemism-os` と `company/tech` / `company/keiei` / `business/hanabi` の4本**(2026-08-16 人見裁定)。`yumemism/harness` / stella / Prolegomena / Crescel はいずれも凍結。
+
+**凍結しても submodule のマウントは消えない。**凍結リポは引いた時点の commit に固定されたままで、追随しない ── 害は無いが、「harness-core を引いているリポ」と「consumer」は一致しない。

@@ -9,27 +9,13 @@
 - 推奨 OS: Linux / macOS / Windows(Git for Windows + Git Bash)
 - 必要ツール: `git` / `python3`(SessionStart hook 用) / Node 20+(cloud session 想定時)
 
-## 1. 経路の選択
+## 1. 経路は submodule mount の1本
 
-新規 consumer 起こしは 2 経路:
+**新規・既存を問わず、consumer リポへ harness-core を submodule で足す。**空リポでも手順は同じで、工数は15〜30分(配置と整合)。
 
-| 経路 | 適用 | 工数 |
-|---|---|---|
-| **(A) harness-starter template clone** | ほぼ空の新規 consumer を素早く起こす | ~5 分 |
-| **(B) 既存リポへの submodule mount** | 既存コードベースに harness を後付けする | ~15-30 分(配置・整合) |
+**template repo 経由の経路は廃した。**雛形の `harness-starter` は GitHub にしか無く、正典が Forgejo へ移った時点で入口として成立しない。
 
-両方とも以下 §2 以降の **共通 setup** に合流。
-
-### (A) harness-starter template clone
-
-1. Forgejo 上の `harness-starter` を複製して新規 repo 作成
-2. visibility(public/private)選択、repo 名を consumer 名で確定
-3. local に clone
-4. `.harness.json` を **§3 schema** に従って consumer 用に編集
-5. (任意)`.claude/commands/role-*.md` の不要分を削除
-6. §4 以降は consumer 固有作業
-
-### (B) 既存リポへの submodule mount
+以下 §2 以降が共通 setup。
 
 ```bash
 cd <consumer-repo-root>
