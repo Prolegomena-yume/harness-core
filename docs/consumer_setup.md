@@ -204,40 +204,27 @@ SessionStart hook を core 配下に向ける:
 
 `session-init.sh` は毎 SessionStart で `.harness.json` 駆動の context を注入(~2 秒)、`session-install.sh` は cloud session 限定で `npm ci` + workspaces build + Codex auth bootstrap(~60 秒、冪等 skip 可)。
 
-## 6. role 切替 slash command(任意)
+## 6. role 切替と委譲人格は symlink で core へ向ける
 
-`/role-takano` / `/role-ohashi` を使う場合、consumer 側に **thin wrapper** を配置(Claude Code の commands は `.claude/commands/` 規約で、`.claude/_core/commands/` は自動 reach しないため)。
-
-`.claude/commands/role-takano.md`:
-
-```markdown
----
-description: 鷹野(PDM)ロールに即時切替、口調規範を強制適用
----
-
-★ このコマンドは **鷹野(PDM)ロールへの強制切替**。
-
-@.claude/_core/roles/takano.md
-
-(以下、強制適用ルール本体は core の roles/ に書かれている。
- 必要なら consumer 固有の追加ルールを書く。)
-```
-
-最小 wrapper としては `@.claude/_core/roles/takano.md` の 1 行 import だけで動く。強制適用ルールも consumer 側に展開したい場合は harness-core の `commands/role-takano.md` を参照 + 必要部分を copy。
-
-## 6.1 委譲人格 agent の配線(symlink)
-
-鷹野(PDM)がサブエージェントへ委譲する人格(水無瀬 / 真壁 / 柏木)を使う場合、`.claude/agents/` を core へ向ける:
+**`.claude/commands/` も `.claude/agents/` も consumer に実体を置かず、core を指す symlink にする。**Claude Code は `.claude/commands/` と `.claude/agents/` の規約でしか読まないので配線が要るが、**中身を consumer 側へ複製しない。**
 
 ```bash
 cd <consumer-repo-root>
-ln -s _core/agents .claude/agents
-git add .claude/agents && git commit -m "feat(harness): 委譲人格 agent を core へ配線"
+ln -s _core/commands .claude/commands
+ln -s _core/agents   .claude/agents
+git add .claude/commands .claude/agents
+git commit -m "feat(harness): role 切替と委譲人格を core へ配線"
 ```
 
-**wrapper ではなく symlink を使う。**agent 定義は frontmatter(`tools` / `model`)が本体なので、wrapper を置くと consumer の数だけモデル指定が複製され、モデル世代を上げるときに全 consumer を触ることになる。
+**wrapper を置かない。**これは規約ではなく設計判断で、理由は2つ。
 
-配線後、Agent tool から `subagent_type: minase` / `makabe` / `kashiwagi` が解決する。**反映は次回セッション開始時**(agent 定義はセッション開始時に読まれる)。一覧と方針は [../agents/README.md](../agents/README.md)、実装委譲の手順は [codex_delegation.md](codex_delegation.md)。
+**第一に、上書きは core の開発を止める。**consumer ごとに wrapper を置くと、core を直すべき問題が「その consumer だけ直す」で片付いてしまう。実際に harness-core の `commands/` は3枚しか持たないまま2世代遅れ、consumer 側の9枚だけが更新されていた(2026-08-16 に解消)。**core ごと進めるべき開発を上書きで解決するのは小手先**(人見指摘)。
+
+**第二に、定義の本体が frontmatter にある。**agent は `tools` / `model` が本体なので、wrapper を置くと consumer の数だけモデル指定が複製され、モデル世代を上げるたびに全 consumer を触ることになる。
+
+**職域はロールごとに1つ。**consumer ごとにリポ名を差し込む運用はやめた。鷹野(PDM)の職域は「yumemism 配下全般(フォルダではなく事業・目的の単位)」で固定する。
+
+**反映は次回セッション開始時**(commands と agent 定義はセッション開始時に読まれる)。一覧と方針は [../agents/README.md](../agents/README.md)、実装委譲の手順は [codex_delegation.md](codex_delegation.md)。
 
 ## 7. Neon 接続先の運用
 
