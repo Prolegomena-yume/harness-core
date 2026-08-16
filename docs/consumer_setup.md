@@ -29,8 +29,12 @@ $EDITOR .harness.json
 # 3. .claude/settings.json を配置(§5 参照)
 $EDITOR .claude/settings.json
 
-# 4. (任意)role 切替 slash command wrapper を配置(§6 参照)
-$EDITOR .claude/commands/role-takano.md
+# 4. 規範と人格を core へ配線(§6 参照)
+mkdir -p .cursor
+ln -s _core/commands            .claude/commands
+ln -s _core/agents              .claude/agents
+ln -s ../.claude/_core/orch/rules .cursor/rules
+bash .claude/_core/setup/install-codex-agents.sh
 
 # 5. commit + push
 git add -A
@@ -49,6 +53,8 @@ setup 完了後の consumer 配下:
 │   ├── agents   -> _core/agents   ── 委譲人格3人 symlink(§6)
 │   ├── commands -> _core/commands ── role 切替9枚 symlink(§6)
 │   ├── settings.json             ── hook 登録(§5)
+├── .cursor/
+│   └── rules -> ../.claude/_core/orch/rules ── grok の不変の作法 symlink(§6)
 ├── .gitmodules                   ── submodule 定義(git submodule add で自動生成)
 ├── .harness.json                 ── consumer 設定(§3)
 └── (consumer 固有 file...)
@@ -202,17 +208,39 @@ SessionStart hook を core 配下に向ける:
 
 `session-init.sh` は毎 SessionStart で `.harness.json` 駆動の context を注入(~2 秒)、`session-install.sh` は cloud session 限定で `npm ci` + workspaces build + Codex auth bootstrap(~60 秒、冪等 skip 可)。
 
-## 6. role 切替と委譲人格は symlink で core へ向ける
+## 6. 規範と人格は全て symlink で core へ向ける
 
-**`.claude/commands/` も `.claude/agents/` も consumer に実体を置かず、core を指す symlink にする。**Claude Code は `.claude/commands/` と `.claude/agents/` の規約でしか読まないので配線が要るが、**中身を consumer 側へ複製しない。**
+**consumer に実体を置かず、core を指す symlink にする。**各ランタイムは決まった位置しか読まないので配線は要るが、**中身を consumer 側へ複製しない。**
 
 ```bash
 cd <consumer-repo-root>
-ln -s _core/commands .claude/commands
-ln -s _core/agents   .claude/agents
-git add .claude/commands .claude/agents
-git commit -m "feat(harness): role 切替と委譲人格を core へ配線"
+mkdir -p .cursor
+ln -s _core/commands            .claude/commands   # Claude ── role 切替9枚
+ln -s _core/agents              .claude/agents     # Claude ── 委譲人格3人
+ln -s ../.claude/_core/orch/rules .cursor/rules    # cursor(grok)── 不変の作法
+git add .claude/commands .claude/agents .cursor/rules
+git commit -m "feat(harness): 規範と人格を core へ配線"
 ```
+
+**codex 向けだけは symlink で配れない。**codex は**リポ配下の `.codex/` を読まない**(2026-08-16 実測)。唯一の codex 専用の口は `~/.codex/AGENTS.md` で、`CODEX_HOME` を動かせば位置は変えられるが `auth.json` ごと移るためリポには置けない。**したがって配置スクリプトで配る。**
+
+```bash
+bash .claude/_core/setup/install-codex-agents.sh
+```
+
+既存の `~/.codex/AGENTS.md` が core と違う内容なら**上書きせず**、差分を確認しろと出す。
+
+### どの層を誰が読むか(実測)
+
+| 置き場 | codex | grok(cursor) | Claude |
+|---|---|---|---|
+| `<repo>/AGENTS.md` | **読む** | **読む** | 読まない |
+| `<repo>/.cursor/rules/*.mdc` | 読まない | **読む** | 読まない |
+| `<repo>/.codex/` | **読まない** | ── | ── |
+| `~/.codex/AGENTS.md` | **読む** | 読まない | ── |
+| `<repo>/CLAUDE.md` | 読まない | 読まない | **読む** |
+
+**共有の `AGENTS.md` にレビュー基準を書かない。**実装担当(grok)も読むので、**基準に合わせて書くようになりゲートの検出力が落ちる。**測る物差しを被測定者に見せてはいけない ── 役割ごとの基準は `orch/roles/` で起動時に焼くか、codex 専用の口へ置く。
 
 **wrapper を置かない。**これは規約ではなく設計判断で、理由は2つ。
 
