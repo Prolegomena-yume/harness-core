@@ -4,8 +4,8 @@
 
 ## 0. 前提
 
-- harness-core repo URL: `https://github.com/Prolegomena-yume/harness-core.git`(public)
-- consumer リポは GitHub 配置(visibility は任意、private でも OK ── ただし submodule URL 自体は public な harness-core を指すので、consumer 側の private 設定は submodule 自体には影響しない)
+- harness-core 正典リモート: `https://git.yumemism.com/company/harness-core.git`
+- consumer リポは Forgejo 配置(visibility は任意、private の場合は clone と submodule 取得に認証が必要)
 - 推奨 OS: Linux / macOS / Windows(Git for Windows + Git Bash)
 - 必要ツール: `git` / `python3`(SessionStart hook 用) / Node 20+(cloud session 想定時)
 
@@ -22,7 +22,7 @@
 
 ### (A) harness-starter template clone
 
-1. https://github.com/Prolegomena-yume/harness-starter で **「Use this template」**(GitHub Template Repository 機能)から新規 repo 作成
+1. Forgejo 上の `harness-starter` を複製して新規 repo 作成
 2. visibility(public/private)選択、repo 名を consumer 名で確定
 3. local に clone
 4. `.harness.json` を **§3 schema** に従って consumer 用に編集
@@ -35,7 +35,7 @@
 cd <consumer-repo-root>
 
 # 1. harness-core を .claude/_core/ にマウント
-git submodule add https://github.com/Prolegomena-yume/harness-core.git .claude/_core
+git submodule add https://git.yumemism.com/company/harness-core.git .claude/_core
 
 # 2. .harness.json を repo root に起草(§3 参照)
 $EDITOR .harness.json
@@ -65,7 +65,6 @@ setup 完了後の consumer 配下:
 │   │   ├── role-takano.md        ── /role-takano wrapper(任意)
 │   │   └── role-ohashi.md        ── /role-ohashi wrapper(任意)
 │   ├── settings.json             ── hook 登録(§5)
-│   └── .linear-token             ── Linear Personal API Key(任意、gitignored)
 ├── .gitmodules                   ── submodule 定義(git submodule add で自動生成)
 ├── .harness.json                 ── consumer 設定(§3)
 └── (consumer 固有 file...)
@@ -73,7 +72,7 @@ setup 完了後の consumer 配下:
 
 ## 3. `.harness.json` の起草
 
-`.claude/_core/schema/harness.schema.json`(JSON Schema draft-07)に準拠。実例は `.claude/_core/docs/example.harness.json` 参照。
+[schema/harness.schema.json](../schema/harness.schema.json)(JSON Schema draft-07)に準拠。実例は [example.harness.json](example.harness.json) 参照。
 
 ### 最小構成(必須 field のみ)
 
@@ -86,9 +85,9 @@ setup 完了後の consumer 配下:
 }
 ```
 
-これだけで SessionStart hook は **graceful default** で動く(全 optional 節は default 値、Linear 節 skip、Cloud Setup は no-op)。
+これだけで SessionStart hook は **graceful default** で動く。`neon.urlFile` 未指定時は Neon 参照なし、Cloud Setup は no-op。`orch/` を使わない consumer は `orch` セクションごと省略可能で、hook と setup script も `orch` を参照しない。
 
-### 標準構成(prolegomena 想定値ベース)
+### 標準構成(全節を使う場合)
 
 ```json
 {
@@ -97,14 +96,9 @@ setup 完了後の consumer 配下:
     "name": "your-project-name",
     "displayName": "Your Project"
   },
-  "linear": {
-    "teamName": "YourTeam",
-    "tokenSource": {
-      "envVar": "LINEAR_TOKEN",
-      "fileFallback": ".claude/.linear-token"
-    },
-    "issueStates": ["backlog", "unstarted", "started"],
-    "limit": 30
+  "neon": {
+    "urlFile": "~/.ssh/neon-harness-index-url.txt",
+    "limit": 10
   },
   "sessions": {
     "dir": "docs/_sessions",
@@ -123,11 +117,25 @@ setup 完了後の consumer 配下:
       }
     ]
   },
+  "orch": {
+    "defaultRounds": 3,
+    "implementer": {
+      "command": "cursor-agent",
+      "model": "cursor-grok-4.6-high-fast",
+      "tokenFile": "~/.ssh/cursor-api-key.txt",
+      "tokenEnvVar": "CURSOR_API_KEY",
+      "workerPattern": "cursor-agent/versions/.*worker-server"
+    },
+    "reviewer": {
+      "command": "codex",
+      "effort": "high"
+    }
+  },
   "cloud": {
     "aptPackages": ["build-essential"],
     "nodeMinVersion": 20,
     "requiredEnvVars": [],
-    "optionalEnvVars": [],
+    "optionalEnvVars": ["FORGEJO_TOKEN"],
     "npmGlobalPackages": [],
     "codex": {
       "enabled": false
@@ -144,12 +152,15 @@ setup 完了後の consumer 配下:
 | field | 型 | 用途 |
 |---|---|---|
 | `project.name` | string (required) | 内部識別子(英数 + `-`) |
-| `linear.teamName` | string | Linear team 名(無ければ Linear 節 skip) |
-| `linear.tokenSource.{envVar,fileFallback}` | string | Linear token 取得経路 |
-| `linear.issueStates` | string[] | GraphQL `state.type.in` フィルタ |
+| `neon.urlFile` | string | Neon 接続 URL を書いた file への path。未指定時は SessionStart の Neon 参照なし |
+| `neon.limit` | integer | SessionStart に出す Neon の最新 document 件数(default 10) |
 | `sessions.{dir,dailySummaryFilename}` | string | session_summary 配置 |
 | `mirror.{enabled,stateFile}` | bool/string | Drive mirror 設定(consumer 固有、default off) |
 | `canonical.links[]` | object[] | 起動チェックリマインダ link |
+| `orch.defaultRounds` | integer | 実装・レビュー往復の既定上限(default 3) |
+| `orch.implementer.tokenFile` | string (orch 使用時 required) | 実装担当 token file の path。既定値なし |
+| `orch.implementer.{command,model,tokenEnvVar,workerPattern}` | string | 実装担当の起動・認証・worker 終了条件 |
+| `orch.reviewer.{command,effort}` | string | レビュー担当の実行体と reasoning effort |
 | `cloud.aptPackages` | string[] | Cloud Setup Phase 1 で apt install するパッケージ |
 | `cloud.nodeMinVersion` | number | Node 最小メジャー version(default 20) |
 | `cloud.requiredEnvVars` | string[] | Phase 4 で必須チェックする env var |
@@ -160,7 +171,7 @@ setup 完了後の consumer 配下:
 | `cloud.codex.{workspaceWrite,trustRepo}` | boolean | config.toml seed フラグ |
 | `install.buildTargets` | string[] | session-install.sh で `npm run build -w` する workspaces |
 
-詳細は [.claude/_core/schema/harness.schema.json](../schema/harness.schema.json) を直接参照。
+field の全量と制約は [schema/harness.schema.json](../schema/harness.schema.json)、機構と起動手順は [orchestration.md](orchestration.md) を直接参照。
 
 ## 4. submodule の運用
 
@@ -242,16 +253,16 @@ git add .claude/agents && git commit -m "feat(harness): 委譲人格 agent を c
 
 配線後、Agent tool から `subagent_type: minase` / `makabe` / `kashiwagi` が解決する。**反映は次回セッション開始時**(agent 定義はセッション開始時に読まれる)。一覧と方針は [../agents/README.md](../agents/README.md)、実装委譲の手順は [codex_delegation.md](codex_delegation.md)。
 
-## 7. Linear token 運用
+## 7. Neon 接続先の運用
 
-`linear.teamName` を設定した場合、SessionStart hook が Linear GraphQL を直叩きする。token 取得経路:
+SessionStart hook の Neon 参照は `neon.urlFile` と `neon.limit` の2値だけで制御する。進行管理は Forgejo issues、Neon(`harness_index_db`)は直近の索引 document を起動 context へ出す経路。
 
-| 優先度 | 経路 | 設定 |
-|---|---|---|
-| 1 | env var(default `LINEAR_TOKEN`) | local: シェル env / cloud: cloud session UI Environment variables |
-| 2 | file fallback(default `.claude/.linear-token`) | local: plain text file、必ず **`.gitignore` 追加** |
+| field | 運用 |
+|---|---|
+| `neon.urlFile` | 接続 URL を1行目に書いた file への path。`~` 展開あり。接続情報を `.harness.json` へ直書きせず、リポジトリ外または gitignored file に配置 |
+| `neon.limit` | `documents.updated_at` 降順で出す件数。1以上の integer、未指定時 10 |
 
-token は https://linear.app/settings/api で Personal API Key(`lin_api_*`)発行。
+この tech consumer の設定例は `~/.ssh/neon-harness-index-url.txt` / `10`。file は利用者だけが読める権限で作成し、PostgreSQL 接続 URL を1行で保存する。SessionStart 実行環境には `psql` が必要。`urlFile` 未指定時は Neon 節を出力せず、file 不在・空・接続失敗時は context 内へ失敗理由を出して hook 自体は継続。
 
 ## 8. cloud session 想定時の追加 setup
 
@@ -287,9 +298,9 @@ cloud session UI の「セットアップスクリプト」欄に全文貼付。
 
 cloud session 起動後、最初の発話で context に下記が注入されているか確認(または手動 `bash .claude/_core/hooks/session-init.sh` 実行):
 
-- environment / git / session / mirror / startup reminders / Linear open issues
+- environment / git / session / mirror / startup reminders / Neon recent documents(設定時)
 
-Anthropic 既知問題で **新規 cloud session の冒頭 context 注入が走らないことあり**([Issue #10373](https://github.com/anthropics/claude-code/issues/10373))、その場合は手動 fallback。
+Anthropic 既知問題で **新規 cloud session の冒頭 context 注入が走らないことあり**(claude-code Issue #10373)、その場合は手動 fallback。
 
 ## 9. 動作確認(local mode)
 
@@ -298,7 +309,8 @@ Anthropic 既知問題で **新規 cloud session の冒頭 context 注入が走�
 bash .claude/_core/hooks/session-init.sh
 
 # stdout に JSON 1 行が出力、hookSpecificOutput.additionalContext 内に
-# environment / git / session / mirror / startup reminders / Linear (teamName 設定時) 各節が見える
+# environment / git / session / mirror / startup reminders と
+# Neon recent documents (neon.urlFile 設定時) の各節が見える
 ```
 
 `.harness.json` 不在時は warning section が出るが、graceful default で exit 0、SessionStart hook を fail させない。
@@ -309,21 +321,18 @@ bash .claude/_core/hooks/session-init.sh
 |---|---|
 | SessionStart hook 出力 `session-init.sh: no usable python on PATH` | python3 not in PATH。`apt install python3` or `brew install python3` |
 | `.harness.json missing` warning が出る | consumer リポ root に `.harness.json` が無い、または `CLAUDE_PROJECT_DIR` 未 set。`cd <repo-root>` で再実行 |
-| Linear 取得 fail `token not set` | env var `LINEAR_TOKEN` 未 set かつ `.claude/.linear-token` file 不在 |
-| Linear 取得 fail `HTTP 400/401` | token expired or 無効、Linear settings → API で再発行 |
+| Neon 参照 `urlFile not found` / `urlFile is empty` | `neon.urlFile` の path 誤り、file 不在、または1行目が空。接続 URL file を修正 |
+| Neon 参照 `psql not found on PATH` | PostgreSQL client 未導入。`apt install postgresql-client` or `brew install libpq` |
+| Neon 参照 `fetch failed` | 接続 URL、network、DB 権限、`harness_index_db` の状態を確認 |
 | `npm ci` fail(cloud) | network 問題 or `package-lock.json` 整合性問題、`rm -rf node_modules .claude/.npm-install-hash && npm ci` で recovery |
 | Codex auth bootstrap fail | `CODEX_AUTH_JSON` env が空、または invalid JSON。compact 化 + 再投入 |
 | submodule fetch fail(`Phase 0`) | network or auth 問題、`git submodule update --init --recursive` 手動再走 |
 
 ## 11. 実例
 
-| consumer | repo | visibility | initial commit | 用途 |
-|---|---|---|---|---|
-| **prolegomena**(#1) | [prolegomena-yume/Prolegomena](https://github.com/Prolegomena-yume/Prolegomena) | public | dev branch `0f10910`(P3 consumer 化) | monorepo、npm workspaces、cloud Codex フル機能、Linear team=Prolegomena、Drive mirror 有効 |
-| **stella**(#2) | [prolegomena-yume/stella](https://github.com/Prolegomena-yume/stella) | private | main `a56a59c` | 技術 monorepo、cloud Codex 有効、Linear team=Stella、Drive mirror 無効(必要なら有効化) |
-| **harness-starter** | [prolegomena-yume/harness-starter](https://github.com/Prolegomena-yume/harness-starter) | public, **Template Repository** | main `3e3e992` | 空骨格 template、Use this template で新規 consumer を 5 分以内に起こせる |
+現行値の実例は Forgejo の [company/tech](https://git.yumemism.com/company/tech) と、そのリポ root の `.harness.json`。`neon.urlFile` は `~/.ssh/neon-harness-index-url.txt`、`neon.limit` は `10`、`orch` は実装担当とレビュー担当を明示、cloud の任意環境変数は `FORGEJO_TOKEN`。
 
-各 consumer の `.harness.json` を比較すると **field の有無 / 値の違いだけで挙動が変わる**(SessionStart hook / Cloud Setup script 本体は core 共通)── これが harness-core JSON 駆動化の効果。
+consumer ごとの差は `.harness.json` だけに置き、SessionStart hook / Cloud Setup script 本体は core 共通。
 
 ## 12. 退役 / 切戻し
 
@@ -341,11 +350,4 @@ git rm .harness.json .claude/settings.json .claude/commands/role-*.md
 git commit -m "chore(harness): remove harness-core submodule"
 ```
 
-各 hook が無くなるだけ、consumer リポ自体は無傷。
-
----
-
-## 改訂履歴
-
-- 2026-06-28 v0.1-draft 起草(鷹野(PDM))── PRL-30 P6 の最初の deliverable。harness-starter template repo 化(別 deliverable)+ stella 2 件目実例化 trace 反映予定。
-- 2026-08-11 §6.1 追加(委譲人格 agent の symlink 配線)、§2 ディレクトリ構成に `.claude/agents` を反映
+各 hook が無くなるだけで、consumer リポ自体は無傷。

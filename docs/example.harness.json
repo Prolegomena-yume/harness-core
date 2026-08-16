@@ -1,47 +1,49 @@
 {
   "$schema": "./.claude/_core/schema/harness.schema.json",
   "project": {
-    "name": "prolegomena",
-    "displayName": "Prolegomena"
+    "name": "your-project",
+    "displayName": "Your Project"
   },
   "neon": {
     "urlFile": "~/.ssh/neon-harness-index-url.txt",
     "limit": 10
   },
   "sessions": {
-    "dir": "docs/_sessions",
+    "dir": "_sessions",
     "dailySummaryFilename": "daily_summary.md"
   },
   "mirror": {
-    "enabled": true,
-    "stateFile": "MIRROR_STATE.txt"
+    "enabled": false
   },
   "canonical": {
     "links": [
-      { "label": "CLAUDE.md", "path": "CLAUDE.md" },
       { "label": "AGENTS.md", "path": "AGENTS.md" },
+      { "label": "README", "path": "README.md" },
       {
         "label": "Harness Constitution",
         "path": ".claude/_core/docs/harness_constitution.md"
-      },
-      {
-        "label": "docs/operations/harness_redesign_step1_2026-06-26.md",
-        "path": "docs/operations/harness_redesign_step1_2026-06-26.md"
       }
-    ],
-    "closeSessionReminder": "close-session 時:[CLAUDE.md](CLAUDE.md) §「セッションサマリ git canonical 化」+ `scripts/mirror.ps1`"
+    ]
+  },
+  "orch": {
+    "defaultRounds": 3,
+    "implementer": {
+      "command": "cursor-agent",
+      "model": "cursor-grok-4.6-high-fast",
+      "tokenFile": "~/.config/your-project/implementer-token",
+      "tokenEnvVar": "CURSOR_API_KEY",
+      "workerPattern": "cursor-agent/versions/.*worker-server"
+    },
+    "reviewer": {
+      "command": "codex",
+      "effort": "high"
+    }
   },
   "cloud": {
-    "aptPackages": ["build-essential", "libpq-dev", "postgresql-client", "bubblewrap"],
+    "aptPackages": ["build-essential", "bubblewrap"],
     "nodeMinVersion": 20,
-    "requiredEnvVars": ["DATABASE_URL", "DB_DRIVER", "DRIVER"],
-    "optionalEnvVars": [
-      "CODEX_AUTH_JSON",
-      "VITE_AWS_REGION",
-      "VITE_COGNITO_HOSTED_UI_DOMAIN",
-      "VITE_OWNER_CLIENT_ID",
-      "VITE_MCP_API_URL"
-    ],
+    "requiredEnvVars": [],
+    "optionalEnvVars": ["FORGEJO_TOKEN", "CODEX_AUTH_JSON"],
     "npmGlobalPackages": ["@openai/codex"],
     "codex": {
       "enabled": true,
@@ -51,6 +53,6 @@
     }
   },
   "install": {
-    "buildTargets": ["@prolegomena/iceml-core", "@prolegomena/commit-handler"]
+    "buildTargets": []
   }
 }
