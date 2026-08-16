@@ -46,10 +46,8 @@ setup 完了後の consumer 配下:
 <consumer-root>/
 ├── .claude/
 │   ├── _core/                    ── harness-core submodule(commit pin)
-│   ├── agents -> _core/agents    ── 委譲人格 symlink(§6.1、任意)
-│   ├── commands/
-│   │   ├── role-takano.md        ── /role-takano wrapper(任意)
-│   │   └── role-ohashi.md        ── /role-ohashi wrapper(任意)
+│   ├── agents   -> _core/agents   ── 委譲人格3人 symlink(§6)
+│   ├── commands -> _core/commands ── role 切替9枚 symlink(§6)
 │   ├── settings.json             ── hook 登録(§5)
 ├── .gitmodules                   ── submodule 定義(git submodule add で自動生成)
 ├── .harness.json                 ── consumer 設定(§3)
