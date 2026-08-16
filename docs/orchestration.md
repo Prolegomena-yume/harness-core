@@ -147,10 +147,20 @@
 ## 7. claude が叩くのは1行
 
 ```bash
-bash .claude/_core/orch/orch.sh --task <task.md> --work <dir> [--rounds N] [--seed <dir>]
+bash .claude/_core/orch/orch.sh --task <task.md> [--work <dir>] [--rounds N] [--seed <dir>]
 ```
 
 **段割り・setsid・resume・worker 刈り・宛先解決・判定・停止は全部この下に閉じる。**claude の仕事は **task.md を書くことと、この1行を叩くことの2つ**に縮む。
+
+**作業域は1箇所に集まる。**`--work` を省くと `~/.orch/<UTC の日時>-<task 名>/` に作られる(`ORCH_ROOT` で差し替え可、同名は `-2` `-3` で避ける)。**日本語のタスク名はそのまま残す** ── 潰すのはパス区切り・空白・シェルで扱いにくい記号だけ。
+
+**集める理由は `UNDELIVERED` の回収。**通知が150秒粘っても届かないと `$WORK/UNDELIVERED` が立つが、**claude 側がそれに気づく仕組みは無い**(着信 hook が存在しないのと同じ制約)。同じセッションが生きていれば作業域を知っているので困らない ── **困るのはセッションごと消えた場合**で、次に立ち上がった claude は場所を知らない。1箇所に集まっていれば見つかる。
+
+```bash
+ls ~/.orch/*/UNDELIVERED 2>/dev/null   # 未回収の成果
+```
+
+**hook は入れない**(人見裁定 2026-08-16)。守る対象が「セッションが死んだ上に通知も落ちた」という二重の失敗に限られ、設定変更に見合わない。必要になったらこの置き場の上に乗せる。
 
 **設定は起動時に一度だけ解決する。**`orch.sh` が `.harness.json` の `orch` セクションを読み、実行体・モデル・effort・token の実値を `$WORK.prompts/roster.json` へ焼く。**段ごとに `.harness.json` を探しに行かせない** ── 途中で設定が変わっても走行中の鎖は一貫する。`--rounds` を明示すれば `orch.defaultRounds` より優先する。**`orch.implementer.tokenFile` が引けなければ明示エラーで止まる**(既定値を持たせない)。
 
@@ -234,8 +244,6 @@ origin none ── attachment.origin を持つレコードが無い   exit 4
 
 ## 10. 未確定
 
-- **`ESCALATED` が未発火。**上限到達の経路をまだ通っていない(`IMPOSSIBLE` で先に落ちた)
-- **`UNDELIVERED` の回収経路** ── 成果はファイルに残るが、claude 側が気づく仕組みが無い。セッション開始 hook が候補だが設定変更にあたる
 - **grok の HOME 隔離** ── cursor は `~/.cursor/` を汚す。使い捨て `HOME` で封じ込める。**ただし同一 OS ユーザーである限り socket は共有される**(性質14)
 - **書き込みの封じ込め全般** ── **GLM + OpenCode / Cursor CLI の3ランタイムで、アプリの permission 設定が境界にならないことが確定した**
 - **team = Fable での挙動未検証**

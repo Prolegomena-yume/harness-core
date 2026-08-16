@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# orch.sh --task <task.md> --work <dir> [--rounds N] [--seed <dir>] [--no-launch]
+# orch.sh --task <task.md> [--work <dir>] [--rounds N] [--seed <dir>] [--no-launch]
 #
 # claude が叩くのはこれ1本。渡すのは task.md と作業域だけ。
 # 段割り・setsid・resume・worker 刈り・通知・上限判定は全部この下に閉じる。
@@ -10,7 +10,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-TASK=""; WORK=""; ROUNDS=""; SEED=""; NO_LAUNCH=0
+TASK=""; WORK=""; WORK_DEFAULT=0; ROUNDS=""; SEED=""; NO_LAUNCH=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --task) TASK="$2"; shift 2;;
@@ -21,7 +21,37 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
-[ -n "$TASK" ] && [ -n "$WORK" ] || { echo "usage: orch.sh --task <md> --work <dir> [--rounds N] [--seed <dir>] [--no-launch]" >&2; exit 2; }
+[ -n "$TASK" ] || { echo "usage: orch.sh --task <md> [--work <dir>] [--rounds N] [--seed <dir>] [--no-launch]" >&2; exit 2; }
+
+if [ -z "$WORK" ]; then
+  WORK_DEFAULT=1
+  ORCH_WORK_ROOT="${ORCH_ROOT:-$HOME/.orch}"
+  mkdir -p "$ORCH_WORK_ROOT"
+  TASK_NAME="$(basename "$TASK")"
+  TASK_NAME="${TASK_NAME%.*}"
+  TASK_NAME="$(TASK_NAME="$TASK_NAME" python3 -c '
+import os, re, unicodedata
+def keep(char):
+    if char.isascii():
+        return char.isalnum() or char in "-_"
+    return not char.isspace() and unicodedata.category(char)[0] != "C"
+
+name = "".join(
+    char if keep(char) else "-"
+    for char in os.environ["TASK_NAME"]
+)
+print(re.sub(r"-+", "-", name).strip("-") or "task")')"
+  WORK="$ORCH_WORK_ROOT/$(date -u +%Y%m%d-%H%M%S)-$TASK_NAME"
+  BASE_WORK="$WORK"
+  SUFFIX=2
+  while [ -e "$WORK" ]; do
+    WORK="$BASE_WORK-$SUFFIX"
+    SUFFIX=$((SUFFIX + 1))
+  done
+fi
+
+WORK_LABEL=""
+[ "$WORK_DEFAULT" -eq 1 ] && WORK_LABEL="(既定)"
 
 PD="$WORK.prompts"
 ROSTER="$PD/roster.json"
@@ -120,7 +150,7 @@ d.update({"origin_session_id":o.get("sessionId",""), "origin_name":o.get("name",
 json.dump(d,open(p,"w"),ensure_ascii=False,indent=1)'
 
 if [ "$NO_LAUNCH" -eq 1 ]; then
-  echo "orch: work=$WORK  prompts=$WORK.prompts(作業域の外)"
+  echo "orch: work=$WORK$WORK_LABEL  prompts=$WORK.prompts(作業域の外)"
   cat "$ROSTER"
   echo "orch: no-launch"
   exit 0
@@ -143,7 +173,7 @@ import json,os
 p=os.environ["ROSTER"]; d=json.load(open(p)); d["grok_chat_id"]=os.environ["CID"]
 json.dump(d,open(p,"w"),ensure_ascii=False,indent=1)'
 
-echo "orch: work=$WORK  prompts=$WORK.prompts(作業域の外)"
+echo "orch: work=$WORK$WORK_LABEL  prompts=$WORK.prompts(作業域の外)"
 cat "$ROSTER"
 setsid bash "$HERE/run_turn.sh" --work "$WORK" --turn 1 </dev/null >/dev/null 2>&1 &
 echo "orch: launched turn=1"
