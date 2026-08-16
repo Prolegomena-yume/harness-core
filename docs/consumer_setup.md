@@ -235,6 +235,26 @@ SessionStart hook の Neon 参照は `neon.urlFile` と `neon.limit` の2値だ�
 
 この tech consumer の設定例は `~/.ssh/neon-harness-index-url.txt` / `10`。file は利用者だけが読める権限で作成し、PostgreSQL 接続 URL を1行で保存する。SessionStart 実行環境には `psql` が必要。`urlFile` 未指定時は Neon 節を出力せず、file 不在・空・接続失敗時は context 内へ失敗理由を出して hook 自体は継続。
 
+## 7.1 cloud セッションのブランチは終わったら回収する
+
+**正典は Forgejo、GitHub は cloud セッションを開くための鏡。**cloud セッションは GitHub 起点でしか開けないので、Forgejo → GitHub の push mirror を張る(`interval` 8h / `sync_on_commit` / `branch_filter` は `main`)。
+
+**push mirror は送り先の余分な ref を消す。**Forgejo に無いブランチは GitHub から削除される ── **`branch_filter` を付けても消える**(2026-08-16 実測)。cloud セッションが切る `claude/<名前>` は Forgejo に存在しないので、削除の対象になる。
+
+**セッション中は無害。**worktree もローカルブランチもリモートを参照しないので、消えても作業は続き、**次の push で復活する**(実測)。**危ないのはセッションが終わって sandbox が破棄された後** ── GitHub 上の ref だけが唯一の実体になった状態で mirror が走ると失われる。
+
+**したがってセッションが終わったら回収する。**
+
+```bash
+bash .claude/_core/scripts/cloud-collect.sh [-C <repo>] [--dry-run]
+```
+
+`claude/*` と `claude--*` を GitHub から拾い、Forgejo へ `cloud/*` として着地させる。**force を使わず、GitHub 側の ref も一切消さない。**非早送りは skip して警告を出す。**回収した時点で Forgejo に ref が在るので、以後の mirror では消えなくなる。**着地した `cloud/*` から Forgejo で PR を立てる。
+
+**consumer 側に `github` remote が要る。**無ければスクリプトが追加コマンドを出して止まる。
+
+**mirror を新規に張るときは、先に GitHub 側の余分なブランチを列挙して中身を確かめる。**張った直後の同期で消えるため。`yumemism/harness` では実際に `claude/nifty-kalam-3ce007` が生で残っていた(中身は `main` にマージ済みで実害なし)。
+
 ## 8. cloud session 想定時の追加 setup
 
 cloud session(claude.ai/code、Ubuntu 24.04 LTS、`CLAUDE_CODE_REMOTE=true`)で動かす場合:
