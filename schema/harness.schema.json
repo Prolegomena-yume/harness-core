@@ -85,6 +85,65 @@
         }
       }
     },
+    "orch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementer"],
+      "properties": {
+        "defaultRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
+        },
+        "implementer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tokenFile"],
+          "properties": {
+            "command": {
+              "type": "string",
+              "minLength": 1,
+              "default": "cursor-agent"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "default": "cursor-grok-4.6-high-fast"
+            },
+            "tokenFile": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tokenEnvVar": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+              "default": "CURSOR_API_KEY"
+            },
+            "workerPattern": {
+              "type": "string",
+              "minLength": 1,
+              "default": "cursor-agent/versions/.*worker-server"
+            }
+          }
+        },
+        "reviewer": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "type": "string",
+              "minLength": 1,
+              "default": "codex"
+            },
+            "effort": {
+              "type": "string",
+              "minLength": 1,
+              "default": "high"
+            }
+          }
+        }
+      }
+    },
     "cloud": {
       "type": "object",
       "additionalProperties": false,
