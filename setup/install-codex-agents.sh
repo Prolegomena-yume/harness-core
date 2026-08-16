@@ -36,3 +36,21 @@ echo "Codex 委譲人格の wrapper を配置:"
 write_wrapper minase
 write_wrapper makabe
 write_wrapper kashiwagi
+
+# ---- 不変の作法を ~/.codex/AGENTS.md へ配置 ----
+# codex はリポ配下の .codex/ を読まない(実測)。ホーム側だけが唯一の
+# codex 専用の口なので、正典を core に置いてここから配る。
+core_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+src="$core_dir/codex/AGENTS.home.md"
+dst="${CODEX_HOME:-$HOME/.codex}/AGENTS.md"
+
+if [ ! -f "$src" ]; then
+  echo "警告: $src が無い ── 不変の作法を配置しない" >&2
+elif [ -s "$dst" ] && ! cmp -s "$src" "$dst"; then
+  echo "警告: $dst に core と異なる内容がある ── 上書きしない" >&2
+  echo "  差分を確認して、寄せるなら手で cp する: cp \"$src\" \"$dst\"" >&2
+else
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+  echo "不変の作法を配置: $dst"
+fi
