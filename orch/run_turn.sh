@@ -55,7 +55,8 @@ finish() { # <state> <本文>
 結果: $W/result.md / 全往復: $W/exchange.md"
   local ok=0
   for i in 1 2 3 4 5 6 7 8 9 10; do
-    if bash "$HERE/notify-session.sh" "$PD/roster.json" "$body" >> "$W/notify.log" 2>&1; then
+    if ORCH_SENDER_LABEL="orch:$1:turn$turn" \
+      bash "$HERE/notify-session.sh" "$PD/roster.json" "$body" >> "$W/notify.log" 2>&1; then
       ok=1; log "notify ok (try=$i)"; break
     fi
     sleep 15

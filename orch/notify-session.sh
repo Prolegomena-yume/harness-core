@@ -60,11 +60,29 @@ if cwd and allow:
 
 [ -z "$resolved" ] && { echo "notify: 宛先を解決できない(session/name/後継 いずれも該当なし)" >&2; exit 1; }
 how="${resolved%%	*}"; rest="${resolved#*	}"; pid="${rest%%	*}"; sock="${rest#*	}"
-[ -S "$sock" ] || { echo "notify: socket が無い: $sock" >&2; exit 1; }
 
-SOCK="$sock" BODY="$body" python3 -c '
-import socket,json,uuid,os
+SOCK="$sock" BODY="$body" ROSTER="$roster" python3 -c '
+import datetime,json,os,socket,stat,sys,uuid
 sock=os.environ["SOCK"]; body=os.environ["BODY"]
+roster=os.path.abspath(os.environ["ROSTER"])
+record={"pid":os.getpid(),
+        "ts":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "label":os.environ.get("ORCH_SENDER_LABEL", ""),
+        "roster":roster}
+ledger=os.path.join(os.path.dirname(roster), "senders.jsonl")
+try:
+    fd=os.open(ledger, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o666)
+    try:
+        os.write(fd, (json.dumps(record, ensure_ascii=False)+"\n").encode())
+    finally:
+        os.close(fd)
+except Exception as e:
+    print("notify: 台帳を書けない: %s" % e, file=sys.stderr)
+try:
+    if not stat.S_ISSOCK(os.stat(sock).st_mode):
+        raise FileNotFoundError(sock)
+except OSError:
+    raise SystemExit("notify: socket が無い: %s" % sock)
 s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); s.connect(sock)
 content=("<cross-session-message from=\"uds:/tmp/notify-relay.sock\" "
          "from-name=\"notify-relay\" from-mode=\"prompting\">\n"+body+"\n</cross-session-message>")

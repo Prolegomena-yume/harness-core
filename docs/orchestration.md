@@ -208,14 +208,33 @@ claude --bg \
 - **宛先は sessionId で撃つ**(性質18)。名前は保険、後継探索は既定で使わない
 - **`success:true` を「届いた」と読まない**(性質9)。受領が返って初めて到達確認
 - **role を resume しない。**止めて立て直す
-- **着信の `origin.verifiedPeerPid` を roster と照合する**(性質13・16)
+- **着信の差出人は `verify-origin.sh` で照合する**(性質13・16)。下の §9.1
 - **Blocker は team の内部状態。**role には「待機せよ」としか降ろさない
 - **bg role を立てたら、止め方を同時に決める**(性質20)
+
+## 9.1 差出人は台帳と PID で照合する
+
+**`from` と `from-name` は完全に詐称できる。真は `verifiedPeerPid` ただ1つ**(性質13)。境界は OS ユーザーなので、**同じユーザーで動くどのプロセスからでも任意の名乗りで撃てる。**
+
+**この pid は事前に roster へ焼けない。**socket へ connect するのは `notify-session.sh` が起こす短命な python 子プロセスで、pid は connect の瞬間まで決まらない。**したがって台帳は送信側が connect の直前に書く。**
+
+- 送信側 ── `$WORK.prompts/senders.jsonl` へ `{pid, ts, label, roster}` を追記(作業域の外)。ラベルは `orch:<state>:turn<n>`
+- **台帳が書けなくても配送は止めない。**照合は補助であって配送の条件ではない
+- 受信側 ── `bash .claude/_core/orch/verify-origin.sh <roster.json>` が transcript 末尾の `attachment.origin.verifiedPeerPid` を台帳と突き合わせる
+
+```
+origin ok pid=<pid> label=<label> sent=<ts>          exit 0
+origin UNKNOWN pid=<pid> name=<name> ── 台帳に無い    exit 3
+origin none ── attachment.origin を持つレコードが無い   exit 4
+```
+
+**`from` / `from-name` を判定に使わない。**表示にだけ載せる。
+
+**着信を捕まえる hook は存在しない**(性質10)ので、自動では走らない。**通知を受けた claude が自分で叩く。**
 
 ## 10. 未確定
 
 - **`ESCALATED` が未発火。**上限到達の経路をまだ通っていない(`IMPOSSIBLE` で先に落ちた)
-- **PID→役割表** ── 材料(性質16)は揃ったが実装していない
 - **`UNDELIVERED` の回収経路** ── 成果はファイルに残るが、claude 側が気づく仕組みが無い。セッション開始 hook が候補だが設定変更にあたる
 - **grok の HOME 隔離** ── cursor は `~/.cursor/` を汚す。使い捨て `HOME` で封じ込める。**ただし同一 OS ユーザーである限り socket は共有される**(性質14)
 - **書き込みの封じ込め全般** ── **GLM + OpenCode / Cursor CLI の3ランタイムで、アプリの permission 設定が境界にならないことが確定した**
