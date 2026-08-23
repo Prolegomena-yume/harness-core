@@ -18,6 +18,7 @@ options:
       --model <id>         Codex model を指定
       --no-guard           実行後の権限ガードを省略
       --mcp                MCP server を有効のまま起動
+      --notify-sock <path> kashiwagi 専用。宛先 role の messaging socket 1本だけに送信の穴を空ける(rulings #59)。sandbox は workspace-write になるが -C は空の scratch に差し替わり、リポは書けないまま
   -h, --help               この usage を表示
 
 task と --file が無い場合は標準入力からタスク本文を読む。
@@ -85,6 +86,7 @@ effort="high"
 model=""
 guard_enabled=1
 mcp_enabled=0
+notify_sock=""
 task_files=()
 task_args=()
 
@@ -129,6 +131,11 @@ while [ "$#" -gt 0 ]; do
       mcp_enabled=1
       shift
       ;;
+    --notify-sock)
+      [ "$#" -ge 2 ] || die "$1 には path が必要"
+      notify_sock="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -149,6 +156,12 @@ done
 [ -n "$effort" ] || die "--effort に空文字は指定できない"
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
 root="$(cd "$root_input" && pwd -P)"
+
+if [ -n "$notify_sock" ]; then
+  [ "$persona" = "kashiwagi" ] || die "--notify-sock は kashiwagi 専用(rulings #59 ── レビュアーの送信穴)"
+  [ -S "$notify_sock" ] || die "--notify-sock が socket ではない: $notify_sock"
+  notify_sock="$(cd "$(dirname "$notify_sock")" && pwd -P)/$(basename "$notify_sock")"
+fi
 
 git_repo=0
 git_root=""
@@ -248,12 +261,29 @@ PY
 fi
 
 permission_args=()
+sandbox_cwd="$root"
 case "$persona" in
   minase|makabe)
     permission_args+=(--dangerously-bypass-approvals-and-sandbox)
     ;;
   kashiwagi)
-    permission_args+=(--sandbox read-only)
+    if [ -n "$notify_sock" ]; then
+      # rulings #59 ── 送信だけの穴。書けるのは宛先 socket 1本 + 空の scratch(+/tmp)だけで、
+      # リポは物理的に書けないまま。-C を scratch へ差し替えるのはそのため(workspace-write は cwd を書ける)。
+      # 事後ガードは元の root の git に対して従来どおり走る。
+      # writable_roots はディレクトリ前提(bwrap が .git/.codex を合成 mount するため socket ファイル直指定は即死)。
+      # 同一 tmpfs 上の私設ディレクトリへ socket を hardlink し、そのディレクトリだけを開ける ── 宛先1本限定。
+      sandbox_cwd="$run_dir/sandbox-root"
+      mkdir -p "$sandbox_cwd"
+      notify_base="$(basename "$notify_sock")"
+      notify_hole_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/codex-notify/${notify_base%.sock}-d"
+      mkdir -p "$notify_hole_dir"
+      ln -f "$notify_sock" "$notify_hole_dir/$notify_base" 2>/dev/null \
+        || die "--notify-sock を hardlink できない(別 filesystem?): $notify_sock → $notify_hole_dir"
+      permission_args+=(--sandbox workspace-write -c "sandbox_workspace_write.writable_roots=[\"$notify_hole_dir\"]")
+    else
+      permission_args+=(--sandbox read-only)
+    fi
     ;;
 esac
 
@@ -261,13 +291,15 @@ common_args=(
   "${permission_args[@]}"
   -c "model_reasoning_effort=\"$effort\""
   "${mcp_args[@]}"
-  -C "$root"
+  -C "$sandbox_cwd"
   -o "$run_dir/last-message.md"
 )
 if [ -n "$model" ]; then
   common_args+=(-m "$model")
 fi
-if [ "$git_repo" -eq 0 ]; then
+if [ "$git_repo" -eq 0 ] || [ "$sandbox_cwd" != "$root" ]; then
+  # notify モード時は -C が scratch(非 git)なので trusted-directory 検査を跳ばす。
+  # 事後ガードは元の root の git に対して従来どおり走る。
   common_args+=(--skip-git-repo-check)
 fi
 

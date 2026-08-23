@@ -20,7 +20,24 @@ roster="${1:?usage: notify-session.sh <roster.json> <body>}"
 body="${2:?usage: notify-session.sh <roster.json> <body>}"
 allow_successor="${ALLOW_SUCCESSOR:-0}"
 
-resolved="$(claude agents --json 2>/dev/null | ROSTER="$roster" ALLOW_SUCCESSOR="$allow_successor" python3 -c '
+# 事前解決(rulings #59)── roster が origin_socket を持ち、それが実在する socket なら
+# claude agents の全 socket 走査を跳ばす。sandbox 側の穴を宛先1本に絞るための口。
+# socket が消えていたら(プロセス交代)従来の3段解決へ落ちる。
+resolved=""
+presock="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("origin_socket") or "")' "$roster" 2>/dev/null || true)"
+if [ -n "$presock" ]; then
+  prebase="$(basename "$presock")"
+  # sandbox 内からは hardlink 側(codex-notify の穴)しか connect できない ── 穴があればそちらを優先
+  hole="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/codex-notify/${prebase%.sock}-d/$prebase"
+  for cand in "$hole" "$presock"; do
+    if [ -S "$cand" ]; then
+      resolved="$(printf 'roster-socket\t%s\t%s' "${prebase%.sock}" "$cand")"
+      break
+    fi
+  done
+fi
+
+[ -z "$resolved" ] && resolved="$(claude agents --json 2>/dev/null | ROSTER="$roster" ALLOW_SUCCESSOR="$allow_successor" python3 -c '
 import json,sys,os
 r=json.load(open(os.environ["ROSTER"]))
 allow=os.environ.get("ALLOW_SUCCESSOR")=="1"
