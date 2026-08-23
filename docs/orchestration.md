@@ -212,10 +212,13 @@ claude --bg \
 | 20 | **★ bg セッションは job として `~/.claude/jobs/<jobId>/` に `respawnFlags` 込みで登録され、`daemon → bg-pty-host → claude.exe --resume` の3層で蘇生する。**`kill` が届くのは末端だけ。state.json は daemon メモリの写しなので書き換えても戻される。**正規の停止は `claude agents` の TUI で `ctrl+x`。**job を全て settle させれば daemon は無クライアントで自壊する ── daemon を狙って落とす必要は無い | **bg role を立てたら止め方を同時に決める。**手順は [bg_session_lifecycle.md](bg_session_lifecycle.md) |
 | 21 | **resume は文脈を保つが、プロセスは死んだまま** | **(c) を採ってもメモリは増えない**(§4) |
 | 22 | **★ bg セッションはアイドルでも1本あたり約 0.75GB を積む** | **並行度はメモリで決まる。**立てっぱなしにしない |
+| 23 | **★ SendMessage の宛先契約は name / name [ref] / `uds:<socket>` の3形。**sessionId(UUID)素撃ちは native ツールの契約に最初から無い(v2.1.224 新設時から name 契約、v2.1.232 で live 一意一致なら bare name 直送。一意でなければ ref 提示付きで拒否される)。`bridge:<session id>` はリモート(Remote Control / cloud)専用で、ローカル UUID は `invalid session ID format` で弾かれる ── 2026-08-24 実測(v2.1.241) | **旧「sessionId で撃つ」は app 経由 MCP / notify-session.sh の話。**native は `claude agents --json` で sessionId→name/pid に引き当ててから撃つ |
+| 24 | **★ bg セッションの ListAgents にも interactive(GUI)は全部出る。**ただし ListAgents は name [ref] しか出さず、sessionId を表示しない ── bg→GUI「不達 + 一覧に出ない」報告(2026-08-24)の実相は、宛先を UUID のまま撃ち続け、一覧の name に引き当てなかった role の誤診 | **「一覧に出ない」を可視性の非対称と読まない。**不達の報告を受けたら、宛先契約より先に一覧の読み方を疑う |
+| 25 | **★ `uds:/run/user/1000/cc-socks/<pid>.sock` は pid から組めば事前接触なしで届く**(bg→GUI 実測)。socket は pid 焼き付けで、プロセス交代と同時に無効化する | **生存性は name > uds。**どちらも発進直前に `agents --json` で引き直す(性質17と同じ結論) |
 
 ## 9. team 側の作法
 
-- **宛先は sessionId で撃つ**(性質18)。名前は保険、後継探索は既定で使わない
+- **宛先は name で撃つ**(性質23)。sessionId しか知らない相手は `claude agents --json` で name / pid に引き当てる ── UUID 素撃ちは明示エラーで不達。後継探索は使わない
 - **`success:true` を「届いた」と読まない**(性質9)。受領が返って初めて到達確認
 - **role を resume しない。**止めて立て直す
 - **着信の差出人は `verify-origin.sh` で照合する**(性質13・16)。下の §9.1
@@ -239,6 +242,8 @@ origin none ── attachment.origin を持つレコードが無い   exit 4
 ```
 
 **`from` / `from-name` を判定に使わない。**表示にだけ載せる。
+
+**native の着信は `from="uds:/run/user/1000/cc-socks/<pid>.sock"` を持つ。**この pid を `claude agents --json` と突合すれば差出人セッションが引ける(2026-08-24、bg→GUI 現調の照合で実用)。socket パスは runtime が刻むが詐称耐性の設計保証は取っていない ── **補助照合に留め、真は `verifiedPeerPid`。**
 
 **着信を捕まえる hook は存在しない**(性質10)ので、自動では走らない。**通知を受けた claude が自分で叩く。**
 

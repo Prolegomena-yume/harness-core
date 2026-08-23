@@ -64,15 +64,19 @@ claude --bg \
 
 **`UNABLE` は「できなかった」であって「Blocker」ではない。**理由を添えて返すだけ。**判断は team。**role には「待機せよ」としか降ろさない。
 
-## 宛先は sessionId、名乗りは信用しない
+## 宛先は name、sessionId は名指しに使えない
 
-**`CLAUDE_CODE_SESSION_ID` で撃つ。**名前は保険、後継探索は既定で使わない ── 「起点より後に開始」は再起動した自分だけでなく新しい別チャットも満たし、**実際に2セッションへ誤爆した。**
+**SendMessage の宛先は name / name [ref] / `uds:<socket>` の3形だけ。**sessionId(UUID)の素撃ちは native ツールの契約に最初から無く(v2.1.224 新設、v2.1.232 で live 一意一致なら bare name 直送)、`No agent named '<uuid>' is reachable` で落ちる。`bridge:<session id>` はリモート(Remote Control / cloud)専用でローカルには使えない。旧記述「`CLAUDE_CODE_SESSION_ID` で撃つ」はアプリ経由 MCP と notify-session.sh(外部 UDS 直送)の宛先解決の話で、native SendMessage には当てはまらない(性質23)。
 
-**宛先を焼き付けない。**発進の直前に引き直す。GUI セッションはプロセスごと交代し、`agents --json` の interactive は**誰も操作していないのに現れ、誰も閉じていないのに消える。**
+**sessionId しか知らない相手は `claude agents --json` で name と pid に引き当てる。**ListAgents は name [ref] しか出さない ── 一覧に UUID が「出ない」のは不可視ではなく表示形の違いで、bg からも interactive(GUI)は全部見える(性質24)。**不達の報告を受けたら、宛先契約を疑う前に一覧の読み方を疑う** ── 「bg から GUI へ届かない、ListAgents にも出ない」は宛先を UUID のまま撃ち続けた role の誤診だった(2026-08-24)。
+
+**`uds:/run/user/1000/cc-socks/<pid>.sock` は pid から組めば事前接触なしで届く**(性質25)。ただし pid 焼き付けなのでプロセス交代で即死する。**生存性は name > uds。**
+
+**宛先を焼き付けない。**発進の直前に引き直す。GUI セッションはプロセスごと交代し、`agents --json` の interactive は**誰も操作していないのに現れ、誰も閉じていないのに消える。**後継探索は使わない ── 「起点より後に開始」は再起動した自分だけでなく新しい別チャットも満たし、**実際に2セッションへ誤爆した。**
 
 **`success: true` を「届いた」と読まない。**`crossSessionInbound: refuse` の相手は痕跡ゼロで破棄される。**受領が返って初めて到達確認。**
 
-**着信は照合する。**`from` と `from-name` は完全に詐称できる。
+**着信は照合する。**`from` と `from-name` は詐称できる。native 着信の `from="uds:…/<pid>.sock"` は pid を `agents --json` と突合する(補助、§9.1)。外部送信者は roster 台帳で:
 
 ```bash
 bash .claude/_core/orch/verify-origin.sh <roster.json>
