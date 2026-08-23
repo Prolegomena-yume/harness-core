@@ -55,7 +55,12 @@ def sock_of(pid):
     return sp or "/run/user/%d/cc-socks/%s.sock" % (os.getuid(), pid)
 
 def emit(how,row):
-    sys.stdout.write("%s\t%s\t%s" % (how, row["pid"], sock_of(row["pid"])))
+    # sandbox 下の claude agents --json は pid を落とす(2026-08-24 実測)。
+    # pid 無しでは socket を組めない ── この行を跳ばし、末尾の「解決できない」出口へ落とす。
+    # sandbox 内の正規経路は事前解決(roster の origin_socket)であり、ここは行儀のみ。
+    pid=row.get("pid")
+    if pid is None: return
+    sys.stdout.write("%s\t%s\t%s" % (how, pid, sock_of(pid)))
     sys.exit(0)
 
 if sid:
