@@ -22,6 +22,9 @@ options:
   -h, --help               この usage を表示
 
 task と --file が無い場合は標準入力からタスク本文を読む。
+
+起動時の run_dir(~/.codex-agents/runs/<run_id>)を CODEX_AGENT_RUN_DIR で Codex へ渡す。
+kashiwagi はプロンプト末尾(「今回のタスク」の前)に「plan の置き場: <run_dir>/plan.md」の 1 行を受け取る。
 USAGE
 }
 
@@ -204,11 +207,17 @@ else
 fi
 LC_ALL=C grep -q '[^[:space:]]' "$task_path" || die "タスク本文が空白のみ"
 
+# 柏木は plan を作業木でなく run_dir に置く(真壁に検収の手を見せない)。場所は推測させず、環境とプロンプトの両方で渡す。
+export CODEX_AGENT_RUN_DIR="$run_dir"
+
 prompt_path="$run_dir/prompt.md"
 {
   cat "$CORE/roles/$persona.md"
   printf '\n\n'
   cat "$CORE/codex/$persona.md"
+  if [ "$persona" = kashiwagi ]; then
+    printf '\nplan の置き場: %s/plan.md' "$run_dir"
+  fi
   printf '\n\n## 今回のタスク\n\n'
   cat "$task_path"
 } > "$prompt_path"
@@ -441,9 +450,15 @@ remove_ignored_snapshot_paths() {
   local hash_name="$3"
   local repo_name="$4"
   local internal_name="$5"
+  # nameref で呼び出し元の連想配列を名前で受ける。record_snapshot_path と同名なので ShellCheck は
+  # 「配列に文字列を代入」と読む(SC2178)。hash_ref / internal_ref は下の unset(引用符内)で使う(SC2034)。
+  # shellcheck disable=SC2034,SC2178
   local -n status_ref="$status_name"
+  # shellcheck disable=SC2034,SC2178
   local -n hash_ref="$hash_name"
+  # shellcheck disable=SC2034,SC2178
   local -n repo_ref="$repo_name"
+  # shellcheck disable=SC2034,SC2178
   local -n internal_ref="$internal_name"
   local path
 
@@ -515,10 +530,13 @@ capture_refs() {
     repo_dir="${repository_dirs[$index]}"
     while read -r oid ref; do
       [ -n "$ref" ] || continue
+      # nameref 経由で呼び出し元の pre_refs / post_refs に書く。ShellCheck は未使用と読む。
+      # shellcheck disable=SC2034
       refs_ref["$label|$ref"]="$oid"
     done < <(git -C "$repo_dir" for-each-ref --format='%(objectname) %(refname)')
     # main/master の commit → reset も記録が残る限り検出する。
     for ref in refs/heads/main refs/heads/master; do
+      # shellcheck disable=SC2034
       reflogs_ref["$label|$ref"]="$(git -C "$repo_dir" reflog show --format='%H %gs' "$ref" 2>/dev/null || true)"
     done
     if [ "$1" = pre_refs ]; then
@@ -563,7 +581,10 @@ if [ "$git_repo" -eq 1 ]; then
   for path in "${!pre_status[@]}"; do
     if [ -z "${post_status[$path]+present}" ]; then
       post_status["$path"]="  "
+      # post_repo / post_internal は capture_all_status に名前で渡して nameref で読む。ShellCheck は未使用と読む。
+      # shellcheck disable=SC2034
       post_repo["$path"]="${pre_repo[$path]}"
+      # shellcheck disable=SC2034
       post_internal["$path"]="${pre_internal[$path]}"
       post_hash["$path"]="$(hash_worktree_path "${pre_repo[$path]}" "${pre_internal[$path]}")"
     fi

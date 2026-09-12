@@ -32,6 +32,7 @@ if [ -n "$capture_dir" ]; then
   mkdir -p "$capture_dir"
   printf '%s\n' "$@" > "$capture_dir/argv.txt"
   printf '%s\n' "$GIT_AUTHOR_NAME" "$GIT_AUTHOR_EMAIL" "$GIT_COMMITTER_NAME" "$GIT_COMMITTER_EMAIL" > "$capture_dir/identity.txt"
+  printf '%s\n' "${CODEX_AGENT_RUN_DIR:-}" > "$capture_dir/run-dir.txt"
   cat > "$capture_dir/stdin.txt"
   if [ -s "$capture_dir/stdin.txt" ]; then
     printf 'yes\n' > "$capture_dir/stdin-present.txt"
@@ -257,6 +258,32 @@ for test_persona in minase makabe kashiwagi; do
   assert_no_arg "$name" 'guard test'
 done
 pass 'prompt is passed through stdin and does not appear in argv'
+
+for test_persona in minase makabe kashiwagi; do
+  name="argv-$test_persona"
+  exported_run_dir="$(< "$test_root/capture-$name/run-dir.txt")"
+  [ -n "$exported_run_dir" ] || fail "$name: CODEX_AGENT_RUN_DIR is not exported"
+  [ -d "$exported_run_dir" ] || fail "$name: CODEX_AGENT_RUN_DIR is not a directory: $exported_run_dir"
+  [ -f "$exported_run_dir/prompt.md" ] || fail "$name: prompt.md is not under CODEX_AGENT_RUN_DIR"
+  [[ "$exported_run_dir" = "$test_root/state-$name/runs/$test_persona-"* ]] \
+    || fail "$name: CODEX_AGENT_RUN_DIR is outside the state dir: $exported_run_dir"
+done
+pass 'CODEX_AGENT_RUN_DIR is exported to Codex and points at the run directory'
+
+kashiwagi_run_dir="$(< "$test_root/capture-argv-kashiwagi/run-dir.txt")"
+kashiwagi_stdin="$test_root/capture-argv-kashiwagi/stdin.txt"
+LC_ALL=C grep -Fxq -- "plan の置き場: $kashiwagi_run_dir/plan.md" "$kashiwagi_stdin" \
+  || fail 'argv-kashiwagi: plan placement line is absent from the prompt'
+plan_line="$(LC_ALL=C grep -Fn -- 'plan の置き場: ' "$kashiwagi_stdin" | cut -d: -f1 | head -n 1)"
+task_line="$(LC_ALL=C grep -Fxn -- '## 今回のタスク' "$kashiwagi_stdin" | cut -d: -f1 | head -n 1)"
+[ -n "$task_line" ] || fail 'argv-kashiwagi: task heading is absent from the prompt'
+[ "$plan_line" -lt "$task_line" ] || fail 'argv-kashiwagi: plan placement line is not before the task heading'
+for test_persona in minase makabe; do
+  if LC_ALL=C grep -Fq -- 'plan の置き場: ' "$test_root/capture-argv-$test_persona/stdin.txt"; then
+    fail "argv-$test_persona: plan placement line must be Kashiwagi-only"
+  fi
+done
+pass 'Kashiwagi prompt carries the plan placement line before the task heading; others do not'
 
 resume_id='22222222-2222-2222-2222-222222222222'
 run_launcher argv-resume makabe "$repo" none --resume "$resume_id"

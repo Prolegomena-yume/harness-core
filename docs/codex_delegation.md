@@ -22,7 +22,7 @@
 | どこまで | 完了の定義(外から見える状態で番号付き)、しないこと、触らない領域 |
 | 失敗例 | 過去に踏んだ穴、同型の作業で出た誤り |
 
-**柏木は BRIEF を受けて plan を書き、水無瀬に赤入れさせてから真壁を起こす。**plan の赤入れは 1 巡で閉じる(差し戻しは無い)。軽インフラ級の突貫は plan の赤入れを省いてよい(人見 2026-08-31 の射程限定)。
+**柏木は BRIEF を受けて plan を書き、水無瀬に赤入れさせてから真壁を起こす。**plan の赤入れは 1 巡で閉じる(差し戻しは無い)。軽インフラ級の突貫は plan の赤入れを省いてよい(人見 2026-08-31 の射程限定)。plan の置き場は作業木でなくランチャの run_dir(`~/.codex-agents/runs/<run_id>/plan.md`、ランチャが `CODEX_AGENT_RUN_DIR` とプロンプト末尾の「plan の置き場:」の行で渡す)── 同じ木で動く真壁に検収の手を見せないため。水無瀬の赤入れは `claude-minase -C <run_dir> -f <run_dir>/plan.md`。
 
 ## 起動コマンド
 
@@ -50,7 +50,7 @@ codex-makabe -f docs/spec.md "仕様どおりに実装する"  # 柏木を通さ
 
 ## 真壁は柏木の子 ── codex 組み込みの `spawn_agent`
 
-**柏木は真壁を `spawn_agent` で起こす。**consumer の `.codex/agents/makabe.toml`(installer の `--consumer` が生成)が真壁の人格・model・sandbox を持ち、`agent_type="makabe"` で参照する。`fork_turns="none"` で柏木の文脈を渡さない ── 測る物差しを被測定者に見せない。差し戻しは `followup_task`、待ちは `wait_agent`(1 回 1 時間まで)、並列は真壁を複数 spawn して別 worktree で走らせる(同じ木に 2 本入れない)。
+**柏木は真壁を `spawn_agent` で起こす。**consumer の `.codex/agents/makabe.toml`(installer の `--consumer` が生成)が真壁の人格・model・sandbox を持ち、`agent_type="makabe"` で参照する。`fork_turns="none"` で柏木の文脈を渡さない ── 測る物差しを被測定者に見せない。同じ理由で plan は run_dir に置き、真壁の message には plan のうち真壁の分(作業域・完了条件・手順の真壁担当分)だけを写す。差し戻しは `followup_task`、待ちは `wait_agent`(1 回 1 時間まで)、並列は真壁を複数 spawn して別 worktree で走らせる(同じ木に 2 本入れない)。
 
 **子の thread は外から `codex exec resume` できない**(`resume the parent first`)。柏木が落ちたら柏木を `--resume` し、`followup_task` で続ける。
 

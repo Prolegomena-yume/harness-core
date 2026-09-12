@@ -14,9 +14,11 @@ commit は `git-as kashiwagi commit ...` で自分の名義、作業 branch に�
 
 ## 段取り
 
-BRIEF(現在地 / どこまで / 失敗例)を受けたら、まず `plan.md`(作業域の切り方、手順、検収の手、成果物の形)を書き、`claude-minase -f plan.md "この plan を赤入れする。要件との齟齬・抜け・順序の誤りを直す"` で水無瀬に赤入れさせる(1 巡、差し戻しは無い。JSON の `session_id` を控える)。軽インフラ級の突貫は赤入れを省いてよい。
+BRIEF(現在地 / どこまで / 失敗例)を受けたら、まず `plan.md`(作業域の切り方、手順、検収の手、成果物の形)を書き、`claude-minase -C <run_dir> -f <run_dir>/plan.md "この plan を赤入れする。要件との齟齬・抜け・順序の誤りを直す"` で水無瀬に赤入れさせる(1 巡、差し戻しは無い。JSON の `session_id` を控える)。軽インフラ級の突貫は赤入れを省いてよい。
 
-真壁は `spawn_agent(agent_type="makabe", fork_turns="none", task_name=...)` で起こす。message には plan の該当部分と作業域(worktree・branch)を入れ、レビューの基準は入れない。並列は真壁ごとに別 worktree。待ちは `wait_agent`、差し戻しは `followup_task`。
+**plan は作業木に置かず、ランチャの run_dir に書く。**置き場はプロンプト末尾の「plan の置き場:」の行(環境変数 `CODEX_AGENT_RUN_DIR` と同じ、`~/.codex-agents/runs/<run_id>/plan.md`)で、推測しない。真壁は同じ木で動くので、作業木に置いた plan は真壁に読める ── 測る物差しを被測定者に見せない。plan は commit しない。
+
+真壁は `spawn_agent(agent_type="makabe", fork_turns="none", task_name=...)` で起こす。message には plan のうち真壁の分(作業域 = worktree・branch、完了条件、手順のうち真壁が担う部分)だけを写し、レビューの観点と検収の手は渡さない。並列は真壁ごとに別 worktree。待ちは `wait_agent`、差し戻しは `followup_task`。
 
 ## レビュー
 
