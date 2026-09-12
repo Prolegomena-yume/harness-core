@@ -16,9 +16,9 @@ options:
       --resume <id>        同じ Codex セッションを継続
       --effort <level>     reasoning effort。既定 high
       --model <id>         Codex model を指定
+      --guard              実行後の権限ガードを有効化(既定: minase / makabe は on、kashiwagi は off)
       --no-guard           実行後の権限ガードを省略
       --mcp                MCP server を有効のまま起動
-      --notify-sock <path> kashiwagi 専用。宛先 role の messaging socket 1本だけに送信の穴を空ける(rulings #59)。sandbox は workspace-write になるが -C は空の scratch に差し替わり、リポは書けないまま
   -h, --help               この usage を表示
 
 task と --file が無い場合は標準入力からタスク本文を読む。
@@ -85,8 +85,8 @@ resume_id=""
 effort="high"
 model=""
 guard_enabled=1
+[ "$persona" != "kashiwagi" ] || guard_enabled=0
 mcp_enabled=0
-notify_sock=""
 task_files=()
 task_args=()
 
@@ -123,6 +123,10 @@ while [ "$#" -gt 0 ]; do
       model="$2"
       shift 2
       ;;
+    --guard)
+      guard_enabled=1
+      shift
+      ;;
     --no-guard)
       guard_enabled=0
       shift
@@ -130,11 +134,6 @@ while [ "$#" -gt 0 ]; do
     --mcp)
       mcp_enabled=1
       shift
-      ;;
-    --notify-sock)
-      [ "$#" -ge 2 ] || die "$1 には path が必要"
-      notify_sock="$2"
-      shift 2
       ;;
     -h|--help)
       usage
@@ -157,12 +156,6 @@ done
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
 root="$(cd "$root_input" && pwd -P)"
 
-if [ -n "$notify_sock" ]; then
-  [ "$persona" = "kashiwagi" ] || die "--notify-sock は kashiwagi 専用(rulings #59 ── レビュアーの送信穴)"
-  [ -S "$notify_sock" ] || die "--notify-sock が socket ではない: $notify_sock"
-  notify_sock="$(cd "$(dirname "$notify_sock")" && pwd -P)/$(basename "$notify_sock")"
-fi
-
 git_repo=0
 git_root=""
 if git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)"; then
@@ -182,14 +175,12 @@ done
 
 timestamp="$(date '+%Y%m%d-%H%M%S')"
 agent_state_dir="${CODEX_AGENT_STATE_DIR:-$HOME/.codex-agents}"
-run_dir="$agent_state_dir/runs/$persona-$timestamp"
-if [ -e "$run_dir" ]; then
-  run_dir="$run_dir-$$"
-fi
+run_id="$persona-$timestamp-$$-$RANDOM"
+run_dir="$agent_state_dir/runs/$run_id"
 mkdir -p "$run_dir"
 
 if [ -z "$log_path" ]; then
-  log_path="$agent_state_dir/logs/$persona-$timestamp.log"
+  log_path="$agent_state_dir/logs/$run_id.log"
 fi
 mkdir -p "$(dirname "$log_path")"
 
@@ -260,46 +251,26 @@ PY
   fi
 fi
 
-permission_args=()
-sandbox_cwd="$root"
+permission_args=(--dangerously-bypass-approvals-and-sandbox)
 case "$persona" in
-  minase|makabe)
-    permission_args+=(--dangerously-bypass-approvals-and-sandbox)
-    ;;
-  kashiwagi)
-    if [ -n "$notify_sock" ]; then
-      # rulings #59 ── 送信だけの穴。書けるのは宛先 socket 1本 + 空の scratch(+/tmp)だけで、
-      # リポは物理的に書けないまま。-C を scratch へ差し替えるのはそのため(workspace-write は cwd を書ける)。
-      # 事後ガードは元の root の git に対して従来どおり走る。
-      # writable_roots はディレクトリ前提(bwrap が .git/.codex を合成 mount するため socket ファイル直指定は即死)。
-      # 同一 tmpfs 上の私設ディレクトリへ socket を hardlink し、そのディレクトリだけを開ける ── 宛先1本限定。
-      sandbox_cwd="$run_dir/sandbox-root"
-      mkdir -p "$sandbox_cwd"
-      notify_base="$(basename "$notify_sock")"
-      notify_hole_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/codex-notify/${notify_base%.sock}-d"
-      mkdir -p "$notify_hole_dir"
-      ln -f "$notify_sock" "$notify_hole_dir/$notify_base" 2>/dev/null \
-        || die "--notify-sock を hardlink できない(別 filesystem?): $notify_sock → $notify_hole_dir"
-      permission_args+=(--sandbox workspace-write -c "sandbox_workspace_write.writable_roots=[\"$notify_hole_dir\"]")
-    else
-      permission_args+=(--sandbox read-only)
-    fi
-    ;;
+  minase) git_name="水無瀬" ;;
+  makabe) git_name="真壁" ;;
+  kashiwagi) git_name="柏木" ;;
 esac
+export GIT_AUTHOR_NAME="$git_name" GIT_COMMITTER_NAME="$git_name"
+export GIT_AUTHOR_EMAIL="$persona@ai.yumemism.dev" GIT_COMMITTER_EMAIL="$persona@ai.yumemism.dev"
 
 common_args=(
   "${permission_args[@]}"
   -c "model_reasoning_effort=\"$effort\""
   "${mcp_args[@]}"
-  -C "$sandbox_cwd"
+  -C "$root"
   -o "$run_dir/last-message.md"
 )
 if [ -n "$model" ]; then
   common_args+=(-m "$model")
 fi
-if [ "$git_repo" -eq 0 ] || [ "$sandbox_cwd" != "$root" ]; then
-  # notify モード時は -C が scratch(非 git)なので trusted-directory 検査を跳ばす。
-  # 事後ガードは元の root の git に対して従来どおり走る。
+if [ "$git_repo" -eq 0 ]; then
   common_args+=(--skip-git-repo-check)
 fi
 
@@ -531,38 +502,36 @@ capture_all_status() {
   done
 }
 
-declare -A pre_refs=()
-declare -A pre_reflog_head=()
-declare -A pre_reflog_count=()
-declare -A post_refs=()
-declare -A post_reflog_head=()
-declare -A post_reflog_count=()
+declare -A pre_refs=() post_refs=()
+declare -A initial_branch=() initial_head=()
+declare -A pre_protected_reflogs=() post_protected_reflogs=()
 
 capture_refs() {
-  local refs_name="$1"
-  local reflog_head_name="$2"
-  local reflog_count_name="$3"
-  local -n refs_ref="$refs_name"
-  local -n reflog_head_ref="$reflog_head_name"
-  local -n reflog_count_ref="$reflog_count_name"
-  local index label repo_dir value
-  local -a reflog_entries=()
-
+  local -n refs_ref="$1"
+  local -n reflogs_ref="$2"
+  local index label repo_dir oid ref
   for index in "${!repository_dirs[@]}"; do
     label="${repository_labels[$index]}"
     repo_dir="${repository_dirs[$index]}"
-    value="$(git -C "$repo_dir" show-ref --head 2>/dev/null || true)"
-    refs_ref["$label"]="$value"
-    mapfile -t reflog_entries < <(git -C "$repo_dir" reflog show --format='%H' HEAD 2>/dev/null || true)
-    reflog_head_ref["$label"]="${reflog_entries[0]:-}"
-    reflog_count_ref["$label"]="${#reflog_entries[@]}"
+    while read -r oid ref; do
+      [ -n "$ref" ] || continue
+      refs_ref["$label|$ref"]="$oid"
+    done < <(git -C "$repo_dir" for-each-ref --format='%(objectname) %(refname)')
+    # main/master の commit → reset も記録が残る限り検出する。
+    for ref in refs/heads/main refs/heads/master; do
+      reflogs_ref["$label|$ref"]="$(git -C "$repo_dir" reflog show --format='%H %gs' "$ref" 2>/dev/null || true)"
+    done
+    if [ "$1" = pre_refs ]; then
+      initial_branch["$label"]="$(git -C "$repo_dir" symbolic-ref -q HEAD || true)"
+      initial_head["$label"]="$(git -C "$repo_dir" rev-parse --verify HEAD 2>/dev/null || true)"
+    fi
   done
 }
 
 if [ "$git_repo" -eq 1 ]; then
   load_direct_submodules
   capture_all_status pre_status pre_hash pre_repo pre_internal
-  capture_refs pre_refs pre_reflog_head pre_reflog_count
+  capture_refs pre_refs pre_protected_reflogs
 fi
 
 echo "[$persona] Codex 起動 root=$root log=$log_path"
@@ -588,7 +557,7 @@ changed_files=()
 violations=()
 if [ "$git_repo" -eq 1 ]; then
   capture_all_status post_status post_hash post_repo post_internal
-  capture_refs post_refs post_reflog_head post_reflog_count
+  capture_refs post_refs post_protected_reflogs
 
   # 実行前から dirty なパスが clean になっても比較できるよう、実行後のハッシュを取る。
   for path in "${!pre_status[@]}"; do
@@ -610,6 +579,26 @@ if [ "$git_repo" -eq 1 ]; then
   for path in "${!pre_status[@]}"; do
     if [ -z "${post_status[$path]+present}" ]; then
       changed_files+=("$path")
+    fi
+  done
+
+  # commit で status から消えた変更も権限チェックに含める。
+  for index in "${!repository_dirs[@]}"; do
+    label="${repository_labels[$index]}"
+    before_head="${initial_head[$label]:-}"
+    after_head="$(git -C "${repository_dirs[$index]}" rev-parse --verify HEAD 2>/dev/null || true)"
+    if [ -n "$after_head" ] && [ "$before_head" != "$after_head" ]; then
+      if [ -z "$before_head" ]; then
+        # unborn branch の初回 commit は空の tree と比較する。
+        before_head="$(git -C "${repository_dirs[$index]}" hash-object -t tree /dev/null)"
+      fi
+      while IFS= read -r -d '' path; do
+        if [ -n "${repository_prefixes[$index]}" ]; then
+          changed_files+=("${repository_prefixes[$index]}/$path")
+        elif ! is_direct_submodule_path "$path"; then
+          changed_files+=("$path")
+        fi
+      done < <(git -C "${repository_dirs[$index]}" diff --name-only --no-renames -z "$before_head" "$after_head")
     fi
   done
 
@@ -641,18 +630,31 @@ if [ "$git_repo" -eq 1 ]; then
             *) violations+=("変更禁止: $path") ;;
           esac
           ;;
-        makabe) ;;
-        kashiwagi) violations+=("変更禁止: $path") ;;
+        makabe|kashiwagi) ;;
       esac
     done
 
-    for label in "${repository_labels[@]}"; do
-      if [ "${pre_refs[$label]:-}" != "${post_refs[$label]:-}" ]; then
-        violations+=("ref 変化を検出: $label")
-      fi
-      if [ "${pre_reflog_head[$label]:-}" != "${post_reflog_head[$label]:-}" ] \
-        || [ "${pre_reflog_count[$label]:-0}" != "${post_reflog_count[$label]:-0}" ]; then
-        violations+=("HEAD reflog 変化を検出: $label (${pre_reflog_head[$label]:-不明}/${pre_reflog_count[$label]:-0} -> ${post_reflog_head[$label]:-不明}/${post_reflog_count[$label]:-0})")
+    declare -A checked_refs=()
+    for key in "${!pre_refs[@]}" "${!post_refs[@]}"; do
+      [ -z "${checked_refs[$key]+present}" ] || continue
+      checked_refs["$key"]=1
+      [ "${pre_refs[$key]:-}" != "${post_refs[$key]:-}" ] || continue
+      label="${key%%|*}"
+      ref="${key#*|}"
+      case "$ref" in
+        refs/heads/main|refs/heads/master|refs/remotes/*)
+          violations+=("ref 変化を検出: $label $ref") ;;
+        refs/heads/*)
+          # 新規 branch 作成と起動時 current branch への commit は許可。
+          if [ -n "${pre_refs[$key]+present}" ] && [ "$ref" != "${initial_branch[$label]}" ]; then
+            violations+=("ref 変化を検出: $label $ref")
+          fi ;;
+        *) violations+=("ref 変化を検出: $label $ref") ;;
+      esac
+    done
+    for key in "${!pre_protected_reflogs[@]}"; do
+      if [ "${pre_protected_reflogs[$key]}" != "${post_protected_reflogs[$key]}" ]; then
+        violations+=("保護 branch reflog 変化を検出: $key")
       fi
     done
   fi

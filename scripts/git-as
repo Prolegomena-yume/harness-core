@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+usage() { echo '使い方: git-as <takano|minase|kashiwagi|makabe|鷹野|水無瀬|柏木|真壁> <git 引数...>'; }
+if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then usage; exit 0; fi
+[ "$#" -ge 2 ] || { usage >&2; exit 2; }
+case "$1" in
+  takano|鷹野) persona=takano; role_name=鷹野 ;;
+  minase|水無瀬) persona=minase; role_name=水無瀬 ;;
+  kashiwagi|柏木) persona=kashiwagi; role_name=柏木 ;;
+  makabe|真壁) persona=makabe; role_name=真壁 ;;
+  *) echo "エラー: 不正な役: $1" >&2; exit 2 ;;
+esac
+shift
+export GIT_AUTHOR_NAME="$role_name" GIT_COMMITTER_NAME="$role_name"
+export GIT_AUTHOR_EMAIL="$persona@ai.yumemism.dev" GIT_COMMITTER_EMAIL="$persona@ai.yumemism.dev"
+exec git -c "user.name=$role_name" -c "user.email=$persona@ai.yumemism.dev" "$@"

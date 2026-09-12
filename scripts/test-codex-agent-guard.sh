@@ -31,6 +31,7 @@ capture_dir="${CODEX_AGENT_FAKE_CAPTURE_DIR:-}"
 if [ -n "$capture_dir" ]; then
   mkdir -p "$capture_dir"
   printf '%s\n' "$@" > "$capture_dir/argv.txt"
+  printf '%s\n' "$GIT_AUTHOR_NAME" "$GIT_AUTHOR_EMAIL" "$GIT_COMMITTER_NAME" "$GIT_COMMITTER_EMAIL" > "$capture_dir/identity.txt"
   cat > "$capture_dir/stdin.txt"
   if [ -s "$capture_dir/stdin.txt" ]; then
     printf 'yes\n' > "$capture_dir/stdin-present.txt"
@@ -58,6 +59,20 @@ echo "session id: ${CODEX_AGENT_FAKE_SESSION_ID:-00000000-0000-0000-0000-0000000
 
 case "${CODEX_AGENT_FAKE_ACTION:-none}" in
   none) ;;
+  new_branch) git branch new-branch ;;
+  other_branch) git branch -f other HEAD^ ;;
+  delete_branch) git branch -D other ;;
+  new_tag) git tag forbidden ;;
+  remote_create) git update-ref refs/remotes/origin/new HEAD ;;
+  remote_delete) git update-ref -d refs/remotes/origin/main ;;
+  commit_fail)
+    printf 'commit\n' >> tracked.txt
+    git add tracked.txt
+    git commit -qm failure-test
+    fake_status=7 ;;
+  submodule_commit)
+    git -C modules/child -c user.name=Guard -c user.email=guard@example.invalid commit --allow-empty -qm child ;;
+
   append_tracked) printf 'post\n' >> tracked.txt ;;
   append_untracked) printf 'post\n' >> untracked.txt ;;
   create_ignored) printf 'ignored\n' > build.generated ;;
@@ -126,7 +141,7 @@ fail() {
 init_repo() {
   local repo="$1"
   mkdir -p "$repo"
-  git -C "$repo" init -q
+  git -C "$repo" init -q -b main
   git -C "$repo" config user.name Guard
   git -C "$repo" config user.email guard@example.invalid
   printf 'initial\n' > "$repo/tracked.txt"
@@ -147,6 +162,8 @@ run_launcher() {
 
   set +e
   PATH="$fake_bin:$PATH" \
+    GIT_AUTHOR_NAME=old GIT_AUTHOR_EMAIL=old@example.invalid \
+    GIT_COMMITTER_NAME=old GIT_COMMITTER_EMAIL=old@example.invalid \
     CODEX_HOME="$empty_codex_home" \
     CODEX_AGENT_STATE_DIR="$state_dir" \
     CODEX_AGENT_FAKE_CAPTURE_DIR="$capture_dir" \
@@ -213,7 +230,8 @@ for test_persona in minase makabe kashiwagi; do
 done
 assert_arg argv-minase '--dangerously-bypass-approvals-and-sandbox'
 assert_arg argv-makabe '--dangerously-bypass-approvals-and-sandbox'
-assert_arg_sequence argv-kashiwagi '--sandbox' 'read-only'
+assert_arg argv-kashiwagi '--dangerously-bypass-approvals-and-sandbox'
+assert_no_arg argv-kashiwagi '--sandbox'
 pass 'persona sandbox flags are preserved in Codex argv'
 
 for test_persona in minase makabe kashiwagi; do
@@ -294,7 +312,7 @@ ln -s target-a "$repo/link.txt"
 git -C "$repo" add target-a target-b link.txt
 git -C "$repo" commit -qm symlink
 ln -sfn target-dirty "$repo/link.txt"
-run_launcher symlink kashiwagi "$repo" replace_symlink
+run_launcher symlink minase "$repo" replace_symlink
 assert_status symlink 3
 assert_changed symlink link.txt
 assert_output symlink '変更禁止: link.txt'
@@ -330,14 +348,14 @@ init_repo "$repo"
 run_launcher commit makabe "$repo" commit
 assert_status commit 3
 assert_output commit 'ref 変化を検出'
-pass 'commit is rejected through full ref comparison'
+pass 'main commit is rejected through protected ref comparison'
 
 repo="$test_root/commit-reset"
 init_repo "$repo"
 run_launcher commit-reset makabe "$repo" commit_reset
 assert_status commit-reset 3
-assert_output commit-reset 'HEAD reflog 変化を検出'
-pass 'commit followed by hard reset is rejected through HEAD reflog comparison'
+assert_output commit-reset '保護 branch reflog 変化を検出'
+pass 'main commit followed by hard reset is rejected through protected branch reflog'
 
 repo="$test_root/push"
 remote_repo="$test_root/push-remote.git"
@@ -380,9 +398,9 @@ pass 'rename source and destination are both checked'
 repo="$test_root/reviewer"
 init_repo "$repo"
 run_launcher reviewer kashiwagi "$repo" review_write
-assert_status reviewer 3
-assert_output reviewer '変更禁止: review.txt'
-pass 'Kashiwagi write is rejected'
+assert_status reviewer 0
+assert_changed reviewer review.txt
+pass 'Kashiwagi write is allowed'
 
 repo="$test_root/implementer"
 init_repo "$repo"
@@ -407,7 +425,7 @@ pass 'Makabe non-git root warns and runs'
 repo="$test_root/tee-failure"
 init_repo "$repo"
 mkdir -p "$test_root/log-is-directory"
-run_launcher tee-failure kashiwagi "$repo" review_write --log "$test_root/log-is-directory"
+run_launcher tee-failure minase "$repo" review_write --log "$test_root/log-is-directory"
 assert_status tee-failure 3
 assert_output tee-failure '権限逸脱'
 assert_output tee-failure 'session_id: 不明'
@@ -421,7 +439,7 @@ pass 'Codex failure status is preserved when there is no violation'
 
 repo="$test_root/violation-wins"
 init_repo "$repo"
-run_launcher violation-wins kashiwagi "$repo" review_write_fail
+run_launcher violation-wins minase "$repo" review_write_fail
 assert_status violation-wins 3
 assert_output violation-wins '権限逸脱'
 pass 'violation is displayed and exit 3 wins over Codex failure'
@@ -459,5 +477,131 @@ LC_ALL=C grep -Fq 'タスク本文が空白のみ' "$test_root/empty-file.out" |
 LC_ALL=C grep -Fq 'タスク本文が空白のみ' "$test_root/empty-stdin.out" || fail 'empty stdin was not rejected explicitly'
 LC_ALL=C grep -Fq -- '--resume に空文字は指定できない' "$test_root/empty-resume.out" || fail 'empty resume was not rejected explicitly'
 pass 'empty -f/stdin task and empty --resume are rejected with exit 2'
+
+for test_persona in minase makabe kashiwagi; do
+  case "$test_persona" in
+    minase) role_name=水無瀬 ;;
+    makabe) role_name=真壁 ;;
+    kashiwagi) role_name=柏木 ;;
+  esac
+  expected="$(printf '%s\n' "$role_name" "$test_persona@ai.yumemism.dev" "$role_name" "$test_persona@ai.yumemism.dev")"
+  [ "$(cat "$test_root/capture-argv-$test_persona/identity.txt")" = "$expected" ] || fail "identity mismatch: $test_persona"
+done
+pass 'all four Git identity variables override inherited values for every persona'
+
+repo="$test_root/feature"
+init_repo "$repo"
+git -C "$repo" checkout -qb work
+run_launcher feature-commit makabe "$repo" commit
+assert_status feature-commit 0
+assert_changed feature-commit tracked.txt
+[ "$(git -C "$repo" log -1 --format='%an <%ae>|%cn <%ce>')" = '真壁 <makabe@ai.yumemism.dev>|真壁 <makabe@ai.yumemism.dev>' ] || fail 'commit identity differs'
+pass 'current feature branch commit is allowed with role author and committer'
+run_launcher feature-reset makabe "$repo" commit_reset
+assert_status feature-reset 0
+pass 'current feature branch commit and reset is allowed'
+
+run_launcher minase-commit minase "$repo" commit
+assert_status minase-commit 3
+assert_changed minase-commit tracked.txt
+assert_output minase-commit '変更禁止: tracked.txt'
+pass 'Minase committed non-Markdown changes are detected even with a clean worktree'
+
+run_launcher new-branch makabe "$repo" new_branch
+assert_status new-branch 0
+pass 'new local branch is allowed'
+git -C "$repo" branch other
+run_launcher other-branch makabe "$repo" other_branch
+assert_status other-branch 3
+assert_output other-branch 'refs/heads/other'
+run_launcher delete-branch makabe "$repo" delete_branch
+assert_status delete-branch 3
+assert_output delete-branch 'refs/heads/other'
+pass 'moving and deleting another local branch are rejected'
+run_launcher new-tag makabe "$repo" new_tag
+assert_status new-tag 3
+assert_output new-tag 'refs/tags/forbidden'
+pass 'new non-branch local ref is rejected'
+run_launcher remote-create makabe "$repo" remote_create
+assert_status remote-create 3
+assert_output remote-create 'refs/remotes/origin/new'
+git -C "$repo" update-ref refs/remotes/origin/main HEAD
+run_launcher remote-delete makabe "$repo" remote_delete
+assert_status remote-delete 3
+assert_output remote-delete 'refs/remotes/origin/main'
+pass 'creating and deleting remote-tracking refs are rejected'
+
+repo="$test_root/feature-push"
+init_repo "$repo"
+git -C "$repo" checkout -qb work
+remote_repo="$test_root/feature-remote.git"
+git init --bare -q "$remote_repo"
+git -C "$repo" remote add origin "$remote_repo"
+git -C "$repo" push -qu origin HEAD
+run_launcher feature-push makabe "$repo" commit_push
+assert_status feature-push 3
+assert_output feature-push 'refs/remotes/origin/work'
+pass 'feature branch push is detected through remote-tracking ref changes'
+
+repo="$test_root/kashiwagi-guard"
+init_repo "$repo"
+run_launcher kashiwagi-off kashiwagi "$repo" commit
+assert_status kashiwagi-off 0
+run_launcher kashiwagi-on kashiwagi "$repo" commit --guard
+assert_status kashiwagi-on 3
+assert_output kashiwagi-on 'refs/heads/main'
+run_launcher kashiwagi-write-guard kashiwagi "$repo" review_write --guard
+assert_status kashiwagi-write-guard 0
+assert_changed kashiwagi-write-guard review.txt
+run_launcher explicit-off makabe "$repo" commit --no-guard
+assert_status explicit-off 0
+pass 'Kashiwagi guard defaults off, explicit guard checks refs and permits writes, --no-guard remains available'
+
+repo="$test_root/master"
+init_repo "$repo"
+git -C "$repo" branch -m master
+run_launcher master makabe "$repo" commit
+assert_status master 3
+assert_output master 'refs/heads/master'
+pass 'master HEAD changes are rejected'
+
+repo="$test_root/superproject"
+run_launcher submodule-commit makabe "$repo" submodule_commit
+assert_status submodule-commit 3
+assert_output submodule-commit 'modules/child refs/heads/main'
+pass 'protected branch changes in direct submodules are rejected'
+
+run_launcher removed-option kashiwagi "$repo" none --notify-sock /unused
+assert_status removed-option 2
+assert_output removed-option '不明な option: --notify-sock'
+pass 'removed --notify-sock is rejected explicitly'
+
+# 日付を固定し、同じ秒・同じ state directory へ実際に 2 本を並行起動する。
+cat > "$fake_bin/date" <<'DATE'
+#!/usr/bin/env bash
+printf '20260913-120000\n'
+DATE
+chmod +x "$fake_bin/date"
+for slot in 1 2; do
+  PATH="$fake_bin:$PATH" CODEX_HOME="$empty_codex_home" \
+    CODEX_AGENT_STATE_DIR="$test_root/state-concurrent" \
+    CODEX_AGENT_FAKE_CAPTURE_DIR="$test_root/capture-concurrent-$slot" \
+    "$launcher" makabe -C "$repo" "parallel $slot" > "$test_root/concurrent-$slot.out" 2>&1 &
+  if [ "$slot" -eq 1 ]; then first_pid=$!; else second_pid=$!; fi
+done
+wait "$first_pid" || fail 'first concurrent launcher failed'
+wait "$second_pid" || fail 'second concurrent launcher failed'
+mapfile -t concurrent_runs < <(find "$test_root/state-concurrent/runs" -mindepth 1 -maxdepth 1 -type d)
+mapfile -t concurrent_logs < <(find "$test_root/state-concurrent/logs" -type f)
+[ "${#concurrent_runs[@]}" -eq 2 ] || fail 'concurrent run directories collided'
+[ "${#concurrent_logs[@]}" -eq 2 ] || fail 'concurrent log paths collided'
+for slot in 1 2; do
+  LC_ALL=C grep -Fxq "parallel $slot" "$test_root/capture-concurrent-$slot/stdin.txt" || fail 'concurrent prompts collided'
+done
+for run in "${concurrent_runs[@]}"; do
+  [[ "${run##*/}" =~ ^makabe-20260913-120000-[0-9]+-[0-9]+$ ]] || fail 'run ID format differs'
+  [ -f "$test_root/state-concurrent/logs/${run##*/}.log" ] || fail 'run log missing'
+done
+pass 'same-second concurrent launches have distinct run directories, logs and intact prompts'
 
 printf '1..%d\n' "$pass_count"
