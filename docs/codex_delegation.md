@@ -105,6 +105,10 @@ codex-kashiwagi --log <固定パス> -f <BRIEF> > launcher.out 2>&1 &
 
 [orchestration.md](orchestration.md) の `orch.sh` / `run_turn.sh`(1 段 = 1 プロセスの逐次バトン)と、柏木 read-only + 鷹野の中継配送(裁定 #60 の 08-26 / 08-27 精緻化)は**旧形**。2026-09-13 の改編で柏木が施工管理を持ち、ドライバは柏木の中に消えた。#60 の「ゲートはレビュアー所有」「P0 が残る限り承認しない」「鷹野は承認済み成果だけ受ける」は残る。
 
+## 射程 ── codex はプロダクト作業だけ、harness は Claude だけが触る
+
+**codex の 3 人格が触るのは consumer のプロダクト作業だけ。harness-core(本 submodule)と `~/.codex` `~/.claude` の設定は鷹野[PDM]が直接直し、手が要れば Claude の Agent tool(`makabe` / `kashiwagi`、claude-opus-5)を使う**(役員 人見 2026-09-13)。理由は 2 つ ── ランチャを直す便で走行中のランチャ自身が書き換えられ bash の逐次読みが壊れた(自己参照)、harness-core は 10 consumer が共有し codex の「正常終了したが何もしていない」失敗モードを全 consumer に効く場所で受けない。ハーネスの便は独立セッション(チップ)で切って回してよい。
+
 ## 認証
 
 Codex auth は local と cloud を同時に active にすると refresh token が競合する([openai/codex#15502](https://github.com/openai/codex/issues/15502))。並列の `codex exec` も同じ競合を踏む([openai/codex#10332](https://github.com/openai/codex/issues/10332))── 真壁を組み込み子にする理由の 1 つ。cloud session への持ち込みは [consumer_setup.md](consumer_setup.md) §8。
