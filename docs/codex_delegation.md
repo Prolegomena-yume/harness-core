@@ -1,98 +1,110 @@
-# Codex 委譲プロトコル ── 3人格の主経路
+# Codex 委譲プロトコル ── 鷹野 → 柏木[CM] → 真壁、水無瀬は Claude
 
-**水無瀬・真壁・柏木の3人は Codex 起動を主経路とし、Claude 内 Agent tool はフォールバックに限る。**調査・設計も水無瀬の Codex 起動を既定とする。実装者とレビュアーを別実行体へ分離し、Claude の5時間窓を実装で食い潰さないための構造。
+**鷹野[PDM]は要件(BRIEF)を書き、柏木[CM]が段取り・起動・レビュー・赤入れを持ち、真壁[IM]が柏木の子として実装し、水無瀬[PL]は Claude 側で鷹野と柏木の両方から使う。**鷹野の Claude 窓を人見との要件定義に使い、作業の往復を柏木 ↔ 真壁に閉じるための形(役員 人見 裁定 2026-09-13、設計の意図は `company/tech` の `_drafts/orchestration/10-kashiwagi-promotion.v0.md`)。
 
-| 層 | 主経路 | フォールバック |
-|---|---|---|
-| 調査・設計 | `codex-minase` | Agent tool `minase` / `Explore` |
-| 実装・テスト | `codex-makabe` | Agent tool `makabe` |
-| レビュー | `codex-kashiwagi` | Agent tool `kashiwagi` |
+| 人格 | 実体 | model | 職務 | 起こし方 |
+|---|---|---|---|---|
+| 鷹野[PDM] | Claude(GUI) | Fable | 人見との要件定義、BRIEF 起草、終端の受領と独立検算、merge / push | ── |
+| 水無瀬[PL] | Claude | claude-opus-5 | 調査、設計案、plan の赤入れ、実装レビューの第二の目 | 鷹野からは Agent tool `minase`、柏木からは `claude-minase` |
+| 柏木[CM] | Codex | gpt-6-astra | 段取り(plan)、真壁の起動と差し戻し、レビュー、赤入れ、Doc 品質、並列の合流 | `codex-kashiwagi -f <BRIEF>` |
+| 真壁[IM] | Codex(柏木の子) | gpt-5.6-sol | 実装、テスト、実測 | 柏木が `spawn_agent(agent_type="makabe", fork_turns="none")` |
+
+序列は鷹野 > 水無瀬 = 柏木 > 真壁。判断(What)は人見、要件は鷹野、段取り(How)は柏木、手は真壁。**鷹野は段取りを書かず、巡ごとの中継もしない。**受けるのは終端 2 種(承認 / エスカレーション)だけ。
+
+## BRIEF ── 鷹野が書くのは「現在地」「どこまで」「失敗例」の3節
+
+**BRIEF は手順を持たない。**手順・作業域の切り方・検収の手・成果物の形は柏木の plan に移る。長さは 30〜40 行が目安。
+
+| 節 | 何を書くか |
+|---|---|
+| 親ゴール + 障害 | 1 行 + 箇条書き(`company/keiei` の書き方の規約) |
+| 現在地 | 動いているもの(sha)、未完のもの、正典の所在、既に決まった裁定 |
+| どこまで | 完了の定義(外から見える状態で番号付き)、しないこと、触らない領域 |
+| 失敗例 | 過去に踏んだ穴、同型の作業で出た誤り |
+
+**柏木は BRIEF を受けて plan を書き、水無瀬に赤入れさせてから真壁を起こす。**plan の赤入れは 1 巡で閉じる(差し戻しは無い)。軽インフラ級の突貫は plan の赤入れを省いてよい(人見 2026-08-31 の射程限定)。
 
 ## 起動コマンド
 
-3人格はシェルからタスク本文を渡して起動する。長い仕様は `-f` でファイルから渡し、複数ファイルも指定順に連結できる。
+柏木は BRIEF をファイルで受ける。水無瀬は鷹野からは Agent tool、柏木のシェルからは `claude-minase`。真壁を人が直接起こすのは、柏木を通さない小作業だけ。
 
 ```bash
-codex-minase "認証フローの設計案を比較して仕様へ落とす"
-codex-makabe -f docs/spec.md "仕様どおりに実装して検証する"
-codex-kashiwagi -f docs/spec.md "現在の差分を仕様と突合する"
+codex-kashiwagi -f docs/BRIEF-11.md            # 柏木が plan → 水無瀬 → 真壁 → レビュー → 終端
+claude-minase -f plan.md "この plan を赤入れする"   # 柏木のシェルから(JSON の session_id で --resume)
+codex-makabe -f docs/spec.md "仕様どおりに実装する"  # 柏木を通さない小作業だけ
 ```
 
-作業ルートの既定はカレントの git toplevel、git 外ではカレントディレクトリ。明示する場合は `-C <dir>` を使う。ランチャは Codex 本体へ必ず `-C` を渡す。水無瀬・柏木は git 外での起動を拒否し、明示的な `--no-guard` がある場合だけ通す。真壁は git 外でも起動できるが、ガード無効の警告を表示する。
+作業ルートの既定はカレントの git toplevel。`-C <dir>` で明示できる。ランチャは Codex 本体へ必ず `-C` を渡す。MCP server は既定で無効(`--mcp` で有効)。
 
-MCP server は速度のためではなく、Windows パスに依存して落ちる `node_repl` と GUI 未起動時に落ちる `blender` を委譲の起動経路から外すため既定で無効。実測では有効時と無効時に有意な速度差は出なかった。必要なタスクだけ `--mcp` でユーザー設定を有効のまま使う。
+## 権限 ── 常に開ける、縛りは文で
 
-## 権限セット
+**権限は常に開ける。書かせたくない巡は指示文に「書くな」と書く**(人見 2026-09-13)。3 人格とも `--dangerously-bypass-approvals-and-sandbox`。水無瀬の `claude -p` は Read / Glob / Grep / Edit / Write / git(status・diff・log・add・commit)を常に渡し、push は渡さない。
 
-権限セットは人格プロンプトで宣言し、実行後ガードで検出可能な逸脱を事後検出する。書き込みが必要な人格は sandbox フラグを緩めているため、ガード自体に操作を止める強制力はない。
-
-| 人格 | 役 | Codex sandbox | 書き込み許可範囲 |
+| 人格 | 書く範囲(契約) | commit | push |
 |---|---|---|---|
-| 水無瀬 | Planner | `--dangerously-bypass-approvals-and-sandbox` | Markdown のみ。`docs/` / `_sessions/` は途中階層でも照合し、非 Markdown コードは許可しない |
-| 真壁 | Implementer | `--dangerously-bypass-approvals-and-sandbox` | リポジトリ配下全般 |
-| 柏木 | Reviewer | `--sandbox read-only` | なし |
+| 水無瀬 | Markdown(docs / plan / spec) | 可(水無瀬名義) | 不可 |
+| 柏木 | リポ全域(赤入れ、Doc) | 可(柏木名義) | 不可 |
+| 真壁 | リポ全域 | 可(真壁名義、作業 branch) | 不可 |
 
-事後ガードの守備範囲は、作業ルートの git リポジトリと直下サブモジュールの内部だけである。リポジトリ外への書き込み、非 git ルートでの真壁の実行、入れ子サブモジュールは検出できない。別リモート・別 ref への push にもローカル ref が動かない経路があり、完全には検出できない。したがって権限セットは人格プロンプトの宣言と事後ガードによるリポジトリ内逸脱の検出という二段であり、どちらも回避可能である。sandbox で書き込みを物理的に止めているのは柏木の read-only だけで、水無瀬・真壁の権限セットをガードが強制するものではない。
+**`main` / `master` への直接 commit と push は全員不可。**外へ出る境界は鷹野の merge と push で越える。事後ガードは真壁・水無瀬に既定 on(現 branch への commit は逸脱にしない ── `main` の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする)、柏木は既定 off(柏木自身が真壁を起こして木を動かす)。
 
-3人とも commit と push を行わない。git 操作は `status`、`diff`、`log` の読み取りに限る。
+## 真壁は柏木の子 ── codex 組み込みの `spawn_agent`
 
-## 品質ゲートの鎖(裁定 #60、2026-08-24 人見)
+**柏木は真壁を `spawn_agent` で起こす。**consumer の `.codex/agents/makabe.toml`(installer の `--consumer` が生成)が真壁の人格・model・sandbox を持ち、`agent_type="makabe"` で参照する。`fork_turns="none"` で柏木の文脈を渡さない ── 測る物差しを被測定者に見せない。差し戻しは `followup_task`、待ちは `wait_agent`(1 回 1 時間まで)、並列は真壁を複数 spawn して別 worktree で走らせる(同じ木に 2 本入れない)。
 
-**SPEC 起草 → 設計レビュー → 差し戻し → 承認 → 実装 → 実装レビュー → 差し戻し(実装者を exec resume)→ 再提出(同じレビュアーを exec resume)→ レビュアーの承認をもって opus へ返す。**この鎖を省いた委譲は品質ゲートとして不成立。
+**子の thread は外から `codex exec resume` できない**(`resume the parent first`)。柏木が落ちたら柏木を `--resume` し、`followup_task` で続ける。
 
-1. **設計レビューを省かない。**SPEC は実装へ渡す前に柏木の独立レビューを通し、差し戻し→承認を経る。根拠:D6-6 で潰れた P0 の過半は SPEC 側の誤り(節をまたいだ矛盾を3回)── 実装レビューだけでは SPEC の欠陥が実装の指摘に化けて出る分だけ発見が遅く高くつく
-2. **ゲートの所有はレビュアー。**レビュー結果を出して抜ける形を取らない ── P0 が残る限り承認は出ず、修正の再提出は同じ柏木セッションへ `--resume` で戻して再検査する。**opus が受け取ってよいのは承認済みの成果だけ。**P0 未修正のままレビュー結果だけを受けて opus が巡ごとの差し戻しを裁く形は、ゲートを opus 側へ漏らす(D6-6 の欠陥、裁定の根拠)
-3. **opus の役目は exec の運転と SPEC の改訂。**差し戻しは実装者の session を exec resume で叩く手を打つこと、レビューで割れた SPEC 側欠陥を正典に直すこと。レビューの中身の裁定はしない ── 発注書がレビュー指摘を translating する過程で正典を上書きする事故は D6-6 で実際に起きた
+**git identity は `git-as <役>` で焼く。**柏木と真壁は同じ環境変数を継ぐので、契約に `git-as makabe commit ...` を書く。ランチャは自分の人格の `GIT_AUTHOR_*` / `GIT_COMMITTER_*` を export する。
 
-## 差し戻し
+## レビュー ── 差し戻すのは critical だけ、非 critical は直す、巡数は決めない
 
-修正指示は初回の終了サマリに出た session ID を `--resume` へ渡し、同一セッションで続ける。直前セッションを温存して別案へ分岐する場合は、人が端末で `codex fork --last` を直接実行する。対話 TUI が必要なため、ランチャの機能にはしない。
+**柏木の判定は「承認 / 条件付き承認 / 差し戻し」の 3 値、差し戻しは P0(critical)が 1 件でもあるときだけ**(人見 2026-09-12)。critical = 実装した後にリファクタリングで直せないもの ── データの形、入口の配線と検査の順序、所有と認可の穴、同時実行で不正な状態が残る競合、外から見える契約、後の便に ALTER を強いる構造。技術的負債は後で返せる前借りでありキャッシュで、必ずしも悪くない。
 
-```bash
-codex-makabe --resume 019ff5ae-0000-7000-8000-000000000000 "柏木の指摘を反映する"
-codex fork --last
+**非 critical は柏木が赤入れで直して commit する。**表現・命名・import・注記・件数・文面の揺れ・Doc の未更新は指摘として書かず、直す。直さないなら P2 として results に記録して次便へ。**判定の物差しは BRIEF の「どこまで」で、完璧ではない。**
+
+**巡数の上限は置かない**(人見 2026-09-13)。柏木は内容を見てゲートの役目を果たす。回る理由(非 critical の差し戻し、直せないレビュアー、要件の欠陥の往復)を消してある。要件が曖昧・矛盾なら往復させず鷹野へ上げる。
+
+**レビューは報告文でなく `git diff` と実ファイルから始める。**exit 0 と完了報告は根拠にしない。空レビュー(shell 0 本のまま判定を書く)は exec ブロック数で検出する。
+
+## 終端 ── 鷹野へ返るのは承認かエスカレーションの 2 種
+
+**柏木から鷹野へ返るのは「承認(最終 sha 名指し)」と「エスカレーション(要件の矛盾・裁定が要る)」だけ。**本命はファイル(`~/.codex-agents/runs/<柏木の run>/last-message.md` とランチャの footer)、通知は補助。鷹野は受領後に独立検算(diff、test、実測の再現)をしてから merge する。
+
+## commit ── author も committer も役、trailer 4 本
+
+**commit の author と committer は役名(日本語)+ `<persona>@ai.yumemism.dev`。**`paxyuraranica` は人見本人の手の commit だけ。`git-as <役>` を使う(`--author` だけでは committer が残る)。リポの `git config user.*` は触らない。
+
+```
+docs: 何をしたか(1 行目)
+
+Role: 柏木[CM]
+Model: gpt-6-astra
+Session: <codex session id>
+Brief: <BRIEF のパス>
 ```
 
-## 事後ガード
+`Co-Authored-By: Claude …` は書かない(人見 2026-09-13)。model は `Model:` の 1 本。
 
-ランチャはルートと直下のサブモジュールについて、起動前後の `git status --porcelain --ignored=matching` が挙げたパスの状態・内容ハッシュを比較する。さらに `git show-ref --head` の全 ref と HEAD reflog の先頭ハッシュ・行数の変化を検出し、人格の許可範囲を越えた操作を「権限逸脱」として列挙して exit 3 で終了する。違反ファイルは自動で revert せず、処置の判断を鷹野が持つ。意図的にガードを省く場合だけ `--no-guard` を使う。
+## Claude からの起動と待ち方
 
-終了時は session ID、ログ、変更ファイル数と `git diff --stat` を必ず表示する。これは起動の5点セット #5「exit 0 を成功と読まない」の機械化。
+柏木を `run_in_background` で起動し、ランチャの出力に `^session_id:` の footer が出るまで待つ(`until grep -q "^session_id:" launcher.out`)。pid で待たない ── 起動直後の pid は一時プロセスを掴む。`--resume` を打って `already has an active writer` で弾かれたら生きている。
 
-## Claude からの起動
-
-Claude からはログパスを先に固定し、Codex と監視タイマーを別々の background task として起動する。
-
-1. `--log <固定パス>` を付けた `codex-minase` / `codex-makabe` / `codex-kashiwagi` を `run_in_background` で起動
-2. 並行して `bash .claude/_core/scripts/timer.sh <265|600> <label> <ログpath>` を `run_in_background` で起動
-3. timer 側の task を `TaskOutput` の `block=true`、`timeout=duration×1000+60000` で待機
-4. Codex 側の TaskOutput と終了サマリ、`git diff --stat`、実ファイルを検算
-
-duration は小タスク 265、大タスク 600。timer は `tokens used` で正常終端を検知し、エラー行累計3または時間切れでも解除する。
+```bash
+codex-kashiwagi --log <固定パス> -f <BRIEF> > launcher.out 2>&1 &
+```
 
 ## 起動の5点セット
 
-5点すべてを満たしてから委譲を成功と判定する。
+1. bypass で起動する(ランチャが付ける)
+2. 仕様をファイルへ落とし `-f` で渡す
+3. `--effort high`(ランチャの既定)── `-c model_reasoning_effort=...` は通らない
+4. exit code だけで成功とせず、footer・`git diff --stat`・実ファイルを検算する
+5. 同じ persona を同じ秒に 2 本起動しない(run_dir は pid と乱数で一意化済みだが、ログの読み違いを避ける)
 
-1. 人格に対応する sandbox フラグを付ける。水無瀬・真壁は bypass、柏木は実測済みの read-only
-2. Claude から呼ぶ場合は `scripts/timer.sh` でログを監視する
-3. 仕様をファイルへ落とし、ランチャの `-f` から渡す
-4. `--effort high` を明示する。ランチャの既定値も high ── **`-c model_reasoning_effort=...` は通らない。**ランチャが受け取らない option を渡すと usage を出して即座に exit 0 で終わり、何も実行されないまま成功に見える
-5. exit code だけで成功とせず、終了サマリ、`git diff --stat`、実ファイルを検算する
+## 旧形 ── orch.sh の逐次バトンと鷹野の中継
 
-前面同期実行は Claude を長時間ブロックし、進捗も見えない。reasoning effort と実変更の検算は「正常終了したが何もしていない」という既発の失敗への対策。
-
-## 起動前のセルフチェック
-
-1. 対象ファイル、変更概要、影響範囲を事前に明示
-2. 調査・設計、実装、レビューのどの人格を起動するか明示
-3. 仕様ファイルと関連ファイルを委譲先へ供与
-4. 完了後、鷹野が独立視点で全体整合を確認し、必要なら同一 session へ差し戻し
-5. ドキュメント編集を直接行う場合も、例外使用を明示
-6. 実装者からレビュアーへの視点切替を明示
+[orchestration.md](orchestration.md) の `orch.sh` / `run_turn.sh`(1 段 = 1 プロセスの逐次バトン)と、柏木 read-only + 鷹野の中継配送(裁定 #60 の 08-26 / 08-27 精緻化)は**旧形**。2026-09-13 の改編で柏木が施工管理を持ち、ドライバは柏木の中に消えた。#60 の「ゲートはレビュアー所有」「P0 が残る限り承認しない」「鷹野は承認済み成果だけ受ける」は残る。
 
 ## 認証
 
-Codex auth は local と cloud を同時に active にすると refresh token が競合する([openai/codex#15502](https://github.com/openai/codex/issues/15502))。同時に使わない。
-
-cloud session への持ち込みは `CODEX_AUTH_JSON` を1行 compact JSON で投入する。複数行の raw JSON は保存時に切られる。手順は [consumer_setup.md](consumer_setup.md) §8。
+Codex auth は local と cloud を同時に active にすると refresh token が競合する([openai/codex#15502](https://github.com/openai/codex/issues/15502))。並列の `codex exec` も同じ競合を踏む([openai/codex#10332](https://github.com/openai/codex/issues/10332))── 真壁を組み込み子にする理由の 1 つ。cloud session への持ち込みは [consumer_setup.md](consumer_setup.md) §8。

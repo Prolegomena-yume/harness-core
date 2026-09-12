@@ -1,22 +1,22 @@
 # Codex 委譲人格
 
-水無瀬・真壁・柏木を人格・権限セット付きの Codex 実行体として起動する定義。3人格の主経路は Codex、`agents/` の Claude Agent tool 版はフォールバック。
+柏木・真壁を人格付きの Codex 実行体として起動する定義。柏木[CM]が主で、真壁は柏木が `spawn_agent` で起こす子(consumer の `.codex/agents/makabe.toml`)。水無瀬の主経路は Claude で、ここの `codex-minase` は副経路(2026-09-13 改編、正典は [../docs/codex_delegation.md](../docs/codex_delegation.md))。
 
 ## 人格一覧
 
-3人格は役割ごとに異なる sandbox と書き込み範囲を持つ。
+3人格とも bypass で起動する。権限は常に開け、書く範囲は契約で決める(指示に「書くな」とあれば書かない)。
 
 | 人格 | 役 | コマンド | 権限 | 起動定義 |
 |---|---|---|---|---|
-| 水無瀬澪 | Planner | `codex-minase` | bypass。Markdown のみ。`docs/` / `_sessions/` は途中階層でも照合し、非 Markdown コードは不可 | [minase.md](minase.md) |
+| 水無瀬澪 | Planner(副経路) | `codex-minase` | bypass。Markdown のみ。`docs/` / `_sessions/` は途中階層でも照合し、非 Markdown コードは不可 | [minase.md](minase.md) |
 | 真壁陸 | Implementer | `codex-makabe` | bypass。リポジトリ配下全般へ書き込み可 | [makabe.md](makabe.md) |
-| 柏木律 | Reviewer | `codex-kashiwagi` | read-only。書き込み不可 | [kashiwagi.md](kashiwagi.md) |
+| 柏木律 | CM(施工管理 + 品質管理) | `codex-kashiwagi` | bypass。リポジトリ配下全般(赤入れ・Doc)。事後ガードは既定 off | [kashiwagi.md](kashiwagi.md) |
 
-3人とも `.git/` の直接操作、commit、push を禁止する。
+3人とも commit は `git-as <役>` で自分の名義・作業 branch にだけ。push、`main` 直接 commit、`.git/` の直接操作を禁止する。
 
 ## 事後ガードの守備範囲
 
-守備範囲の正典は [Codex 委譲プロトコル](../docs/codex_delegation.md#権限セット)。実測で書き込みを物理的に拒否できたのは、下記の柏木用 read-only sandbox だけである。
+守備範囲の正典は [Codex 委譲プロトコル](../docs/codex_delegation.md)。現 branch への commit は逸脱にしない。`main` の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする。柏木は既定 off。
 
 ## 定義の分離
 
@@ -44,4 +44,4 @@ wrapper は `CODEX_AGENT_CORE`、カレントリポジトリの `.claude/_core`�
 
 2026-08-12、同じ捨てリポで `--sandbox read-only`、MCP 個別無効化、`model_reasoning_effort="low"` を指定し、ファイル作成を指示した。Codex は 8.75秒で起動し、patch を read-only sandbox が拒否したあと「読み取り専用のため、ファイルは作成できませんでした」と報告した。対象ファイルは存在せず、`git status --porcelain` も空だった。
 
-判定は「起動する」「書き込みを拒否する」の両方を満たす。柏木の権限は bypass と事後ガードへ倒さず、`--sandbox read-only` と全変更禁止の事後ガードを採用する。
+判定は「起動する」「書き込みを拒否する」の両方を満たした。**ただし 2026-08-27 以降、母艦の `apparmor_restrict_unprivileged_userns=1` で read-only sandbox(bwrap)が起動せず空レビューを吐く問題があり、2026-09-13 の改編で柏木は bypass に移った。**この節は実測の記録として残す。

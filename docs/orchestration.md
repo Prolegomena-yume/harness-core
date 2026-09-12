@@ -1,4 +1,6 @@
-# team-takano / role-takano オーケストレーション
+# team-takano / role-takano オーケストレーション(旧形)
+
+> **2026-09-13 に旧形になった。**現行は柏木[CM]が codex 組み込みの `spawn_agent` で真壁を起こし、段取り・差し戻し・赤入れ・レビューを自分で回す形 ── 正典は [codex_delegation.md](codex_delegation.md)。本書の `orch.sh` / `run_turn.sh`(逐次バトン)と機構の性質(§3・§8・§9)は実測の記録として残す。
 
 **claude が実装層(grok)とレビュー層(codex)を逐次バトンで回す機構の正典。**動く実体は `orch/` の [orch.sh](../orch/orch.sh) / [run_turn.sh](../orch/run_turn.sh) / [notify-session.sh](../orch/notify-session.sh) と [roles/](../orch/roles/) の役割定義2枚。
 

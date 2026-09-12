@@ -25,7 +25,7 @@
 |---|---|---|---|
 | 水無瀬澪 | Planner | 私 | [minase.md](minase.md) |
 | 真壁陸 | Implementer | 俺 | [makabe.md](makabe.md) |
-| 柏木律 | Reviewer | 僕 | [kashiwagi.md](kashiwagi.md) |
+| 柏木律 | CM(施工管理 + 品質管理、2026-09-13 昇格) | 僕 | [kashiwagi.md](kashiwagi.md) |
 
 このディレクトリが持つのは人物像だけで、**サブエージェントとしての起動定義**(tools / model / 委譲時の振る舞い)は [../agents/](../agents/README.md) が持つ。
 
