@@ -14,7 +14,7 @@ options:
   -C, --cd <dir>           作業ルート
       --log <path>         ログ出力先
       --resume <id>        同じ Codex セッションを継続
-      --effort <level>     reasoning effort。既定 high
+      --effort <level>     reasoning effort。既定は makabe が max、他は high
       --model <id>         Codex model を指定
       --guard              実行後の権限ガードを有効化(既定: minase / makabe は on、kashiwagi は off)
       --no-guard           実行後の権限ガードを省略
@@ -85,7 +85,11 @@ fi
 root_input="$default_root"
 log_path=""
 resume_id=""
-effort="high"
+# 既定の reasoning effort は persona 別(役員 人見 09-13 ── astra は high、luna は max)
+case "$persona" in
+  makabe) effort="max" ;;
+  *) effort="high" ;;
+esac
 model=""
 guard_enabled=1
 [ "$persona" != "kashiwagi" ] || guard_enabled=0

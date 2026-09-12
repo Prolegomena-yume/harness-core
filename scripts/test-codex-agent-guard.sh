@@ -235,10 +235,11 @@ assert_arg argv-kashiwagi '--dangerously-bypass-approvals-and-sandbox'
 assert_no_arg argv-kashiwagi '--sandbox'
 pass 'persona sandbox flags are preserved in Codex argv'
 
-for test_persona in minase makabe kashiwagi; do
+for test_persona in minase kashiwagi; do
   assert_arg_sequence "argv-$test_persona" '-c' 'model_reasoning_effort="high"'
 done
-pass 'default high reasoning effort is preserved for all personas'
+assert_arg_sequence argv-makabe '-c' 'model_reasoning_effort="max"'
+pass 'default reasoning effort is high for minase / kashiwagi and max for makabe'
 
 for test_persona in minase makabe kashiwagi; do
   assert_arg_sequence "argv-$test_persona" '-c' 'mcp_servers.alpha.enabled=false'

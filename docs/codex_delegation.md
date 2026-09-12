@@ -7,7 +7,7 @@
 | 鷹野[PDM] | Claude(GUI) | Fable | 人見との要件定義、BRIEF 起草、終端の受領と独立検算、merge / push | ── |
 | 水無瀬[PL] | Claude | claude-opus-5 | 調査、設計案、plan の赤入れ、実装レビューの第二の目 | 鷹野からは Agent tool `minase`、柏木からは `claude-minase` |
 | 柏木[CM] | Codex | gpt-6-astra | 段取り(plan)、真壁の起動と差し戻し、レビュー、赤入れ、Doc 品質、並列の合流 | `codex-kashiwagi -f <BRIEF>` |
-| 真壁[IM] | Codex(柏木の子) | gpt-5.6-sol | 実装、テスト、実測 | 柏木が `spawn_agent(agent_type="makabe", fork_turns="none")` |
+| 真壁[IM] | Codex(柏木の子) | gpt-5.6-luna | 実装、テスト、実測 | 柏木が `spawn_agent(agent_type="makabe", fork_turns="none")` |
 
 序列は鷹野 > 水無瀬 = 柏木 > 真壁。判断(What)は人見、要件は鷹野、段取り(How)は柏木、手は真壁。**鷹野は段取りを書かず、巡ごとの中継もしない。**受けるのは終端 2 種(承認 / エスカレーション)だけ。
 
@@ -97,7 +97,7 @@ codex-kashiwagi --log <固定パス> -f <BRIEF> > launcher.out 2>&1 &
 
 1. bypass で起動する(ランチャが付ける)
 2. 仕様をファイルへ落とし `-f` で渡す
-3. `--effort high`(ランチャの既定)── `-c model_reasoning_effort=...` は通らない
+3. reasoning effort はランチャの既定 ── 柏木(astra)と水無瀬は high、真壁(luna)は max(役員 人見 09-13)。spawn_agent の真壁は `.codex/agents/makabe.toml` の `model_reasoning_effort = "max"`。`-c model_reasoning_effort=...` を手で足さない
 4. exit code だけで成功とせず、footer・`git diff --stat`・実ファイルを検算する
 5. 同じ persona を同じ秒に 2 本起動しない(run_dir は pid と乱数で一意化済みだが、ログの読み違いを避ける)
 
