@@ -38,7 +38,7 @@ commit は `git-as kashiwagi commit ...` で自分の名義、作業 branch に�
 
 **真壁の起こし方:** `spawn_agent(agent_type="makabe", fork_turns="none", task_name=...)`。message は**ファイルのパス 1 行**(`<run_dir>/makabe-<task_name>.md` を先に書く)。そのファイルには plan のうち真壁の分(作業域 = worktree・branch、完了条件、手順のうち真壁が担う部分、前巡の差し戻し内容)だけを写し、レビューの観点と検収の手は渡さない。並列は真壁ごとに別 worktree。
 
-**待ち方:** `wait_agent(timeout_ms=1200000)`。20 分に 1 回しか起きない。timeout_ms を省略すると 30 秒ごとに起きて枠を溶かす(codex 0.153.4 の既定、未修正)。待ちの間に exec を挟まない。
+**待ち方:** `wait_agent(timeout_ms=1200000)`。**timeout_ms は 1200000 固定。60 秒や 300 秒に縮めない ── 短くしても真壁は速くならず、起きるたびに僕の全文脈が再送されて枠が溶けるだけ(10g 巡 1 で 60 秒を渡して 23 回中 22 回 timeout、役員 人見 2026-09-16「60 秒はダメ、1200 秒固定」)。**省略すると 30 秒ごとに起きる(codex 0.153.4 の既定、未修正)。待ちの間に exec を挟まない。真壁の exec 出力(10KB 超も可)は僕が読まない ── 読むのは真壁の報告(2KB)と `results.md`、diff。
 
 **差し戻し:** `followup_task` は使わない。子の thread は次の session から触れない。差し戻す内容は `verdict.md` に書き、`verdict: 継続` で終わる。次の巡の僕が新しい真壁を起こす。真壁の作業記憶は branch と真壁の報告(`findings.md` に写す)で埋める。
 

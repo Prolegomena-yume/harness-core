@@ -55,7 +55,13 @@ codex-makabe -f docs/spec.md "仕様どおりに実装する"  # 柏木を通さ
 
 **子の thread は外から `codex exec resume` できない**(`resume the parent first`)。1 巡 = 1 session の形(下記)では次の巡の柏木は別 session なので、差し戻しは `followup_task` でなく新しい真壁を spawn する。柏木の session が途中で落ちたときだけ `--resume` を使う。
 
-**待ちは `wait_agent(timeout_ms=1200000)`。**codex 0.153.4 の既定 timeout は 30 秒で(openai/codex#36379、未修正)、省略すると親が 30 秒ごとに起きて全文脈を再送する。ランチャは柏木に `-c features.multi_agent_v2.default_wait_timeout_ms=1200000` を渡し、`~/.codex/config.toml` にも同値を置く。
+**待ちは `wait_agent(timeout_ms=1200000)`、固定。**柏木が 60 秒などに縮めるのは禁止(10g 巡 1 で 22 / 23 回 timeout、役員 人見 2026-09-16)。codex 0.153.4 の既定 timeout は 30 秒で(openai/codex#36379、未修正)、省略すると親が 30 秒ごとに起きて全文脈を再送する。ランチャは柏木に `-c features.multi_agent_v2.default_wait_timeout_ms=1200000` を渡し、`~/.codex/config.toml` にも同値を置く。
+
+## 出力の上限は柏木にだけ効く、evidence は repo に置いてよい(役員 人見 2026-09-16)
+
+**真壁(luna)の exec 出力が 10KB を超えるのは構わない。**luna は枠にほぼ計上されず、真壁の transcript は柏木に流れない。ダメなのは柏木(astra)がそれを読むこと ── 柏木が読むのは真壁の報告(2KB)、`results.md`、diff だけ。真壁 toml の「10KB 以内」は真壁自身の文脈を守る目安で、超えた件数を違反として数えない(10g の実測では真壁 21 / 16 件、柏木 6 / 4 件)。
+
+**検証の evidence(test の全出力、tail など)は repo の `docs/evidence/` に置いてよい。**誰も全文を読まず、必要な行を `rg` / `sed -n` で参照する運用なら量は問題にならない(10g は 46 ファイル 13K 行)。要約 + パスへの圧縮は要らない。
 
 ## 1 巡 = 1 session ── 柏木の文脈を巡ごとに捨てる(役員 人見 2026-09-16)
 
