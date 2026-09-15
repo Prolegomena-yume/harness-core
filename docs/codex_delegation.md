@@ -29,7 +29,8 @@
 柏木は BRIEF をファイルで受ける。水無瀬は鷹野からは Agent tool、柏木のシェルからは `claude-minase`。真壁を人が直接起こすのは、柏木を通さない小作業だけ。
 
 ```bash
-codex-kashiwagi -f docs/BRIEF-11.md            # 柏木が plan → 水無瀬 → 真壁 → レビュー → 終端
+codex-kashiwagi -f docs/BRIEF-11.md            # 柏木が plan → 水無瀬 → 真壁 → レビュー → verdict。「継続」ならランチャが次の巡を新 session で起こす
+codex-kashiwagi --rounds 6 -f docs/BRIEF-11.md # 巡数上限を変える(既定 12)。--no-loop で 1 session だけ
 claude-minase -f plan.md "この plan を赤入れする"   # 柏木のシェルから(JSON の session_id で --resume)
 codex-makabe -f docs/spec.md "仕様どおりに実装する"  # 柏木を通さない小作業だけ
 ```
@@ -52,7 +53,17 @@ codex-makabe -f docs/spec.md "仕様どおりに実装する"  # 柏木を通さ
 
 **柏木は真壁を `spawn_agent` で起こす。**consumer の `.codex/agents/makabe.toml`(installer の `--consumer` が生成)が真壁の人格・model・sandbox を持ち、`agent_type="makabe"` で参照する。`fork_turns="none"` で柏木の文脈を渡さない ── 測る物差しを被測定者に見せない。同じ理由で plan は run_dir に置き、真壁の message には plan のうち真壁の分(作業域・完了条件・手順の真壁担当分)だけを写す。差し戻しは `followup_task`、待ちは `wait_agent`(1 回 1 時間まで)、並列は真壁を複数 spawn して別 worktree で走らせる(同じ木に 2 本入れない)。
 
-**子の thread は外から `codex exec resume` できない**(`resume the parent first`)。柏木が落ちたら柏木を `--resume` し、`followup_task` で続ける。
+**子の thread は外から `codex exec resume` できない**(`resume the parent first`)。1 巡 = 1 session の形(下記)では次の巡の柏木は別 session なので、差し戻しは `followup_task` でなく新しい真壁を spawn する。柏木の session が途中で落ちたときだけ `--resume` を使う。
+
+**待ちは `wait_agent(timeout_ms=1200000)`。**codex 0.153.4 の既定 timeout は 30 秒で(openai/codex#36379、未修正)、省略すると親が 30 秒ごとに起きて全文脈を再送する。ランチャは柏木に `-c features.multi_agent_v2.default_wait_timeout_ms=1200000` を渡し、`~/.codex/config.toml` にも同値を置く。
+
+## 1 巡 = 1 session ── 柏木の文脈を巡ごとに捨てる(役員 人見 2026-09-16)
+
+**柏木は 1 session で 1 巡だけ担う。**巡 = 真壁を起こす → 待つ → diff と実ファイルで検収 → `verdict.md` を書く。ランチャが `<run_dir>/verdict.md` の 1 行目を読み、`verdict: 継続` なら**新しい session** で次の巡を起こす(前巡までの `plan.md` / `findings.md` / 前巡の `verdict.md` をプロンプト末尾に写す)。`verdict: 承認` / `verdict: エスカレーション` で終端。verdict が無い・不正なら exit 4、巡数上限(既定 12)で exit 5。巡ごとの prompt / log / last-message / session_id は `<run_dir>/rounds/r<N>/` に残る。
+
+理由: astra は turn ごとに全文脈を再送して枠を減らす。09-13〜14 の 5 GOAL は柏木 1 本で 170〜383 turn、context 360〜560K、1 GOAL 40〜60pt。1 巡 25〜40 turn で session を切ると 1/4〜1/5 になる(B 表からの模擬)。真壁(luna)は枠にほぼ計上されない(sol の 1/20)ので、子を巡ごとに起こし直す費用は無い。auto compact は文脈が消えるので使わない。
+
+**checkpoint が柏木の記憶のすべて。**判定に使った事実・P0 の一覧・充足表・自前修正の sha は `findings.md` に無ければ次の巡に届かない。柏木・真壁とも exec の出力を文脈に溜めない(`cat` 全文禁止、1 回 10KB 以内、build / test はファイルへ redirect して `tail` / `rg` で読む)。
 
 **git identity は `git-as <役>` で焼く。**柏木と真壁は同じ環境変数を継ぐので、契約に `git-as makabe commit ...` を書く。ランチャは自分の人格の `GIT_AUTHOR_*` / `GIT_COMMITTER_*` を export する。
 
@@ -62,13 +73,13 @@ codex-makabe -f docs/spec.md "仕様どおりに実装する"  # 柏木を通さ
 
 **非 critical は柏木が赤入れで直して commit する。**表現・命名・import・注記・件数・文面の揺れ・Doc の未更新は指摘として書かず、直す。直さないなら P2 として results に記録して次便へ。**判定の物差しは BRIEF の「どこまで」で、完璧ではない。**
 
-**巡数の上限は置かない**(人見 2026-09-13)。柏木は内容を見てゲートの役目を果たす。回る理由(非 critical の差し戻し、直せないレビュアー、要件の欠陥の往復)を消してある。要件が曖昧・矛盾なら往復させず鷹野へ上げる。
+**巡数の上限は置かない**(人見 2026-09-13)。柏木は内容を見てゲートの役目を果たす。回る理由(非 critical の差し戻し、直せないレビュアー、要件の欠陥の往復)を消してある。要件が曖昧・矛盾なら往復させず鷹野へ上げる。ランチャの `--rounds`(既定 12)は暴走止めで、当たったら鷹野が checkpoint を見て起こし直す。
 
 **レビューは報告文でなく `git diff` と実ファイルから始める。**exit 0 と完了報告は根拠にしない。空レビュー(shell 0 本のまま判定を書く)は exec ブロック数で検出する。
 
 ## 終端 ── 鷹野へ返るのは承認かエスカレーションの 2 種
 
-**柏木から鷹野へ返るのは「承認(最終 sha 名指し)」と「エスカレーション(要件の矛盾・裁定が要る)」だけ。**本命はファイル(`~/.codex-agents/runs/<柏木の run>/last-message.md` とランチャの footer)、通知は補助。鷹野は受領後に独立検算(diff、test、実測の再現)をしてから merge する。
+**柏木から鷹野へ返るのは「承認(最終 sha 名指し)」と「エスカレーション(要件の矛盾・裁定が要る)」だけ。**本命はファイル(`~/.codex-agents/runs/<柏木の run>/verdict.md` は巡ごとに `rounds/r<N>/` へ退避、最終巡の `last-message.md` は run_dir 直下にも写す)とランチャの footer(`巡数:` `verdict:` `session_ids:`)、通知は補助。鷹野は受領後に独立検算(diff、test、実測の再現)をしてから merge する。
 
 ## commit ── author も committer も役、trailer 4 本
 
@@ -87,7 +98,7 @@ Brief: <BRIEF のパス>
 
 ## Claude からの起動と待ち方
 
-柏木を `run_in_background` で起動し、ランチャの出力に `^session_id:` の footer が出るまで待つ(`until grep -q "^session_id:" launcher.out`)。pid で待たない ── 起動直後の pid は一時プロセスを掴む。`--resume` を打って `already has an active writer` で弾かれたら生きている。
+柏木を `run_in_background` で起動し、ランチャの出力に `^変更ファイル数:` の footer が出るまで待つ(`until grep -q "^変更ファイル数:" launcher.out`)。`^session_id:` は巡ごとに出るので終端の印にしない。巡の進みは `^巡 [0-9]+ session_id:` の行で見える。pid で待たない ── 起動直後の pid は一時プロセスを掴む。`--resume` を打って `already has an active writer` で弾かれたら生きている。
 
 ```bash
 codex-kashiwagi --log <固定パス> -f <BRIEF> > launcher.out 2>&1 &

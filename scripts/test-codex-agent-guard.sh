@@ -58,6 +58,25 @@ cd "$work_root"
 fake_status=0
 echo "session id: ${CODEX_AGENT_FAKE_SESSION_ID:-00000000-0000-0000-0000-000000000000}"
 
+# 柏木の巡ループ用: CODEX_AGENT_FAKE_VERDICT(既定 承認、カンマ区切りで巡ごと、none で書かない)を run_dir の verdict.md に書く。
+fake_verdict="${CODEX_AGENT_FAKE_VERDICT:-承認}"
+if [ -n "${CODEX_AGENT_RUN_DIR:-}" ] && [ "$fake_verdict" != none ]; then
+  fake_count_path="$CODEX_AGENT_RUN_DIR/.fake-round-count"
+  fake_round=$(( $(cat "$fake_count_path" 2>/dev/null || echo 0) + 1 ))
+  printf '%s\n' "$fake_round" > "$fake_count_path"
+  IFS=, read -r -a fake_verdicts <<< "$fake_verdict"
+  fake_index=$((fake_round - 1))
+  if [ "$fake_index" -ge "${#fake_verdicts[@]}" ]; then
+    fake_index=$((${#fake_verdicts[@]} - 1))
+  fi
+  printf 'verdict: %s\n巡 %s の判定\n' "${fake_verdicts[$fake_index]}" "$fake_round" > "$CODEX_AGENT_RUN_DIR/verdict.md"
+  printf 'findings 巡 %s\n' "$fake_round" >> "$CODEX_AGENT_RUN_DIR/findings.md"
+  if [ -n "$capture_dir" ]; then
+    cp "$capture_dir/stdin.txt" "$capture_dir/stdin-r$fake_round.txt"
+    cp "$capture_dir/argv.txt" "$capture_dir/argv-r$fake_round.txt"
+  fi
+fi
+
 case "${CODEX_AGENT_FAKE_ACTION:-none}" in
   none) ;;
   new_branch) git branch new-branch ;;
@@ -169,6 +188,7 @@ run_launcher() {
     CODEX_AGENT_STATE_DIR="$state_dir" \
     CODEX_AGENT_FAKE_CAPTURE_DIR="$capture_dir" \
     CODEX_AGENT_FAKE_ACTION="$action" \
+    CODEX_AGENT_FAKE_VERDICT="${FAKE_VERDICT:-承認}" \
     "$launcher" "$persona" -C "$repo" "$@" "guard test" > "$output_path" 2>&1
   status=$?
   set -e
@@ -456,8 +476,8 @@ mkdir -p "$test_root/log-is-directory"
 run_launcher tee-failure minase "$repo" review_write --log "$test_root/log-is-directory"
 assert_status tee-failure 3
 assert_output tee-failure '権限逸脱'
-assert_output tee-failure 'session_id: 不明'
-pass 'unreadable log does not bypass the post-run guard'
+assert_output tee-failure 'session_id: 00000000-0000-0000-0000-000000000000'
+pass 'unreadable log does not bypass the post-run guard and the session id survives via the run_dir log'
 
 repo="$test_root/codex-failure"
 init_repo "$repo"
@@ -631,5 +651,56 @@ for run in "${concurrent_runs[@]}"; do
   [ -f "$test_root/state-concurrent/logs/${run##*/}.log" ] || fail 'run log missing'
 done
 pass 'same-second concurrent launches have distinct run directories, logs and intact prompts'
+
+
+# ---- 柏木の巡ループ(1 巡 = 1 session、verdict.md でつなぐ)
+repo="$test_root/rounds"
+init_repo "$repo"
+FAKE_VERDICT='継続,継続,承認' run_launcher rounds-3 kashiwagi "$repo" none
+assert_status rounds-3 0
+assert_output rounds-3 '巡数: 3'
+assert_output rounds-3 'verdict: 承認'
+rounds_run_dir="$(< "$test_root/capture-rounds-3/run-dir.txt")"
+for n in 1 2 3; do
+  [ -s "$rounds_run_dir/rounds/r$n/verdict.md" ] || fail "rounds-3: rounds/r$n/verdict.md is absent"
+  [ -s "$rounds_run_dir/rounds/r$n/prompt.md" ] || fail "rounds-3: rounds/r$n/prompt.md is absent"
+done
+[ ! -e "$rounds_run_dir/verdict.md" ] || fail 'rounds-3: stale verdict.md remains in run_dir'
+LC_ALL=C grep -Fq -- '巡: 2 / 12' "$test_root/capture-rounds-3/stdin-r2.txt" || fail 'rounds-3: round 2 prompt lacks the round line'
+LC_ALL=C grep -Fq -- '## 前巡までの checkpoint(この session は巡 2。' "$test_root/capture-rounds-3/stdin-r2.txt" || fail 'rounds-3: round 2 prompt lacks the checkpoint section'
+LC_ALL=C grep -Fq -- 'findings 巡 1' "$test_root/capture-rounds-3/stdin-r2.txt" || fail 'rounds-3: round 2 prompt lacks findings from round 1'
+LC_ALL=C grep -Fq -- '巡 1 の判定' "$test_root/capture-rounds-3/stdin-r2.txt" || fail 'rounds-3: round 2 prompt lacks the previous verdict'
+if LC_ALL=C grep -Fq -- '## 前巡までの checkpoint(' "$test_root/capture-rounds-3/stdin-r1.txt"; then
+  fail 'rounds-3: round 1 prompt unexpectedly carries a checkpoint section'
+fi
+LC_ALL=C grep -Fxq -- "$rounds_run_dir/rounds/r3/last-message.md" "$test_root/capture-rounds-3/argv-r3.txt" || fail 'rounds-3: round 3 argv lacks its own -o path'
+LC_ALL=C grep -Fxq -- 'features.multi_agent_v2.default_wait_timeout_ms=1200000' "$test_root/capture-rounds-3/argv.txt" || fail 'rounds-3: wait timeout override is absent'
+pass 'kashiwagi loops one session per round until verdict 承認, carrying checkpoint into later prompts'
+
+FAKE_VERDICT='none' run_launcher rounds-missing kashiwagi "$repo" none
+assert_status rounds-missing 4
+assert_output rounds-missing 'verdict.md が無いか'
+pass 'kashiwagi without verdict.md exits 4'
+
+FAKE_VERDICT='継続' run_launcher rounds-cap kashiwagi "$repo" none --rounds 2
+assert_status rounds-cap 5
+assert_output rounds-cap '巡数: 2'
+assert_output rounds-cap '巡数上限 2 に到達'
+pass 'kashiwagi hitting --rounds exits 5'
+
+FAKE_VERDICT='継続' run_launcher rounds-noloop kashiwagi "$repo" none --no-loop
+assert_status rounds-noloop 0
+assert_output rounds-noloop '巡数: 1'
+pass 'kashiwagi --no-loop runs a single session regardless of verdict'
+
+FAKE_VERDICT='エスカレーション' run_launcher rounds-escalate kashiwagi "$repo" none
+assert_status rounds-escalate 0
+assert_output rounds-escalate 'verdict: エスカレーション'
+assert_output rounds-escalate '巡数: 1'
+pass 'kashiwagi verdict エスカレーション ends the loop after one round'
+
+assert_no_arg argv-makabe 'features.multi_agent_v2.default_wait_timeout_ms=1200000'
+assert_no_arg argv-minase 'features.multi_agent_v2.default_wait_timeout_ms=1200000'
+pass 'wait timeout override is kashiwagi-only'
 
 printf '1..%d\n' "$pass_count"

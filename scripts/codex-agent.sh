@@ -19,12 +19,17 @@ options:
       --guard              実行後の権限ガードを有効化(既定: minase / makabe は on、kashiwagi は off)
       --no-guard           実行後の権限ガードを省略
       --mcp                MCP server を有効のまま起動
+      --rounds <n>         kashiwagi の巡数上限(既定 12)。verdict が「継続」の間、新しい session で次の巡を起こす
+      --no-loop            kashiwagi でも 1 session だけ走らせる(巡ループ無し)
   -h, --help               この usage を表示
 
 task と --file が無い場合は標準入力からタスク本文を読む。
 
 起動時の run_dir(~/.codex-agents/runs/<run_id>)を CODEX_AGENT_RUN_DIR で Codex へ渡す。
-kashiwagi はプロンプト末尾(「今回のタスク」の前)に「plan の置き場: <run_dir>/plan.md」の 1 行を受け取る。
+kashiwagi はプロンプト末尾(「今回のタスク」の前)に checkpoint の置き場(<run_dir>/plan.md / findings.md / verdict.md)と巡番号を受け取る。
+kashiwagi は 1 巡 = 1 session(役員 人見 2026-09-16)。各巡の終わりに <run_dir>/verdict.md の 1 行目を読み、
+「verdict: 継続」なら新しい session で次の巡、「verdict: 承認」「verdict: エスカレーション」で終端。
+verdict が無い・不正なら exit 4、巡数上限に当たったら exit 5。--resume 時はループしない。
 USAGE
 }
 
@@ -94,6 +99,8 @@ model=""
 guard_enabled=1
 [ "$persona" != "kashiwagi" ] || guard_enabled=0
 mcp_enabled=0
+max_rounds=12
+loop_enabled=1
 task_files=()
 task_args=()
 
@@ -140,6 +147,16 @@ while [ "$#" -gt 0 ]; do
       ;;
     --mcp)
       mcp_enabled=1
+      shift
+      ;;
+    --rounds)
+      [ "$#" -ge 2 ] || die "$1 には n が必要"
+      [[ "$2" =~ ^[1-9][0-9]*$ ]] || die "--rounds は 1 以上の整数: $2"
+      max_rounds="$2"
+      shift 2
+      ;;
+    --no-loop)
+      loop_enabled=0
       shift
       ;;
     -h|--help)
@@ -214,17 +231,49 @@ LC_ALL=C grep -q '[^[:space:]]' "$task_path" || die "タスク本文が空白の
 # 柏木は plan を作業木でなく run_dir に置く(真壁に検収の手を見せない)。場所は推測させず、環境とプロンプトの両方で渡す。
 export CODEX_AGENT_RUN_DIR="$run_dir"
 
+# kashiwagi の巡ループ: --resume 時と --no-loop 時は 1 session だけ
+if [ "$persona" != kashiwagi ] || [ -n "$resume_id" ]; then
+  loop_enabled=0
+fi
+rounds_dir="$run_dir/rounds"
+
+# 巡 N のプロンプトを組む。巡 2 以降は前巡までの checkpoint(plan / findings / 前巡の verdict)を末尾に写す。
+build_prompt() {
+  local round="$1"
+  local out="$2"
+  local prev_verdict=""
+  {
+    cat "$CORE/roles/$persona.md"
+    printf '\n\n'
+    cat "$CORE/codex/$persona.md"
+    if [ "$persona" = kashiwagi ]; then
+      printf '\ncheckpoint の置き場: %s(plan.md / findings.md / verdict.md)\n' "$run_dir"
+      printf 'plan の置き場: %s/plan.md\n' "$run_dir"
+      printf '巡: %s / %s\n' "$round" "$max_rounds"
+      if [ "$round" -gt 1 ]; then
+        prev_verdict="$rounds_dir/r$((round - 1))/verdict.md"
+        printf '\n## 前巡までの checkpoint(この session は巡 %s。以下は前の session が残したもの)\n' "$round"
+        for name in plan.md findings.md; do
+          if [ -s "$run_dir/$name" ]; then
+            printf '\n### %s\n\n' "$name"
+            cat "$run_dir/$name"
+            printf '\n'
+          fi
+        done
+        if [ -s "$prev_verdict" ]; then
+          printf '\n### 前巡の verdict.md\n\n'
+          cat "$prev_verdict"
+          printf '\n'
+        fi
+      fi
+    fi
+    printf '\n\n## 今回のタスク\n\n'
+    cat "$task_path"
+  } > "$out"
+}
+
 prompt_path="$run_dir/prompt.md"
-{
-  cat "$CORE/roles/$persona.md"
-  printf '\n\n'
-  cat "$CORE/codex/$persona.md"
-  if [ "$persona" = kashiwagi ]; then
-    printf '\nplan の置き場: %s/plan.md' "$run_dir"
-  fi
-  printf '\n\n## 今回のタスク\n\n'
-  cat "$task_path"
-} > "$prompt_path"
+build_prompt 1 "$prompt_path"
 
 mcp_args=()
 if [ "$mcp_enabled" -eq 0 ]; then
@@ -278,20 +327,24 @@ common_args=(
   -c "model_reasoning_effort=\"$effort\""
   "${mcp_args[@]}"
   -C "$root"
-  -o "$run_dir/last-message.md"
 )
 if [ -n "$model" ]; then
   common_args+=(-m "$model")
+fi
+if [ "$persona" = kashiwagi ]; then
+  # wait_agent の既定 timeout は 30 秒(codex 0.153.4、未修正)。20 分に 1 回しか起きない(役員 人見 2026-09-16)。
+  common_args+=(-c "features.multi_agent_v2.default_wait_timeout_ms=1200000")
 fi
 if [ "$git_repo" -eq 0 ]; then
   common_args+=(--skip-git-repo-check)
 fi
 
 if [ -n "$resume_id" ]; then
-  command_args=(codex exec "${common_args[@]}" resume "$resume_id" -)
+  command_args_base=(codex exec "${common_args[@]}" resume "$resume_id")
 else
-  command_args=(codex exec "${common_args[@]}" -)
+  command_args_base=(codex exec "${common_args[@]}")
 fi
+command_args=("${command_args_base[@]}" -o "$run_dir/last-message.md" -)
 
 if [ "${CODEX_AGENT_DRY_RUN:-0}" = "1" ]; then
   printf 'dry-run command:'
@@ -557,21 +610,118 @@ if [ "$git_repo" -eq 1 ]; then
 fi
 
 echo "[$persona] Codex 起動 root=$root log=$log_path"
-set +e
-if command -v stdbuf >/dev/null 2>&1; then
-  stdbuf -oL -eL "${command_args[@]}" < "$prompt_path" 2>&1 | stdbuf -oL tee "$log_path"
-else
-  "${command_args[@]}" < "$prompt_path" 2>&1 | tee "$log_path"
-fi
-pipeline_status=("${PIPESTATUS[@]}")
-set -e
-codex_status="${pipeline_status[0]:-1}"
-tee_status="${pipeline_status[1]:-0}"
 
-session_id="$(sed -nE 's/.*session id:[[:space:]]*([0-9a-fA-F-]{36}).*/\1/p' "$log_path" 2>/dev/null | head -n 1 || true)"
-if [ -z "$session_id" ]; then
-  session_id="不明"
+# 1 巡ぶん Codex を走らせる。stdout は $log_path へ(巡 1 は上書き、巡 2 以降は追記)、session id は巡ごとの log から取る。
+run_codex_once() {
+  local in_prompt="$1"
+  local round_log="$2"
+  local mode="${3:-overwrite}"
+  local tee_opts=()
+  if [ "$mode" = append ]; then
+    tee_opts=(-a)
+  fi
+  set +e
+  if command -v stdbuf >/dev/null 2>&1; then
+    stdbuf -oL -eL "${command_args[@]}" < "$in_prompt" 2>&1 | stdbuf -oL tee "$round_log" | stdbuf -oL tee "${tee_opts[@]}" "$log_path"
+  else
+    "${command_args[@]}" < "$in_prompt" 2>&1 | tee "$round_log" | tee "${tee_opts[@]}" "$log_path"
+  fi
+  pipeline_status=("${PIPESTATUS[@]}")
+  set -e
+  codex_status="${pipeline_status[0]:-1}"
+  tee_status="${pipeline_status[1]:-0}"
+  if [ "$tee_status" -eq 0 ]; then
+    tee_status="${pipeline_status[2]:-0}"
+  fi
+  session_id="$(sed -nE 's/.*session id:[[:space:]]*([0-9a-fA-F-]{36}).*/\1/p' "$round_log" 2>/dev/null | head -n 1 || true)"
+  if [ -z "$session_id" ]; then
+    session_id="不明"
+  fi
+}
+
+# verdict.md の 1 行目を読む。継続 / 承認 / エスカレーション 以外は空を返す。
+read_verdict() {
+  local path="$1"
+  local first
+  [ -s "$path" ] || return 0
+  first="$(head -n 1 "$path" | tr -d '\r')"
+  case "$first" in
+    'verdict: 継続'|'verdict:継続') printf '継続\n' ;;
+    'verdict: 承認'|'verdict:承認') printf '承認\n' ;;
+    'verdict: エスカレーション'|'verdict:エスカレーション') printf 'エスカレーション\n' ;;
+    *) printf '\n' ;;
+  esac
+}
+
+codex_status=0
+tee_status=0
+session_id="不明"
+verdict=""
+verdict_status=0
+rounds_run=0
+session_ids=()
+
+if [ "$loop_enabled" -eq 0 ]; then
+  run_codex_once "$prompt_path" "$run_dir/codex.log"
+  rounds_run=1
+  session_ids+=("$session_id")
+  if [ "$persona" = kashiwagi ]; then
+    verdict="$(read_verdict "$run_dir/verdict.md")"
+  fi
+else
+  round=1
+  while :; do
+    round_dir="$rounds_dir/r$round"
+    mkdir -p "$round_dir"
+    round_prompt="$round_dir/prompt.md"
+    if [ "$round" -eq 1 ]; then
+      cp "$prompt_path" "$round_prompt"
+    else
+      build_prompt "$round" "$round_prompt"
+    fi
+    # 前巡の verdict.md が残っていたら退避済みのはず。残っていれば古いものとして消す。
+    rm -f "$run_dir/verdict.md"
+    echo "[$persona] 巡 $round / $max_rounds 開始 session=新規"
+    command_args=("${command_args_base[@]}" -o "$round_dir/last-message.md" -)
+    if [ "$round" -eq 1 ]; then
+      run_codex_once "$round_prompt" "$round_dir/codex.log"
+    else
+      run_codex_once "$round_prompt" "$round_dir/codex.log" append
+    fi
+    rounds_run="$round"
+    session_ids+=("$session_id")
+    printf '%s\n' "$session_id" > "$round_dir/session_id"
+    if [ -s "$round_dir/last-message.md" ]; then
+      cp "$round_dir/last-message.md" "$run_dir/last-message.md"
+    fi
+    verdict="$(read_verdict "$run_dir/verdict.md")"
+    if [ -s "$run_dir/verdict.md" ]; then
+      mv "$run_dir/verdict.md" "$round_dir/verdict.md"
+    fi
+    echo "巡 $round session_id: $session_id verdict: ${verdict:-不明}"
+    if [ "$codex_status" -ne 0 ]; then
+      echo "巡 $round: Codex が異常終了(status=$codex_status)。ループを止める" >&2
+      break
+    fi
+    case "$verdict" in
+      承認|エスカレーション) break ;;
+      継続)
+        if [ "$round" -ge "$max_rounds" ]; then
+          echo "巡数上限 $max_rounds に到達。verdict は継続のまま。鷹野が見る" >&2
+          verdict_status=5
+          break
+        fi
+        round=$((round + 1))
+        ;;
+      *)
+        echo "巡 $round: verdict.md が無いか 1 行目が不正。鷹野が見る" >&2
+        verdict_status=4
+        break
+        ;;
+    esac
+  done
 fi
+
 printf '%s\n' "$session_id" > "$run_dir/session_id"
 echo "session_id: $session_id"
 
@@ -704,6 +854,11 @@ fi
 
 echo "persona: $persona"
 echo "session_id: $session_id"
+if [ "$persona" = kashiwagi ]; then
+  echo "巡数: $rounds_run"
+  echo "verdict: ${verdict:-不明}"
+  echo "session_ids: ${session_ids[*]}"
+fi
 echo "log: $log_path"
 if [ "$git_repo" -eq 1 ]; then
   echo "変更ファイル数: ${#changed_files[@]}"
@@ -711,7 +866,7 @@ else
   echo "変更ファイル数: 0 (非 git のため未計測)"
 fi
 
-# 権限逸脱を最優先し、それがなければ Codex / tee の失敗を返す。
+# 権限逸脱を最優先し、それがなければ Codex / tee の失敗、次に verdict の異常(4: 不正・欠落、5: 巡数上限)を返す。
 if [ "$guard_status" -ne 0 ]; then
   exit 3
 fi
@@ -720,5 +875,8 @@ if [ "$codex_status" -ne 0 ]; then
 fi
 if [ "$tee_status" -ne 0 ]; then
   exit "$tee_status"
+fi
+if [ "$verdict_status" -ne 0 ]; then
+  exit "$verdict_status"
 fi
 exit 0
