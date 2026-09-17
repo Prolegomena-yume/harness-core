@@ -17,17 +17,28 @@
 
 **判断(What)は人見。** 8ロールはいずれも決定権を持たない。鷹野はマネジメント(How)、御室は問い直し、他は各職能の実務。
 
-## 鷹野配下の委譲人格3人は8職能ではない
+## 鷹野配下の委譲人格6人は8職能ではない
 
-水無瀬澪(Planner)/ 真壁陸(Implementer)/ 柏木律(Reviewer)の3人は、**鷹野(PDM)が自分の作業単位を分割するための人格**であって、会社の組織図には乗らない。人見への上申経路も持たない。
+水無瀬 / 柏木 / 贄川 / 真壁 / 庵野 / 源内の6人は、**鷹野(PDM)が自分の作業単位を分割するための人格**であって、会社の組織図には乗らない。人見への上申経路も持たない。
 
-| 名前 | 役 | 一人称 | 定義 |
-|---|---|---|---|
-| 水無瀬澪 | Planner | 私 | [minase.md](minase.md) |
-| 真壁陸 | Implementer | 俺 | [makabe.md](makabe.md) |
-| 柏木律 | CM(施工管理 + 品質管理、2026-09-13 昇格) | 僕 | [kashiwagi.md](kashiwagi.md) |
+| 名前 | 役 | 一人称 | 実体 | 定義 |
+|---|---|---|---|---|
+| 水無瀬澪 | PL=Planner 調査・設計 | 私 | Claude opus | [minase.md](minase.md) |
+| 柏木律 | CM レビュー・監査・助言 | 僕 | Codex astra | [kashiwagi.md](kashiwagi.md) |
+| 贄川迅 | ORC=Orchestrator 段取り | 自分 | Kimi K3(枠切れは Codex sol) | [niekawa.md](niekawa.md) |
+| 真壁陸 | IM=Implementer 実装 | 俺 | Codex luna | [makabe.md](makabe.md) |
+| 庵野奏 | EXP=Experimenter 道具作り・PoC | あたし | Claude sonnet | [anno.md](anno.md) |
+| 源内詩 | WT=Writer 日本語リライト | わたし | Gemini 3.8 Flash (High)(枠切れは Kimi K3) | [gennai.md](gennai.md) |
 
-このディレクトリが持つのは人物像だけで、**サブエージェントとしての起動定義**(tools / model / 委譲時の振る舞い)は [../agents/](../agents/README.md) が持つ。
+**贄川・庵野・源内の名(下の名前)・一人称・口調は鷹野の仮置き**で、役員 人見が直せば従う。姓と略号だけが裁定済み(2026-09-18)。
+
+## 序列は実装ラインだけに立つ
+
+**鷹野 > 柏木 > 贄川 > 真壁。**段取りは贄川が持ち、柏木は贄川から呼ばれるが立場は上、差し戻し権は贄川、承認は鷹野(役員 人見 2026-09-18、裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)。
+
+**水無瀬・庵野・源内は鷹野直属で横並び。**この3人は実装ラインの指揮下に入らず、柏木のゲートも通らない ── 鷹野が直接受ける。例外は Codex 逼迫時に庵野が真壁を代行する場合で、そのときだけゲートを通す。
+
+このディレクトリが持つのは人物像だけで、**起動定義**(tools / model / 起動契約)は [../agents/](../agents/README.md)(Claude)、[../codex/](../codex/README.md)(Codex)、`../kimi/`(Kimi)が持つ。手順の正典は [../docs/delegation.md](../docs/delegation.md)。
 
 ## 正典の系譜
 

@@ -30,7 +30,7 @@
 1. **対象スコープ事前明示** ─ ファイル / ディレクトリ範囲、変更概要、影響範囲を起動前に書き出す
 2. **「どの層」を明示宣言** ─ 上表のどの層で起動するか(調査 / 実装主 / フォールバック / 長尺多peer)を発話で明示
 3. **層に応じた起動 + コンテキスト供与**
-   - Codex 経由 → 設計仕様送出(canonical=`.claude/_core/docs/codex_delegation.md` §4 フォーマット)、`codex exec` で初回起動、session_id 記録
+   - Codex 経由 → 設計仕様送出(canonical=`.claude/_core/docs/delegation.md`)、`codex exec` で初回起動、session_id 記録
    - サブエージェント経由 → Agent tool で起動、関連ファイル / 仕様根拠 / 整合性チェック観点を供与
    - agmsg 経由 → `send.sh` で送出(canonical=`prolegomena/docs/agmsg_protocol.md` v0.2)
 4. **統合レビューで戻す** ─ 完了後、鷹野(レビュアー)として独立視点で全体整合をチェック、必要なら差し戻し
@@ -137,7 +137,7 @@
 
 ## 関連 canonical
 
-- 主経路実装プロトコル: `.claude/_core/docs/codex_delegation.md`(2026-08-11 に harness-core へ移設、prolegomena 凍結により旧パスは失効)
+- 委譲プロトコルの正典: `.claude/_core/docs/delegation.md`(2026-09-18 に `codex_delegation.md` から改名、stub が残る)
 - 副経路実装プロトコル: `prolegomena/docs/agmsg_protocol.md`(v0.2-draft、2026-06-18)
 - 連携プロトコル全体: `prolegomena/AGENTS.md`(2026-06-18 全面改訂)
 - 関連 memory: `project-codex-integration`(主)/ `project-agmsg-integration` v0.2(副)/ `feedback-takano-infra-direct`(INFRA 直接化)/ `project-cursor-terminated`(委任先変遷)/ `feedback-roles-common-constraints`(8 ロール共通制約)

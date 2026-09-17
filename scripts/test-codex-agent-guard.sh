@@ -4,6 +4,7 @@ set -euo pipefail
 
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 launcher="$script_dir/codex-agent.sh"
+kimi_launcher="$script_dir/kimi-niekawa.sh"
 test_root="$(mktemp -d /tmp/codex-agent-guard.XXXXXX)"
 fake_bin="$test_root/bin"
 empty_codex_home="$test_root/codex-home"
@@ -146,6 +147,78 @@ exit "$fake_status"
 FAKE_CODEX
 chmod +x "$fake_bin/codex"
 
+# rates codex は起動時に 1 回だけ叩かれる(裁定 #8)。実ネットワークを叩かないよう固定 JSON を返す fake に差し替える。
+cat > "$fake_bin/rates" <<'FAKE_RATES'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${CODEX_AGENT_FAKE_RATES_FAIL:-0}" = 1 ]; then
+  echo "fake rates failure" >&2
+  exit 1
+fi
+printf '{"email":"guard@example.invalid","remaining":{"5h":null,"weekly":%s,"monthly":null}}\n' \
+  "${CODEX_AGENT_FAKE_RATES_WEEKLY:-69}"
+FAKE_RATES
+chmod +x "$fake_bin/rates"
+
+# kimi-niekawa.sh 用の fake kimi。stream-json を模した 3 行(system.version / assistant / session.resume_hint)を
+# 返し、CODEX_AGENT_RUN_DIR の .fake-round-count で巡番号を数え、CODEX_AGENT_FAKE_VERDICT を verdict.md に書く
+# (fake codex と同じ仕組み)。-p の実引数と --agent-file / -m / --output-format を capture_dir に記録する。
+cat > "$fake_bin/kimi" <<'FAKE_KIMI'
+#!/usr/bin/env bash
+set -euo pipefail
+
+prompt_arg=""
+agent_file=""
+model=""
+output_format=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -p) prompt_arg="$2"; shift 2 ;;
+    --agent-file) agent_file="$2"; shift 2 ;;
+    -m) model="$2"; shift 2 ;;
+    --output-format) output_format="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+fake_round=1
+if [ -n "${CODEX_AGENT_RUN_DIR:-}" ]; then
+  fake_count_path="$CODEX_AGENT_RUN_DIR/.fake-round-count"
+  fake_round=$(( $(cat "$fake_count_path" 2>/dev/null || echo 0) + 1 ))
+  printf '%s\n' "$fake_round" > "$fake_count_path"
+fi
+
+capture_dir="${CODEX_AGENT_FAKE_CAPTURE_DIR:-}"
+if [ -n "$capture_dir" ]; then
+  mkdir -p "$capture_dir"
+  printf '%s\n' "$prompt_arg" > "$capture_dir/prompt-r$fake_round.txt"
+  printf '%s\n' "$agent_file" > "$capture_dir/agent-file-r$fake_round.txt"
+  printf '%s\n' "$model" > "$capture_dir/model-r$fake_round.txt"
+  printf '%s\n' "$output_format" > "$capture_dir/output-format-r$fake_round.txt"
+  printf '%s\n' "${CODEX_AGENT_RUN_DIR:-}" > "$capture_dir/run-dir.txt"
+  printf '%s\n' "$GIT_AUTHOR_NAME" "$GIT_AUTHOR_EMAIL" "$GIT_COMMITTER_NAME" "$GIT_COMMITTER_EMAIL" > "$capture_dir/identity.txt"
+fi
+
+fake_verdict="${CODEX_AGENT_FAKE_VERDICT:-承認}"
+if [ -n "${CODEX_AGENT_RUN_DIR:-}" ] && [ "$fake_verdict" != none ]; then
+  IFS=, read -r -a fake_verdicts <<< "$fake_verdict"
+  fake_index=$((fake_round - 1))
+  if [ "$fake_index" -ge "${#fake_verdicts[@]}" ]; then
+    fake_index=$((${#fake_verdicts[@]} - 1))
+  fi
+  printf 'verdict: %s\n巡 %s の判定\n' "${fake_verdicts[$fake_index]}" "$fake_round" > "$CODEX_AGENT_RUN_DIR/verdict.md"
+  printf 'findings 巡 %s\n' "$fake_round" >> "$CODEX_AGENT_RUN_DIR/findings.md"
+fi
+
+session_id="session_fake-r$fake_round"
+printf '{"role":"meta","type":"system.version","version":"0.40.1-fake"}\n'
+printf '{"role":"assistant","content":"fake response r%s"}\n' "$fake_round"
+printf '{"role":"meta","type":"session.resume_hint","session_id":"%s","command":"kimi -r %s","content":"resume"}\n' \
+  "$session_id" "$session_id"
+exit "${CODEX_AGENT_FAKE_KIMI_STATUS:-0}"
+FAKE_KIMI
+chmod +x "$fake_bin/kimi"
+
 pass_count=0
 
 pass() {
@@ -190,6 +263,28 @@ run_launcher() {
     CODEX_AGENT_FAKE_ACTION="$action" \
     CODEX_AGENT_FAKE_VERDICT="${FAKE_VERDICT:-承認}" \
     "$launcher" "$persona" -C "$repo" "$@" "guard test" > "$output_path" 2>&1
+  status=$?
+  set -e
+  printf '%s\n' "$status" > "$test_root/$name.status"
+}
+
+run_kimi_launcher() {
+  local name="$1"
+  local repo="$2"
+  shift 2
+  local state_dir="$test_root/state-$name"
+  local capture_dir="$test_root/capture-$name"
+  local output_path="$test_root/$name.out"
+  local status
+
+  set +e
+  PATH="$fake_bin:$PATH" \
+    GIT_AUTHOR_NAME=old GIT_AUTHOR_EMAIL=old@example.invalid \
+    GIT_COMMITTER_NAME=old GIT_COMMITTER_EMAIL=old@example.invalid \
+    CODEX_AGENT_STATE_DIR="$state_dir" \
+    CODEX_AGENT_FAKE_CAPTURE_DIR="$capture_dir" \
+    CODEX_AGENT_FAKE_VERDICT="${FAKE_VERDICT:-承認}" \
+    "$kimi_launcher" -C "$repo" "$@" > "$output_path" 2>&1
   status=$?
   set -e
   printf '%s\n' "$status" > "$test_root/$name.status"
@@ -653,10 +748,10 @@ done
 pass 'same-second concurrent launches have distinct run directories, logs and intact prompts'
 
 
-# ---- 柏木の巡ループ(1 巡 = 1 session、verdict.md でつなぐ)
+# ---- 柏木の巡ループ(1 巡 = 1 session、verdict.md でつなぐ)。柏木は既定 off なので --rounds を明示して起動する。
 repo="$test_root/rounds"
 init_repo "$repo"
-FAKE_VERDICT='継続,継続,承認' run_launcher rounds-3 kashiwagi "$repo" none
+FAKE_VERDICT='継続,継続,承認' run_launcher rounds-3 kashiwagi "$repo" none --rounds 12
 assert_status rounds-3 0
 assert_output rounds-3 '巡数: 3'
 assert_output rounds-3 'verdict: 承認'
@@ -677,10 +772,15 @@ LC_ALL=C grep -Fxq -- "$rounds_run_dir/rounds/r3/last-message.md" "$test_root/ca
 LC_ALL=C grep -Fxq -- 'features.multi_agent_v2.default_wait_timeout_ms=1200000' "$test_root/capture-rounds-3/argv.txt" || fail 'rounds-3: wait timeout override is absent'
 pass 'kashiwagi loops one session per round until verdict 承認, carrying checkpoint into later prompts'
 
-FAKE_VERDICT='none' run_launcher rounds-missing kashiwagi "$repo" none
+FAKE_VERDICT='none' run_launcher rounds-missing kashiwagi "$repo" none --rounds 12
 assert_status rounds-missing 4
 assert_output rounds-missing 'verdict.md が無いか'
 pass 'kashiwagi without verdict.md exits 4'
+
+FAKE_VERDICT='継続' run_launcher kashiwagi-default-off kashiwagi "$repo" none
+assert_status kashiwagi-default-off 0
+assert_output kashiwagi-default-off '巡数: 1'
+pass 'kashiwagi loop defaults off (no --rounds): a single session runs even when the fake verdict is 継続'
 
 FAKE_VERDICT='継続' run_launcher rounds-cap kashiwagi "$repo" none --rounds 2
 assert_status rounds-cap 5
@@ -702,5 +802,168 @@ pass 'kashiwagi verdict エスカレーション ends the loop after one round'
 assert_no_arg argv-makabe 'features.multi_agent_v2.default_wait_timeout_ms=1200000'
 assert_no_arg argv-minase 'features.multi_agent_v2.default_wait_timeout_ms=1200000'
 pass 'wait timeout override is kashiwagi-only'
+
+# ---- persona 別の既定 model(発注書 14)
+assert_arg_sequence argv-kashiwagi '-m' 'gpt-6-astra'
+assert_arg_sequence argv-makabe '-m' 'gpt-5.6-luna'
+assert_no_arg argv-minase '-m'
+pass 'kashiwagi defaults to gpt-6-astra, makabe to gpt-5.6-luna, minase has no default model'
+
+repo="$test_root/niekawa"
+init_repo "$repo"
+run_launcher argv-niekawa niekawa "$repo" none
+assert_status argv-niekawa 0
+assert_arg_sequence argv-niekawa '-m' 'gpt-5.6-sol'
+assert_arg_sequence argv-niekawa '-c' 'model_reasoning_effort="high"'
+assert_no_arg argv-niekawa 'features.multi_agent_v2.default_wait_timeout_ms=1200000'
+[ "$(cat "$test_root/capture-argv-niekawa/identity.txt")" = "$(printf '%s\n' 贄川 niekawa@ai.yumemism.dev 贄川 niekawa@ai.yumemism.dev)" ] \
+  || fail 'niekawa: git identity mismatch'
+pass 'niekawa defaults to gpt-5.6-sol, high effort, no wait-timeout override, and 贄川 git identity'
+
+run_launcher override-model niekawa "$repo" none --model gpt-custom
+assert_arg_sequence override-model '-m' 'gpt-custom'
+pass '--model overrides the persona default'
+
+# niekawa の巡ループは既定で on(--rounds を付けなくても継続 verdict で次巡へ進む)
+FAKE_VERDICT='継続,承認' run_launcher niekawa-rounds niekawa "$repo" none
+assert_status niekawa-rounds 0
+assert_output niekawa-rounds '巡数: 2'
+assert_output niekawa-rounds 'verdict: 承認'
+pass 'niekawa loops by default without --rounds, unlike kashiwagi'
+
+FAKE_VERDICT='継続' run_launcher niekawa-noloop niekawa "$repo" none --no-loop
+assert_status niekawa-noloop 0
+assert_output niekawa-noloop '巡数: 1'
+pass 'niekawa --no-loop runs a single session regardless of verdict'
+
+FAKE_VERDICT='none' run_launcher niekawa-missing niekawa "$repo" none
+assert_status niekawa-missing 4
+assert_output niekawa-missing 'verdict.md が無いか'
+pass 'niekawa without verdict.md exits 4 (loop is on by default)'
+
+# ---- rates codex は起動時に 1 回、失敗しても続行する(裁定 #8)
+run_launcher rates-ok makabe "$repo" none
+assert_status rates-ok 0
+rates_run_dir="$(< "$test_root/capture-rates-ok/run-dir.txt")"
+[ -s "$rates_run_dir/rates.json" ] || fail 'rates-ok: rates.json was not written'
+LC_ALL=C grep -Fq '"weekly":69' "$rates_run_dir/rates.json" || fail 'rates-ok: rates.json content mismatch'
+pass 'rates codex is captured once at startup into <run_dir>/rates.json'
+
+set +e
+PATH="$fake_bin:$PATH" GIT_AUTHOR_NAME=old GIT_AUTHOR_EMAIL=old@example.invalid \
+  GIT_COMMITTER_NAME=old GIT_COMMITTER_EMAIL=old@example.invalid \
+  CODEX_HOME="$empty_codex_home" CODEX_AGENT_STATE_DIR="$test_root/state-rates-fail" \
+  CODEX_AGENT_FAKE_RATES_FAIL=1 \
+  "$launcher" makabe -C "$repo" 'guard test' > "$test_root/rates-fail.out" 2>&1
+rates_fail_status=$?
+set -e
+[ "$rates_fail_status" -eq 0 ] || fail "rates-fail: status $rates_fail_status, expected 0"
+LC_ALL=C grep -Fq 'rates codex の取得に失敗した(続行)' "$test_root/rates-fail.out" || fail 'rates-fail: warning missing'
+rates_fail_run_dir="$(find "$test_root/state-rates-fail/runs" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+if [ -f "$rates_fail_run_dir/rates.json" ]; then
+  fail 'rates-fail: rates.json should not exist after a failed rates call'
+fi
+pass 'rates codex failure warns and the launcher still runs to completion'
+
+# ---- footer に run_dir: <絶対パス> を 1 行足す(session_id: の直後、鷹野 09-18 追加指示)
+run_launcher run-dir-footer makabe "$repo" none
+assert_status run-dir-footer 0
+run_dir_footer_dir="$(< "$test_root/capture-run-dir-footer/run-dir.txt")"
+assert_output run-dir-footer "run_dir: $run_dir_footer_dir"
+[[ "$run_dir_footer_dir" = /* ]] || fail 'run-dir-footer: run_dir is not an absolute path'
+LC_ALL=C awk -v want="session_id: $(< "$test_root/state-run-dir-footer/runs/${run_dir_footer_dir##*/}/session_id")" '
+  $0 == want { found_session = NR }
+  /^run_dir: / { found_run_dir = NR }
+  END { exit (found_session && found_run_dir && found_run_dir == found_session + 1) ? 0 : 1 }
+' "$test_root/run-dir-footer.out" || fail 'run-dir-footer: run_dir line does not immediately follow session_id in the footer'
+pass 'footer carries run_dir: <絶対パス> immediately after session_id:'
+
+# ==== kimi-niekawa.sh(fake kimi) ====
+
+repo="$test_root/kimi-rounds"
+init_repo "$repo"
+FAKE_VERDICT='継続,承認' run_kimi_launcher kimi-rounds-2 "$repo" 'kimi guard test'
+assert_status kimi-rounds-2 0
+assert_output kimi-rounds-2 '巡 1 session_id:'
+assert_output kimi-rounds-2 '巡 2 session_id:'
+assert_output kimi-rounds-2 'session_id: session_fake-r2'
+assert_output kimi-rounds-2 '巡数: 2'
+assert_output kimi-rounds-2 'verdict: 承認'
+assert_output kimi-rounds-2 'session_ids: session_fake-r1 session_fake-r2'
+assert_output kimi-rounds-2 '変更ファイル数:'
+kimi_rounds_run_dir="$(< "$test_root/capture-kimi-rounds-2/run-dir.txt")"
+assert_output kimi-rounds-2 "run_dir: $kimi_rounds_run_dir"
+LC_ALL=C grep -Fq -- 'kimi-code/k3-256k' "$test_root/capture-kimi-rounds-2/model-r1.txt" || fail 'kimi-rounds-2: model is not kimi-code/k3-256k'
+LC_ALL=C grep -Fq -- 'stream-json' "$test_root/capture-kimi-rounds-2/output-format-r1.txt" || fail 'kimi-rounds-2: output-format is not stream-json'
+LC_ALL=C grep -Fxq -- "$kimi_rounds_run_dir/agent.md" "$test_root/capture-kimi-rounds-2/agent-file-r1.txt" || fail 'kimi-rounds-2: --agent-file does not point at run_dir/agent.md'
+[ -s "$kimi_rounds_run_dir/rounds/r1/verdict.md" ] || fail 'kimi-rounds-2: rounds/r1/verdict.md is absent'
+[ -s "$kimi_rounds_run_dir/rounds/r2/verdict.md" ] || fail 'kimi-rounds-2: rounds/r2/verdict.md is absent'
+LC_ALL=C grep -Fq -- '巡: 2 / 12' "$test_root/capture-kimi-rounds-2/prompt-r2.txt" || fail 'kimi-rounds-2: round 2 prompt lacks the round line'
+LC_ALL=C grep -Fq -- '## 前巡までの checkpoint(この session は巡 2。' "$test_root/capture-kimi-rounds-2/prompt-r2.txt" || fail 'kimi-rounds-2: round 2 prompt lacks the checkpoint section'
+pass 'kimi-niekawa loops one session per round until verdict 承認, with the same footer words as codex-agent.sh'
+
+FAKE_VERDICT='継続' run_kimi_launcher kimi-noloop "$repo" --no-loop 'kimi guard test'
+assert_status kimi-noloop 0
+assert_output kimi-noloop '巡数: 1'
+pass 'kimi-niekawa --no-loop runs a single session regardless of verdict'
+
+FAKE_VERDICT='none' run_kimi_launcher kimi-missing "$repo" 'kimi guard test'
+assert_status kimi-missing 4
+assert_output kimi-missing 'verdict.md が無いか'
+pass 'kimi-niekawa without verdict.md exits 4'
+
+FAKE_VERDICT='継続' run_kimi_launcher kimi-cap "$repo" --rounds 2 'kimi guard test'
+assert_status kimi-cap 5
+assert_output kimi-cap '巡数上限 2 に到達'
+pass 'kimi-niekawa hitting --rounds exits 5'
+
+run_kimi_launcher kimi-identity "$repo" 'kimi guard test'
+assert_status kimi-identity 0
+kimi_identity_run_dir="$(< "$test_root/capture-kimi-identity/run-dir.txt")"
+[ -s "$kimi_identity_run_dir/rates.json" ] || fail 'kimi-identity: rates.json was not written'
+LC_ALL=C grep -Fq '"weekly":69' "$kimi_identity_run_dir/rates.json" || fail 'kimi-identity: rates.json content mismatch'
+[ "$(cat "$test_root/capture-kimi-identity/identity.txt")" = "$(printf '%s\n' 贄川 niekawa@ai.yumemism.dev 贄川 niekawa@ai.yumemism.dev)" ] \
+  || fail 'kimi-identity: git identity mismatch'
+pass 'kimi-niekawa captures rates kimi once into <run_dir>/rates.json and sets the 贄川 git identity'
+
+# roles/niekawa.md 欠落時は警告して空のまま続行する(水無瀬が並行で書いている最中を想定)
+missing_core="$test_root/missing-core"
+mkdir -p "$missing_core/scripts"
+cp "$kimi_launcher" "$missing_core/scripts/kimi-niekawa.sh"
+mkdir -p "$missing_core/roles" "$missing_core/codex" "$missing_core/kimi"
+repo="$test_root/kimi-missing-role"
+init_repo "$repo"
+set +e
+PATH="$fake_bin:$PATH" GIT_AUTHOR_NAME=old GIT_AUTHOR_EMAIL=old@example.invalid \
+  GIT_COMMITTER_NAME=old GIT_COMMITTER_EMAIL=old@example.invalid \
+  CODEX_AGENT_STATE_DIR="$test_root/state-kimi-missing-role" \
+  CODEX_AGENT_FAKE_CAPTURE_DIR="$test_root/capture-kimi-missing-role" \
+  "$missing_core/scripts/kimi-niekawa.sh" --no-loop -C "$repo" 'kimi guard test' > "$test_root/kimi-missing-role.out" 2>&1
+kimi_missing_role_status=$?
+set -e
+[ "$kimi_missing_role_status" -eq 0 ] || fail "kimi-missing-role: status $kimi_missing_role_status, expected 0"
+LC_ALL=C grep -Fq 'roles/niekawa.md が無い(空として続行)' "$test_root/kimi-missing-role.out" || fail 'kimi-missing-role: missing roles/niekawa.md warning absent'
+LC_ALL=C grep -Fq 'kimi/niekawa.md が無い(空として続行)' "$test_root/kimi-missing-role.out" || fail 'kimi-missing-role: missing kimi/niekawa.md warning absent'
+pass 'kimi-niekawa warns and continues when roles/niekawa.md or kimi/niekawa.md is absent'
+
+# -p の argv は 128KB で落ちる(09-18 実測)ので、100KB を超えたら prompt をファイル経由にする
+repo="$test_root/kimi-bigprompt"
+init_repo "$repo"
+big_task="$test_root/kimi-big-task.md"
+head -c 110000 /dev/zero | tr '\0' 'x' > "$big_task"
+run_kimi_launcher kimi-bigprompt "$repo" -f "$big_task"
+assert_status kimi-bigprompt 0
+kimi_bigprompt_run_dir="$(< "$test_root/capture-kimi-bigprompt/run-dir.txt")"
+[ "$(wc -c < "$kimi_bigprompt_run_dir/rounds/r1/prompt.md")" -gt 102400 ] || fail 'kimi-bigprompt: rendered prompt is not over 100KB'
+LC_ALL=C grep -Fxq -- "まず $kimi_bigprompt_run_dir/rounds/r1/prompt.md を読む" "$test_root/capture-kimi-bigprompt/prompt-r1.txt" \
+  || fail 'kimi-bigprompt: -p was not replaced with the file-read line'
+pass 'kimi-niekawa routes prompts over 100KB through a file and passes a short "read this file" -p line'
+
+small_task="$test_root/kimi-small-task.md"
+printf 'small task\n' > "$small_task"
+run_kimi_launcher kimi-smallprompt "$repo" -f "$small_task"
+assert_status kimi-smallprompt 0
+LC_ALL=C grep -Fq -- 'small task' "$test_root/capture-kimi-smallprompt/prompt-r1.txt" || fail 'kimi-smallprompt: -p should carry the full prompt under 100KB'
+pass 'kimi-niekawa passes the full prompt via -p when it is under 100KB'
 
 printf '1..%d\n' "$pass_count"

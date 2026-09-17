@@ -13,10 +13,11 @@
 | 位置 | 中身 |
 |---|---|
 | [docs/harness_constitution.md](docs/harness_constitution.md) | **最上位規範。**harness 上で動く全 AI セッションが従う。規定の欠落・矛盾時の解釈基準 |
-| [roles/](roles/README.md) | 8職能ロールと委譲人格3人の**人物像**。会社の組織図そのもの |
-| [codex/](codex/README.md) | 委譲人格3人の **Codex 起動定義(主経路)**。人格ごとの sandbox と書き込み範囲 |
-| [agents/](agents/README.md) | 同3人の **Claude Agent tool 起動定義(フォールバック)** |
-| [docs/codex_delegation.md](docs/codex_delegation.md) | **委譲手順の正典。**起動の5点セット、事後ガードの守備範囲、差し戻し |
+| [roles/](roles/README.md) | 8職能ロールと委譲人格6人の**人物像**。会社の組織図そのもの |
+| [codex/](codex/README.md) | 柏木・贄川・真壁・水無瀬の **Codex 起動契約**。人格ごとの sandbox と書き込み範囲 |
+| [agents/](agents/README.md) | 水無瀬・庵野の **Claude Agent tool 起動定義** |
+| `kimi/` | 贄川の **Kimi 起動契約**(主経路) |
+| [docs/delegation.md](docs/delegation.md) | **委譲手順の正典。**人格の表、1 便の流れ、枠の規則、起動の5点セット、P0/P1/P2 |
 | [docs/orchestration.md](docs/orchestration.md) + [orch/](orch/) | **実装層とレビュー層を逐次バトンで回す機構。**claude が叩くのは `orch.sh` 1行 |
 | [docs/bg_session_lifecycle.md](docs/bg_session_lifecycle.md) | **bg セッションの終わらせ方。**`kill` では蘇る |
 | `hooks/` | SessionStart hook(git / session / mirror / Neon / reminders を注入)と cloud の install |

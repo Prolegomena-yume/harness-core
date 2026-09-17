@@ -7,7 +7,7 @@ usage() {
 使い方: codex-agent.sh <persona> [options] [task...]
 
 persona:
-  minase | makabe | kashiwagi
+  minase | makabe | kashiwagi | niekawa
 
 options:
   -f, --file <path>        タスク本文をファイルから読む。複数指定可
@@ -15,21 +15,23 @@ options:
       --log <path>         ログ出力先
       --resume <id>        同じ Codex セッションを継続
       --effort <level>     reasoning effort。既定は makabe が max、他は high
-      --model <id>         Codex model を指定
-      --guard              実行後の権限ガードを有効化(既定: minase / makabe は on、kashiwagi は off)
+      --model <id>         Codex model を指定(既定は persona 別: kashiwagi=gpt-6-astra / makabe=gpt-5.6-luna / niekawa=gpt-5.6-sol / minase=指定無し)
+      --guard              実行後の権限ガードを有効化(既定: minase / makabe は on、kashiwagi / niekawa は off)
       --no-guard           実行後の権限ガードを省略
       --mcp                MCP server を有効のまま起動
-      --rounds <n>         kashiwagi の巡数上限(既定 12)。verdict が「継続」の間、新しい session で次の巡を起こす
-      --no-loop            kashiwagi でも 1 session だけ走らせる(巡ループ無し)
+      --rounds <n>         巡数上限(既定 12)。verdict が「継続」の間、新しい session で次の巡を起こす。
+                            kashiwagi は既定で巡ループ off、この option を明示した時だけ on。niekawa は既定で on
+      --no-loop             1 session だけ走らせる(巡ループ無し)。kashiwagi / niekawa に対して有効
   -h, --help               この usage を表示
 
 task と --file が無い場合は標準入力からタスク本文を読む。
 
-起動時の run_dir(~/.codex-agents/runs/<run_id>)を CODEX_AGENT_RUN_DIR で Codex へ渡す。
-kashiwagi はプロンプト末尾(「今回のタスク」の前)に checkpoint の置き場(<run_dir>/plan.md / findings.md / verdict.md)と巡番号を受け取る。
-kashiwagi は 1 巡 = 1 session(役員 人見 2026-09-16)。各巡の終わりに <run_dir>/verdict.md の 1 行目を読み、
+起動時の run_dir(~/.codex-agents/runs/<run_id>)を CODEX_AGENT_RUN_DIR で Codex へ渡す。起動時に `rates codex` を 1 回叩いて
+<run_dir>/rates.json に残す(失敗は警告のみで続行)。
+kashiwagi / niekawa はプロンプト末尾(「今回のタスク」の前)に checkpoint の置き場(<run_dir>/plan.md / findings.md / verdict.md)と巡番号を受け取る。
+1 巡 = 1 session(役員 人見 2026-09-16)。各巡の終わりに <run_dir>/verdict.md の 1 行目を読み、
 「verdict: 継続」なら新しい session で次の巡、「verdict: 承認」「verdict: エスカレーション」で終端。
-verdict が無い・不正なら exit 4、巡数上限に当たったら exit 5。--resume 時はループしない。
+巡ループが有効な実行で verdict が無い・不正なら exit 4、巡数上限に当たったら exit 5。--resume 時はループしない。
 USAGE
 }
 
@@ -69,8 +71,14 @@ fi
 persona="$1"
 shift
 case "$persona" in
-  minase|makabe|kashiwagi) ;;
+  minase|makabe|kashiwagi|niekawa) ;;
   *) die "不正な persona: $persona" ;;
+esac
+
+# 巡ループ(checkpoint + verdict.md)対応 persona。kashiwagi は既定 off、niekawa は既定 on(下で分岐)。
+case "$persona" in
+  kashiwagi|niekawa) supports_loop=1 ;;
+  *) supports_loop=0 ;;
 esac
 
 script_path="$(resolve_self)"
@@ -95,12 +103,24 @@ case "$persona" in
   makabe) effort="max" ;;
   *) effort="high" ;;
 esac
-model=""
+# 既定の model は persona 別(発注書 14 ── ランチャが --model を渡さないと codex の既定 gpt-5.6-sol になる欠陥への対処)。
+case "$persona" in
+  kashiwagi) model="gpt-6-astra" ;;
+  makabe) model="gpt-5.6-luna" ;;
+  niekawa) model="gpt-5.6-sol" ;;
+  *) model="" ;;
+esac
 guard_enabled=1
-[ "$persona" != "kashiwagi" ] || guard_enabled=0
+case "$persona" in
+  kashiwagi|niekawa) guard_enabled=0 ;;
+esac
 mcp_enabled=0
 max_rounds=12
-loop_enabled=1
+# 巡ループの既定は persona 別:niekawa は on、kashiwagi は off(--rounds を明示した時だけ on)、他は無効化される(下で強制 off)。
+case "$persona" in
+  niekawa) loop_enabled=1 ;;
+  *) loop_enabled=0 ;;
+esac
 task_files=()
 task_args=()
 
@@ -153,6 +173,8 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || die "$1 には n が必要"
       [[ "$2" =~ ^[1-9][0-9]*$ ]] || die "--rounds は 1 以上の整数: $2"
       max_rounds="$2"
+      # --rounds を明示したら巡ループを起動する(kashiwagi の既定 off を上書き)。
+      loop_enabled=1
       shift 2
       ;;
     --no-loop)
@@ -202,11 +224,22 @@ agent_state_dir="${CODEX_AGENT_STATE_DIR:-$HOME/.codex-agents}"
 run_id="$persona-$timestamp-$$-$RANDOM"
 run_dir="$agent_state_dir/runs/$run_id"
 mkdir -p "$run_dir"
+run_dir="$(cd -P "$run_dir" && pwd)"
 
 if [ -z "$log_path" ]; then
   log_path="$agent_state_dir/logs/$run_id.log"
 fi
 mkdir -p "$(dirname "$log_path")"
+
+# rates ゲートはランチャに入れない(裁定 #8)。自サービスの残量を起動時に 1 回だけ記録する。失敗は警告のみで続行。
+if command -v rates >/dev/null 2>&1; then
+  if ! rates codex > "$run_dir/rates.json" 2>"$run_dir/rates.err"; then
+    echo "警告: rates codex の取得に失敗した(続行): $(tr '\n' ' ' < "$run_dir/rates.err")" >&2
+    rm -f "$run_dir/rates.json"
+  fi
+else
+  echo "警告: rates コマンドが見つからない(続行)" >&2
+fi
 
 task_path="$run_dir/task.md"
 if [ "${#task_files[@]}" -eq 0 ] && [ "${#task_args[@]}" -eq 0 ]; then
@@ -231,8 +264,8 @@ LC_ALL=C grep -q '[^[:space:]]' "$task_path" || die "タスク本文が空白の
 # 柏木は plan を作業木でなく run_dir に置く(真壁に検収の手を見せない)。場所は推測させず、環境とプロンプトの両方で渡す。
 export CODEX_AGENT_RUN_DIR="$run_dir"
 
-# kashiwagi の巡ループ: --resume 時と --no-loop 時は 1 session だけ
-if [ "$persona" != kashiwagi ] || [ -n "$resume_id" ]; then
+# 巡ループ対応 persona 以外、および --resume 時は 1 session だけ
+if [ "$supports_loop" -eq 0 ] || [ -n "$resume_id" ]; then
   loop_enabled=0
 fi
 rounds_dir="$run_dir/rounds"
@@ -246,7 +279,7 @@ build_prompt() {
     cat "$CORE/roles/$persona.md"
     printf '\n\n'
     cat "$CORE/codex/$persona.md"
-    if [ "$persona" = kashiwagi ]; then
+    if [ "$supports_loop" -eq 1 ]; then
       printf '\ncheckpoint の置き場: %s(plan.md / findings.md / verdict.md)\n' "$run_dir"
       printf 'plan の置き場: %s/plan.md\n' "$run_dir"
       printf '巡: %s / %s\n' "$round" "$max_rounds"
@@ -318,6 +351,7 @@ case "$persona" in
   minase) git_name="水無瀬" ;;
   makabe) git_name="真壁" ;;
   kashiwagi) git_name="柏木" ;;
+  niekawa) git_name="贄川" ;;
 esac
 export GIT_AUTHOR_NAME="$git_name" GIT_COMMITTER_NAME="$git_name"
 export GIT_AUTHOR_EMAIL="$persona@ai.yumemism.dev" GIT_COMMITTER_EMAIL="$persona@ai.yumemism.dev"
@@ -665,7 +699,7 @@ if [ "$loop_enabled" -eq 0 ]; then
   run_codex_once "$prompt_path" "$run_dir/codex.log"
   rounds_run=1
   session_ids+=("$session_id")
-  if [ "$persona" = kashiwagi ]; then
+  if [ "$supports_loop" -eq 1 ]; then
     verdict="$(read_verdict "$run_dir/verdict.md")"
   fi
 else
@@ -805,7 +839,7 @@ if [ "$git_repo" -eq 1 ]; then
             *) violations+=("変更禁止: $path") ;;
           esac
           ;;
-        makabe|kashiwagi) ;;
+        makabe|kashiwagi|niekawa) ;;
       esac
     done
 
@@ -854,7 +888,8 @@ fi
 
 echo "persona: $persona"
 echo "session_id: $session_id"
-if [ "$persona" = kashiwagi ]; then
+echo "run_dir: $run_dir"
+if [ "$supports_loop" -eq 1 ]; then
   echo "巡数: $rounds_run"
   echo "verdict: ${verdict:-不明}"
   echo "session_ids: ${session_ids[*]}"

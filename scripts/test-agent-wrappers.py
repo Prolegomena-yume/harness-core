@@ -53,14 +53,15 @@ if Path(sys.argv[0]).name == 'claude':
                               input=input, text=True, capture_output=True, timeout=10,
                               env=env | (overrides or {}))
 
-    for persona, name in [('takano', '鷹野'), ('minase', '水無瀬'), ('kashiwagi', '柏木'), ('makabe', '真壁')]:
+    for persona, name in [('takano', '鷹野'), ('minase', '水無瀬'), ('kashiwagi', '柏木'), ('makabe', '真壁'),
+                          ('niekawa', '贄川'), ('anno', '庵野'), ('gennai', '源内')]:
         for alias in (persona, name):
             result = run('git-as', alias, 'status', '--short')
             assert result.returncode == 0, result.stderr
             data = json.loads(capture.read_text())
             assert data['argv'] == ['-c', f'user.name={name}', '-c', f'user.email={persona}@ai.yumemism.dev', 'status', '--short']
             assert data['identity'] == [name, f'{persona}@ai.yumemism.dev'] * 2
-    passed('git-as accepts all four English/Japanese roles and overrides author/committer')
+    passed('git-as accepts all seven English/Japanese roles (incl. 贄川/庵野/源内) and overrides author/committer')
     for args in [(), ('unknown', 'status'), ('makabe',)]:
         assert run('git-as', *args).returncode == 2
     passed('git-as rejects missing arguments and unknown roles')
@@ -133,5 +134,109 @@ if Path(sys.argv[0]).name == 'claude':
         assert result.returncode != 0 and message in result.stderr
         assert not (root / '.codex/agents/makabe.toml').exists()
     passed('installer rejects triple quotes and control characters before writing consumer or home files')
+
+    # ---- genai.sh(源内の日本語リライト、fake agy / fake kimi)----
+    agy_fake = '''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+prompt = args[args.index('-p') + 1] if '-p' in args else ''
+Path(os.environ['FAKE_CAPTURE']).write_text(json.dumps({'argv': args, 'cwd': os.getcwd(), 'prompt': prompt}))
+if os.environ.get('FAKE_AGY_FAIL'):
+    print('boom', file=sys.stderr)
+    sys.exit(1)
+print(json.dumps({'response': f'AGY:{prompt}'}))
+'''
+    (binary / 'agy').write_text(agy_fake)
+    (binary / 'agy').chmod(0o755)
+
+    kimi_fake = '''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+prompt = args[args.index('-p') + 1] if '-p' in args else ''
+agent_file = args[args.index('--agent-file') + 1] if '--agent-file' in args else ''
+agent_file_text = Path(agent_file).read_text() if agent_file and Path(agent_file).exists() else ''
+Path(os.environ['FAKE_CAPTURE']).write_text(json.dumps(
+    {'argv': args, 'cwd': os.getcwd(), 'prompt': prompt, 'agent_file': agent_file,
+     'agent_file_text': agent_file_text}))
+print(json.dumps({'role': 'meta', 'type': 'system.version', 'version': 'fake'}))
+print(json.dumps({'role': 'assistant', 'content': f'KIMI:{prompt}'}))
+print(json.dumps({'role': 'meta', 'type': 'session.resume_hint', 'session_id': 'session_fake'}))
+'''
+    (binary / 'kimi').write_text(kimi_fake)
+    (binary / 'kimi').chmod(0o755)
+
+    genai_in = root / 'genai-in.md'
+    genai_in.write_text('# heading\n\nsome text with `code`\n')
+    genai_out = root / 'genai-out.md'
+    result = run('genai.sh', genai_in, genai_out)
+    assert result.returncode == 0, result.stderr
+    data = json.loads(capture.read_text())
+    assert data['argv'][0] == '-p'
+    assert data['argv'][2:] == ['--model', 'gemini-3.8-flash-high', '--output-format', 'json',
+                               '--dangerously-skip-permissions', '--disable-slash-commands']
+    assert '日本語を整える、意味を変えない、Markdown 構造と code block を保つ、括弧で原文の語を添えない、本文だけを返す。' in data['prompt']
+    assert 'some text with `code`' in data['prompt']
+    assert data['cwd'] != str(root)  # 空の一時 cwd で走る
+    assert genai_out.read_text() == f"AGY:{data['prompt']}"
+    passed('genai.sh calls agy with the exact contract argv in an empty cwd and writes .response to out')
+
+    result_k3 = run('genai.sh', genai_in, genai_out, '--k3')
+    assert result_k3.returncode == 0, result_k3.stderr
+    data_k3 = json.loads(capture.read_text())
+    assert data_k3['argv'][0] == '-p'
+    assert '--agent-file' in data_k3['argv'] and '-m' in data_k3['argv']
+    assert data_k3['argv'][data_k3['argv'].index('-m') + 1] == 'kimi-code/k3-256k'
+    assert data_k3['argv'][data_k3['argv'].index('--output-format') + 1] == 'stream-json'
+    assert 'disallowedTools: [Bash, Write, Edit, Agent]' in data_k3['agent_file_text']
+    assert genai_out.read_text() == f"KIMI:{data_k3['prompt']}\n"
+    passed('genai.sh --k3 calls kimi with a disallowedTools agent-file and takes the last assistant content')
+
+    result_fail = run('genai.sh', genai_in, genai_out, overrides={'FAKE_AGY_FAIL': '1'})
+    assert result_fail.returncode != 0 and 'agy が失敗した' in result_fail.stderr
+    passed('genai.sh surfaces an agy failure instead of writing a stale out file')
+
+    big_in = root / 'genai-big.md'
+    big_in.write_text('x' * 110_000)
+    result_big = run('genai.sh', big_in, genai_out)
+    assert result_big.returncode == 2 and '100KB を超える' in result_big.stderr
+    passed('genai.sh refuses input over 100KB with exit 2 instead of splitting it')
+
+    for args in [(), ('one',), ('a', 'b', 'c'), ('/absent', genai_out)]:
+        assert run('genai.sh', *args).returncode == 2
+    assert run('genai.sh', '--help').returncode == 0
+    passed('genai.sh rejects a wrong argument count and a missing input file')
+
+    # ---- harness-route.sh(4 サービスの rates、fake rates)----
+    rates_fake = '''#!/usr/bin/env python3
+import json, os, sys
+service = sys.argv[1] if len(sys.argv) > 1 else ''
+weekly_by_service = json.loads(os.environ.get('FAKE_RATES_WEEKLY', '{}'))
+weekly = weekly_by_service.get(service)
+print(json.dumps({'email': 'fake@example.invalid', 'remaining': {'5h': None, 'weekly': weekly, 'monthly': None}}))
+'''
+    (binary / 'rates').write_text(rates_fake)
+    (binary / 'rates').chmod(0o755)
+
+    result = run('harness-route.sh', overrides={'FAKE_RATES_WEEKLY': json.dumps(
+        {'claude': 15, 'codex': 69, 'kimi': 25, 'agy': 10})})
+    assert result.returncode == 0, result.stderr
+    assert '源内: K3(agy weekly < 20%)' in result.stdout
+    assert '贄川: Codex sol(kimi weekly < 30%)' in result.stdout
+    assert 'Claude: 鷹野の窓だけに絞る' in result.stdout
+    assert '実装: 真壁(通常)' in result.stdout
+    passed('harness-route applies the threshold table to fake rates output and never launches anything')
+
+    result_null = run('harness-route.sh', overrides={'FAKE_RATES_WEEKLY': json.dumps(
+        {'claude': None, 'codex': None, 'kimi': None, 'agy': None})})
+    assert result_null.returncode == 0, result_null.stderr
+    assert result_null.stdout.count('claude: 不明') == 1
+    assert result_null.stdout.count('codex : 不明') == 1
+    assert result_null.stdout.count('kimi  : 不明') == 1
+    assert result_null.stdout.count('agy   : 不明') == 1
+    assert '源内: agy(通常)' in result_null.stdout
+    assert '贄川: Kimi K3(通常)' in result_null.stdout
+    passed('harness-route shows 不明 for null weekly and does not switch routing on it')
 
 print(f'1..{count}')

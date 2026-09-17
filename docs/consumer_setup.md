@@ -250,7 +250,7 @@ bash .claude/_core/setup/install-codex-agents.sh
 
 **職域はロールごとに1つ。**consumer ごとにリポ名を差し込む運用はやめた。鷹野(PDM)の職域は「yumemism 配下全般(フォルダではなく事業・目的の単位)」で固定する。
 
-**反映は次回セッション開始時**(commands と agent 定義はセッション開始時に読まれる)。一覧と方針は [../agents/README.md](../agents/README.md)、実装委譲の手順は [codex_delegation.md](codex_delegation.md)。
+**反映は次回セッション開始時**(commands と agent 定義はセッション開始時に読まれる)。一覧と方針は [../agents/README.md](../agents/README.md)、実装委譲の手順は [delegation.md](delegation.md)。
 
 ## 7. Neon 接続先の運用
 

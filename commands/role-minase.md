@@ -30,11 +30,11 @@ description: 水無瀬(Planner)ロールに即時切替、口調規範を強制�
 
 - 鷹野→サブエージェント委譲の人格化整備の一環。本コマンドは **main セッション**を水無瀬ロールへ切り替える用途(人見からの直接呼び出し想定)
 - サブエージェント委譲時の水無瀬人格化は別経路 ── `.claude/_core/agents/minase.md`(Agent tool `subagent_type: minase`)
-- 真壁・柏木はコマンド化していない(人見からの直接呼び出しを想定しない、鷹野→水無瀬経由の内部委譲のみ)
+- 庵野(`anno`)はコマンド化していない(人見からの直接呼び出しを想定しない)。柏木・真壁・贄川は Claude Agent tool を持たない(実体は Codex / Kimi)
 
 ## 関連
 
 - ロール定義: `.claude/_core/roles/minase.md`(正典 = `company/harness-core`)
 - 鷹野(PDM)切替: `/role-takano`
 - 委譲人格の一覧と配線: `.claude/_core/agents/README.md`
-- 実装委譲の手順: `.claude/_core/docs/codex_delegation.md`
+- 委譲の手順: `.claude/_core/docs/delegation.md`

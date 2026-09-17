@@ -77,13 +77,43 @@ WRAPPER
   printf '%s\n' "$target"
 }
 
+write_kimi_niekawa_wrapper() {
+  local target="$bin_dir/kimi-niekawa"
+
+  cat > "$target" <<WRAPPER
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "\${CODEX_AGENT_CORE:-}" ]; then
+  launcher="\$CODEX_AGENT_CORE/scripts/kimi-niekawa.sh"
+elif repo_root="\$(git rev-parse --show-toplevel 2>/dev/null)" && [ -f "\$repo_root/.claude/_core/scripts/kimi-niekawa.sh" ]; then
+  launcher="\$repo_root/.claude/_core/scripts/kimi-niekawa.sh"
+else
+  launcher="\$HOME/canonical/tech/.claude/_core/scripts/kimi-niekawa.sh"
+fi
+
+if [ ! -x "\$launcher" ]; then
+  echo "エラー: kimi-niekawa.sh が見つからないか実行できない: \$launcher" >&2
+  exit 2
+fi
+
+exec "\$launcher" "\$@"
+WRAPPER
+  chmod +x "$target"
+  printf '%s\n' "$target"
+}
+
 echo "Codex 委譲人格の wrapper を配置:"
 write_wrapper minase
 write_wrapper makabe
 write_wrapper kashiwagi
+write_wrapper niekawa
+write_kimi_niekawa_wrapper
 ln -sfn "$core_dir/scripts/git-as" "$bin_dir/git-as"
 ln -sfn "$core_dir/scripts/claude-minase.sh" "$bin_dir/claude-minase"
-printf '%s\n' "$bin_dir/git-as" "$bin_dir/claude-minase"
+ln -sfn "$core_dir/scripts/genai.sh" "$bin_dir/genai"
+ln -sfn "$core_dir/scripts/harness-route.sh" "$bin_dir/harness-route"
+printf '%s\n' "$bin_dir/git-as" "$bin_dir/claude-minase" "$bin_dir/genai" "$bin_dir/harness-route"
 
 # ---- 不変の作法を ~/.codex/AGENTS.md へ配置 ----
 # ホーム共通指示を正典から配る。repo 固有の役定義は --consumer で別途生成する。

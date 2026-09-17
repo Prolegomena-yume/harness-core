@@ -22,7 +22,7 @@ description: 草案)team-takano v2 ── 認知を含む組織運用。採用�
 |---|---|---|
 | Claude role(Opus 系) | v1 の3通形式(ASSIGN/REPORT/ACK)+「待機せよ」 | Blocker 自己判定・長走での視点流れへの対症(v1 の設計事由) |
 | Claude role(Fable 系) | 目的・入力・出力形式・不変則のみ。手順を縛らない | 2026-08-18 盲検3体の実績。過剰な規律は能力を捨てる |
-| Codex(実装・レビュー) | `codex_delegation.md` の5点セット | 既存正典 |
+| Codex(実装・レビュー) | `delegation.md` の5点セット | 既存正典 |
 | grok(実装の手) | 成果物のみで採否。自己申告は根拠にしない | `AGENTS.md` 三層の党派構造 |
 
 ## 認知プロファイル ── team 層の本務

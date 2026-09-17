@@ -1,32 +1,43 @@
 # Codex 委譲人格
 
-柏木・真壁を人格付きの Codex 実行体として起動する定義。柏木[CM]が主で、真壁は柏木が `spawn_agent` で起こす子(consumer の `.codex/agents/makabe.toml`)。水無瀬の主経路は Claude で、ここの `codex-minase` は副経路(2026-09-13 改編、正典は [../docs/codex_delegation.md](../docs/codex_delegation.md))。
+**柏木・贄川・真壁・水無瀬を人格付きの Codex 実行体として起動する定義。**主経路は 贄川[ORC]の段取り → 真壁[IM]の実装で、柏木[CM]はレビュー専任として贄川から 2 回呼ばれる(2026-09-18 改編、役員 人見。手順の正典は [../docs/delegation.md](../docs/delegation.md))。
+
+**贄川の主経路は Kimi K3、水無瀬の主経路は Claude。**ここの `codex-niekawa` と `codex-minase` はそれぞれ枠切れ時の副経路。
 
 ## 人格一覧
 
-3人格とも bypass で起動する。権限は常に開け、書く範囲は契約で決める(指示に「書くな」とあれば書かない)。
+4人格とも bypass で起動する。権限は常に開け、書く範囲は契約で決める(指示に「書くな」とあれば書かない)。
 
-| 人格 | 役 | コマンド | 権限 | 起動定義 |
-|---|---|---|---|---|
-| 水無瀬澪 | Planner(副経路) | `codex-minase` | bypass。Markdown のみ。`docs/` / `_sessions/` は途中階層でも照合し、非 Markdown コードは不可 | [minase.md](minase.md) |
-| 真壁陸 | Implementer | `codex-makabe` | bypass。リポジトリ配下全般へ書き込み可 | [makabe.md](makabe.md) |
-| 柏木律 | CM(施工管理 + 品質管理) | `codex-kashiwagi` | bypass。リポジトリ配下全般(赤入れ・Doc)。事後ガードは既定 off | [kashiwagi.md](kashiwagi.md) |
+| 人格 | 役 | コマンド | 既定 model | 権限 | 起動定義 |
+|---|---|---|---|---|---|
+| 柏木律 | CM(レビュー・監査・助言) | `codex-kashiwagi` | `gpt-6-astra` | bypass。リポジトリ配下全般(P2 の赤入れ・Doc)。事後ガードは既定 off | [kashiwagi.md](kashiwagi.md) |
+| 贄川迅 | ORC(段取り、副経路) | `codex-niekawa` | `gpt-5.6-sol` | bypass。リポジトリ配下全般。事後ガードは既定 off | [niekawa.md](niekawa.md) |
+| 真壁陸 | IM(実装) | `codex-makabe` | `gpt-5.6-luna` | bypass。リポジトリ配下全般へ書き込み可 | [makabe.md](makabe.md) |
+| 水無瀬澪 | PL(調査・設計、副経路) | `codex-minase` | (指定なし) | bypass。Markdown のみ。`docs/` / `_sessions/` は途中階層でも照合し、非 Markdown コードは不可 | [minase.md](minase.md) |
 
-3人とも commit は `git-as <役>` で自分の名義・作業 branch にだけ。push、`main` 直接 commit、`.git/` の直接操作を禁止する。
+**model は persona 別の既定で決まる。**`--model` を手で足さない(足すと persona と model の対応が呼び出し側に散る)。
+
+4人とも commit は `git-as <役>` で自分の名義・作業 branch にだけ。push、`main` 直接 commit、`.git/` の直接操作を禁止する。
+
+## 柏木は巡ループを持たない、贄川が持つ
+
+**柏木は `--no-loop` で 1 ゲート 1 session。**巡ループ(`verdict.md` を読んで次の巡を新 session で起こす形)は贄川の側にある ── 段取りが贄川へ移ったため(2026-09-18)。柏木の巡ループは `--rounds` を明示したときだけ立つ。
+
+**真壁を起こすのは贄川で、`spawn_agent` を使わず `codex-makabe` を Bash / exec から叩く。**トップレベル session になるので `--resume` が効き、並列は worktree で切る。`.codex/agents/makabe.toml`(installer の `--consumer` が生成)は spawn_agent 経路のために残してある。
 
 ## 事後ガードの守備範囲
 
-守備範囲の正典は [Codex 委譲プロトコル](../docs/codex_delegation.md)。現 branch への commit は逸脱にしない。`main` の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする。柏木は既定 off。
+守備範囲の正典は [委譲プロトコル](../docs/delegation.md)。現 branch への commit は逸脱にしない。`main` の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする。柏木は既定 off。
 
 ## 定義の分離
 
-人物像は `../roles/{minase,makabe,kashiwagi}.md` だけが持つ。`../agents/` は Claude Agent tool の起動定義、本ディレクトリは Codex の運用契約だけを持ち、同じ人物像を共有する。
+人物像は `../roles/*.md` だけが持つ。`../agents/` は Claude Agent tool の起動定義(水無瀬・庵野の 2 人だけ)、`../kimi/` は Kimi の運用契約、本ディレクトリは Codex の運用契約で、同じ人物像を共有する。
 
-委譲手順の正典は [../docs/codex_delegation.md](../docs/codex_delegation.md)。各起動定義へ人物像や手順をコピーしない。
+委譲手順の正典は [../docs/delegation.md](../docs/delegation.md)。各起動定義へ人物像や手順をコピーしない。
 
 ## インストール
 
-consumer のリポジトリルートで installer を実行する。`~/bin/codex-minase`、`~/bin/codex-makabe`、`~/bin/codex-kashiwagi` が冪等に上書き配置される。
+consumer のリポジトリルートで installer を実行する。`~/bin/codex-minase`、`~/bin/codex-makabe`、`~/bin/codex-kashiwagi`、`~/bin/codex-niekawa`、`~/bin/kimi-niekawa`、`~/bin/genai`、`~/bin/harness-route` が冪等に上書き配置される。
 
 ```bash
 bash .claude/_core/setup/install-codex-agents.sh
