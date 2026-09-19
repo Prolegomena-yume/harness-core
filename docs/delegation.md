@@ -34,7 +34,7 @@
 3. **柏木のゲート 1** ── 贄川が `codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md` で起こす。**所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。**反映してから次へ
 4. **真壁が実装する** ── 贄川が `codex-makabe` を起こす。指示書は run_dir のファイル、渡すのはパス 1 行。中身は plan のうち真壁の分だけ
 5. **贄川が巡ごとに検収する** ── `git diff` と実ファイル。P0 があれば `verdict: 継続` で真壁を起こし直す。P2 は自分で直して commit、P1 は記録
-6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る
+6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)
 7. **鷹野へ納品** ── 贄川の `verdict: 承認`。鷹野が独立検算(diff、test、実測の再現)をして merge / push
 
 **水無瀬の plan 赤入れは無い**(2026-09-18 に廃止、ゲート 1 が代替)。**柏木は真壁を起こさない**、巡も回さない。
