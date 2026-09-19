@@ -119,7 +119,7 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 | `findings.md` | 真壁の commit sha、「どこまで」の充足(○ / × / 未)、P0 / P1 / P2 の一覧、自前修正の sha、走らせた検証と結果 |
 | `verdict.md` | 1 行目が `verdict: 継続` / `verdict: 承認` / `verdict: エスカレーション`。エスカレーションは見出し 3 本固定 ── `## 問い`(矛盾の所在、選択肢、贄川の推奨)/ `## 現在地`(どこまで終わりどこで止まったか、sha、真壁の状態)/ `## 裁定別の次の一手` |
 
-**エスカレーションで巡は必ず閉じる。裁定を session 内で待たない。**受信箱(`inbox-post`)で鷹野を起こしてよいが、その session は `verdict.md` を書いて終わる。裁定は鷹野が新しい session の prompt に載せ、別巡として起こす。理由:K3 の prefix cache は 14 分で消え、待ってから続けると全文が uncached で枠を食う(役員 人見 2026-09-20)。
+**エスカレーションで巡は必ず閉じる。裁定を session 内で待たない。**受信箱(`to-takano`)で鷹野を起こしてよいが、その session は `verdict.md` を書いて終わる。裁定は鷹野が `to-niekawa --kind 裁定` で便の箱(`<run_dir>/to-niekawa.tsv`)に書き、別巡として起こす。**鷹野は贄川の checkpoint(plan / findings / verdict)に書かない、箱に書く** ── checkpoint は贄川の記憶媒体で、他人が書いても差出人も位置も無く贄川には見えない(2b-2 の事故、2026-09-20)。理由:K3 の prefix cache は 14 分で消え、待ってから続けると全文が uncached で枠を食う(役員 人見 2026-09-20)。
 
 ## 待ちは 280 秒の切片(kimi の tool 上限 300 秒の内側)
 
@@ -168,7 +168,7 @@ exec / Bash の出力はそのまま文脈に載り、以後の全 turn で再�
 
 本命はファイル(`~/.codex-agents/runs/<贄川の run>/verdict.md` は巡ごとに `rounds/r<N>/` へ退避、最終巡の `last-message.md` は run_dir 直下にも写す)とランチャの footer(`run_dir:` `巡数:` `verdict:` `session_ids:` `変更ファイル数:`)、通知は補助。**承認のサマリには P1 を必ず載せる。**鷹野は受領後に独立検算(diff、test、実測の再現)をしてから merge する。
 
-**エスカレーションの受け方(鷹野)。**自分で裁けるもの(How ── 既裁定の適用、実装の選択、優先順位)はその場で裁定を書き、別巡を起こす。人見の裁定が要るもの(要件の矛盾、新しい要件、不可逆 ── データの形・外向きの契約・課金)は問いをチャットに出し、30 分の見張り(`inbox-wait --cap 1800`)を張って待つ。**30 分で返答が無ければ「未裁定、便途中」で close session** ── summary に問いと再開の手を書く。人見が戻ったら新 session を summary から始める。理由:Claude の prompt cache は 60 分。30 分で見切れば close の turn まで cache 内に収まり、resume の uncached 再送を構造で作らない(役員 人見 2026-09-20)。
+**エスカレーションの受け方(鷹野)。**自分で裁けるもの(How ── 既裁定の適用、実装の選択、優先順位)はその場で裁定を書き、別巡を起こす。人見の裁定が要るもの(要件の矛盾、新しい要件、不可逆 ── データの形・外向きの契約・課金)は問いをチャットに出し、30 分の見張り(`from-niekawa --wait --cap 1800`)を張って待つ。**30 分で返答が無ければ「未裁定、便途中」で close session** ── summary に問いと再開の手を書く。人見が戻ったら新 session を summary から始める。理由:Claude の prompt cache は 60 分。30 分で見切れば close の turn まで cache 内に収まり、resume の uncached 再送を構造で作らない(役員 人見 2026-09-20)。
 
 ## commit ── author も committer も役、trailer 4 本
 
