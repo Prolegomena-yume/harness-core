@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 旧鷹野直下 codex 用、贄川体制では使わない(正典は docs/delegation.md、from-niekawa --wait --cap を使う、2026-09-20)。
 # usage: bash scripts/timer.sh <duration_seconds> [label] [log1 log2 ...]
 #   duration: 整数秒(例: 265, 600)
 #   label:    出力に乗せる識別子(任意、既定 "timer")

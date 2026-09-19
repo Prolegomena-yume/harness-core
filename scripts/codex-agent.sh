@@ -22,6 +22,13 @@ options:
       --rounds <n>         巡数上限(既定 12)。verdict が「継続」の間、新しい session で次の巡を起こす。
                             kashiwagi は既定で巡ループ off、この option を明示した時だけ on。niekawa は既定で on
       --no-loop             1 session だけ走らせる(巡ループ無し)。kashiwagi / niekawa に対して有効
+      --allow-push          事後ガードの「ref 変化を検出」のうち push 相当(main/master/remote-tracking の移動)を
+                            記録しない。BRIEF 本文に「push: 可」の行があるときも同じ扱いになる(niekawa 専用)
+      --batch <name>        便名を明示する(既定: BRIEF 本文の「便: <名>」行、niekawa のみ)
+      --inbox <path>        鷹野の箱(to-takano.tsv)を明示する(niekawa のみ)
+      --resume-run [<前run_dir>]
+                            新しい run_dir で便を再開する(niekawa のみ)。前 run の checkpoint を巡 1 に写す
+      --dry-run             prompt を組み立てて stdout に出し、Codex を起動せず exit 0(検算用)
   -h, --help               この usage を表示
 
 task と --file が無い場合は標準入力からタスク本文を読む。
@@ -32,6 +39,9 @@ kashiwagi / niekawa はプロンプト末尾(「今回のタスク」の前)に 
 1 巡 = 1 session(役員 人見 2026-09-16)。各巡の終わりに <run_dir>/verdict.md の 1 行目を読み、
 「verdict: 継続」なら新しい session で次の巡、「verdict: 承認」「verdict: エスカレーション」で終端。
 巡ループが有効な実行で verdict が無い・不正なら exit 4、巡数上限に当たったら exit 5。--resume 時はループしない。
+
+niekawa は便のディレクトリ(~/.codex-agents/batches/<便名>/)に to-takano.tsv(鷹野の箱)・to-niekawa.tsv(便の箱)・
+runs.tsv(便の run 台帳)を持つ。便名が解決できないときは post をスキップして警告だけ出し、続行する。
 USAGE
 }
 
@@ -88,6 +98,9 @@ CORE="$(dirname "$(dirname "$script_path")")"
 [ -f "$CORE/roles/$persona.md" ] || die "人物像の正典が見つからない: $CORE/roles/$persona.md"
 [ -f "$CORE/codex/$persona.md" ] || die "Codex 起動定義が見つからない: $CORE/codex/$persona.md"
 
+# shellcheck source=lib/batch-inbox.sh
+source "$CORE/scripts/lib/batch-inbox.sh"
+
 invocation_dir="$(pwd -P)"
 if default_root="$(git -C "$invocation_dir" rev-parse --show-toplevel 2>/dev/null)"; then
   :
@@ -123,6 +136,12 @@ case "$persona" in
 esac
 task_files=()
 task_args=()
+allow_push=0
+batch_name_arg=""
+takano_inbox_arg=""
+resume_run=0
+resume_run_arg=""
+dry_run=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -181,6 +200,33 @@ while [ "$#" -gt 0 ]; do
       loop_enabled=0
       shift
       ;;
+    --allow-push)
+      allow_push=1
+      shift
+      ;;
+    --batch)
+      [ "$#" -ge 2 ] || die "$1 には name が必要"
+      batch_name_arg="$2"
+      shift 2
+      ;;
+    --inbox)
+      [ "$#" -ge 2 ] || die "$1 には path が必要"
+      takano_inbox_arg="$2"
+      shift 2
+      ;;
+    --resume-run)
+      resume_run=1
+      if [ "$#" -ge 2 ] && [[ "$2" != -* ]]; then
+        resume_run_arg="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -201,6 +247,12 @@ done
 [ -n "$effort" ] || die "--effort に空文字は指定できない"
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
 root="$(cd "$root_input" && pwd -P)"
+
+if [ "$persona" != niekawa ]; then
+  if [ -n "$batch_name_arg" ] || [ -n "$takano_inbox_arg" ] || [ "$resume_run" -eq 1 ]; then
+    echo "警告: --batch / --inbox / --resume-run は niekawa 専用で、persona=$persona では無視する" >&2
+  fi
+fi
 
 git_repo=0
 git_root=""
@@ -226,10 +278,17 @@ run_dir="$agent_state_dir/runs/$run_id"
 mkdir -p "$run_dir"
 run_dir="$(cd -P "$run_dir" && pwd)"
 
+log_path_was_default=0
 if [ -z "$log_path" ]; then
   log_path="$agent_state_dir/logs/$run_id.log"
+  log_path_was_default=1
 fi
 mkdir -p "$(dirname "$log_path")"
+if [ "$log_path_was_default" -eq 1 ]; then
+  # 既定の log は必ず作る(--log 未指定で作られない不具合の修正、2b-2 実測 09-20)。
+  # 明示 --log は触らない(テスト等で意図的に無効なパスを渡す場合があるため)。
+  : > "$log_path" 2>/dev/null || true
+fi
 
 # rates ゲートはランチャに入れない(裁定 #8)。自サービスの残量を起動時に 1 回だけ記録する。失敗は警告のみで続行。
 if command -v rates >/dev/null 2>&1; then
@@ -261,6 +320,16 @@ else
 fi
 LC_ALL=C grep -q '[^[:space:]]' "$task_path" || die "タスク本文が空白のみ"
 
+# push 許可の解決(--allow-push か BRIEF 本文の「push: 可」行)。事後ガードの ref 変化検出のうち
+# push 相当(main/master/remote-tracking の移動)だけを対象に、記録しない扱いにする。
+push_allowed=0
+if [ "$allow_push" -eq 1 ]; then
+  push_allowed=1
+elif LC_ALL=C grep -qE '^push:[[:space:]]*可[[:space:]]*$' "$task_path"; then
+  push_allowed=1
+  echo "[$persona] BRIEF の「push: 可」行を検出。push 相当の ref 変化はガードで記録しない" >&2
+fi
+
 # 柏木は plan を作業木でなく run_dir に置く(真壁に検収の手を見せない)。場所は推測させず、環境とプロンプトの両方で渡す。
 export CODEX_AGENT_RUN_DIR="$run_dir"
 
@@ -270,7 +339,39 @@ if [ "$supports_loop" -eq 0 ] || [ -n "$resume_id" ]; then
 fi
 rounds_dir="$run_dir/rounds"
 
+# niekawa だけ: 便名の解決(--batch > BRIEF 本文の「便:」行)。解決できなければ post をスキップして続行する。
+batch_name=""
+batch_dir=""
+effective_niekawa_inbox="$run_dir/to-niekawa.tsv"
+takano_inbox=""
+prev_run_dir=""
+resume_checkpoint_text=""
+if [ "$persona" = niekawa ]; then
+  if batch_name="$(batch_resolve_name "$batch_name_arg" "$task_path")"; then
+    :
+  else
+    batch_name=""
+    echo "警告: 便名が解決できない(--batch も BRIEF の「便:」行も無い)。run_dir を便扱いにする" >&2
+  fi
+  if [ -n "$batch_name" ]; then
+    batch_dir="$agent_state_dir/batches/$batch_name"
+    mkdir -p "$batch_dir"
+    export NIEKAWA_INBOX="$batch_dir/to-niekawa.tsv"
+    effective_niekawa_inbox="$NIEKAWA_INBOX"
+  fi
+  takano_inbox="$(batch_resolve_takano_inbox "$takano_inbox_arg" "$batch_dir")" || true
+  if [ "$resume_run" -eq 1 ]; then
+    if prev_run_dir="$(batch_resolve_prev_run "$resume_run_arg" "$batch_dir")"; then
+      [ -d "$prev_run_dir" ] || die "--resume-run: 前 run_dir が見つからない: $prev_run_dir"
+      resume_checkpoint_text="$(batch_render_resume_checkpoint "$prev_run_dir")"
+    else
+      die "--resume-run: 前 run_dir を解決できない(--resume-run <run_dir> を明示するか、便の runs.tsv が要る)"
+    fi
+  fi
+fi
+
 # 巡 N のプロンプトを組む。巡 2 以降は前巡までの checkpoint(plan / findings / 前巡の verdict)を末尾に写す。
+# niekawa は加えて、巡 1 に「前 run の checkpoint」(--resume-run 時)、全巡に「鷹野からの受信」を末尾へ写す。
 build_prompt() {
   local round="$1"
   local out="$2"
@@ -299,6 +400,12 @@ build_prompt() {
           printf '\n'
         fi
       fi
+    fi
+    if [ "$persona" = niekawa ]; then
+      if [ "$round" -eq 1 ] && [ -n "$resume_checkpoint_text" ]; then
+        printf '%s\n' "$resume_checkpoint_text"
+      fi
+      batch_render_niekawa_inbox "$effective_niekawa_inbox"
     fi
     printf '\n\n## 今回のタスク\n\n'
     cat "$task_path"
@@ -380,13 +487,34 @@ else
 fi
 command_args=("${command_args_base[@]}" -o "$run_dir/last-message.md" -)
 
-if [ "${CODEX_AGENT_DRY_RUN:-0}" = "1" ]; then
+if [ "$dry_run" -eq 1 ] || [ "${CODEX_AGENT_DRY_RUN:-0}" = "1" ]; then
   printf 'dry-run command:'
   printf ' %q' "${command_args[@]}"
   printf ' < %q\n' "$prompt_path"
   printf 'prompt: %s\n' "$prompt_path"
   printf 'prompt 行数: %s\n' "$(wc -l < "$prompt_path" | tr -d ' ')"
+  if [ "$persona" = niekawa ]; then
+    echo "run_dir: $run_dir"
+    echo "便: ${batch_name:-(無し)}"
+    echo "便の箱: $effective_niekawa_inbox"
+    echo "鷹野の箱: ${takano_inbox:-(post しない)}"
+  fi
+  echo "--- prompt (巡1) ---"
+  cat "$prompt_path"
   exit 0
+fi
+
+# 便の run 台帳に 1 行 append(起動時のみ、更新しない。niekawa だけ)。
+if [ "$persona" = niekawa ]; then
+  if [ -n "$batch_dir" ]; then
+    brief_paths_joined=""
+    if [ "${#task_files[@]}" -gt 0 ]; then
+      brief_paths_joined="$(IFS=,; printf '%s' "${task_files[*]}")"
+    fi
+    batch_append_run "$batch_dir" "$run_dir" "codex" "$brief_paths_joined" "$prev_run_dir"
+  else
+    echo "警告: 便名が無いため runs.tsv に記録しない" >&2
+  fi
 fi
 
 declare -a repository_labels=(root)
@@ -646,26 +774,51 @@ fi
 echo "[$persona] Codex 起動 root=$root log=$log_path"
 
 # 1 巡ぶん Codex を走らせる。stdout は $log_path へ(巡 1 は上書き、巡 2 以降は追記)、session id は巡ごとの log から取る。
+# パイプライン全体を setsid + 背景実行にして current_child_pid に pid を残す(SIGTERM/SIGINT を trap から
+# 子プロセスグループへ転送するため)。PIPESTATUS はサブシェル内で status_file に書き出して読み戻す。
+current_child_pid=""
 run_codex_once() {
   local in_prompt="$1"
   local round_log="$2"
   local mode="${3:-overwrite}"
-  local tee_opts=()
+  local append=0
+  local use_stdbuf=0
   if [ "$mode" = append ]; then
-    tee_opts=(-a)
+    append=1
   fi
-  set +e
   if command -v stdbuf >/dev/null 2>&1; then
-    stdbuf -oL -eL "${command_args[@]}" < "$in_prompt" 2>&1 | stdbuf -oL tee "$round_log" | stdbuf -oL tee "${tee_opts[@]}" "$log_path"
-  else
-    "${command_args[@]}" < "$in_prompt" 2>&1 | tee "$round_log" | tee "${tee_opts[@]}" "$log_path"
+    use_stdbuf=1
   fi
-  pipeline_status=("${PIPESTATUS[@]}")
+  local status_file
+  status_file="$(mktemp "$run_dir/.codex-status.XXXXXX")"
+  set +e
+  setsid bash -c '
+    round_log="$1"; log_path="$2"; append="$3"; status_file="$4"; use_stdbuf="$5"
+    shift 5
+    tee_opts=()
+    [ "$append" = "1" ] && tee_opts=(-a)
+    if [ "$use_stdbuf" = "1" ]; then
+      stdbuf -oL -eL "$@" 2>&1 | stdbuf -oL tee "$round_log" | stdbuf -oL tee "${tee_opts[@]}" "$log_path"
+    else
+      "$@" 2>&1 | tee "$round_log" | tee "${tee_opts[@]}" "$log_path"
+    fi
+    st=("${PIPESTATUS[@]}")
+    printf "%s\n" "${st[@]}" > "$status_file"
+  ' _ "$round_log" "$log_path" "$append" "$status_file" "$use_stdbuf" "${command_args[@]}" \
+    < "$in_prompt" &
+  current_child_pid=$!
+  wait "$current_child_pid"
+  current_child_pid=""
   set -e
-  codex_status="${pipeline_status[0]:-1}"
-  tee_status="${pipeline_status[1]:-0}"
+  local statuses=()
+  if [ -s "$status_file" ]; then
+    mapfile -t statuses < "$status_file"
+  fi
+  rm -f "$status_file"
+  codex_status="${statuses[0]:-1}"
+  tee_status="${statuses[1]:-0}"
   if [ "$tee_status" -eq 0 ]; then
-    tee_status="${pipeline_status[2]:-0}"
+    tee_status="${statuses[2]:-0}"
   fi
   session_id="$(sed -nE 's/.*session id:[[:space:]]*([0-9a-fA-F-]{36}).*/\1/p' "$round_log" 2>/dev/null | head -n 1 || true)"
   if [ -z "$session_id" ]; then
@@ -694,6 +847,34 @@ verdict=""
 verdict_status=0
 rounds_run=0
 session_ids=()
+takano_notified=0
+
+# trap(niekawa のみ意味を持つ。他 persona は takano_inbox が空なので notify は無音で戻る):
+# verdict が確定せずに終わる経路(exit 4 / Codex 異常終了 / SIGTERM)は「異常終了」で鷹野へ通知する。
+# 正常終了(承認・エスカレーション・巡数上限)はメイン処理側で先に通知して takano_notified=1 にする。
+notify_abnormal_exit() {
+  local reason="$1"
+  [ "$persona" = niekawa ] || return 0
+  [ "$takano_notified" -eq 0 ] || return 0
+  takano_notified=1
+  batch_notify_takano "$takano_inbox" "$run_dir" "異常終了" "$reason"
+}
+
+on_term() {
+  echo "[$persona] SIGTERM/SIGINT を受けた。子プロセスを止めて異常終了を通知する" >&2
+  if [ -n "$current_child_pid" ]; then
+    kill -TERM -- "-$current_child_pid" 2>/dev/null || kill -TERM "$current_child_pid" 2>/dev/null || true
+  fi
+  notify_abnormal_exit "SIGTERM/SIGINT で中断(run_dir: $run_dir)"
+  exit 3
+}
+trap on_term TERM INT
+
+on_exit() {
+  local code=$?
+  notify_abnormal_exit "異常終了(exit $code, run_dir: $run_dir)"
+}
+trap on_exit EXIT
 
 if [ "$loop_enabled" -eq 0 ]; then
   run_codex_once "$prompt_path" "$run_dir/codex.log"
@@ -730,7 +911,8 @@ else
     fi
     verdict="$(read_verdict "$run_dir/verdict.md")"
     if [ -s "$run_dir/verdict.md" ]; then
-      mv "$run_dir/verdict.md" "$round_dir/verdict.md"
+      # cp で残す(mv だと run_dir 直下の verdict.md が消え、終端の to-takano 検証・E2E の検算ができなくなる)。
+      cp "$run_dir/verdict.md" "$round_dir/verdict.md"
     fi
     echo "巡 $round session_id: $session_id verdict: ${verdict:-不明}"
     if [ "$codex_status" -ne 0 ]; then
@@ -758,6 +940,19 @@ fi
 
 printf '%s\n' "$session_id" > "$run_dir/session_id"
 echo "session_id: $session_id"
+
+# 終端の通知(trap より先に、確定した結果で to-takano へ post する。niekawa のみ)。
+if [ "$persona" = niekawa ]; then
+  if [ "$codex_status" -eq 0 ] && [ "$verdict_status" -ne 5 ] && { [ "$verdict" = "承認" ] || [ "$verdict" = "エスカレーション" ]; }; then
+    takano_summary="$(batch_verdict_summary "$run_dir/verdict.md")"
+    batch_notify_takano "$takano_inbox" "$run_dir" "$verdict" "$takano_summary"
+    takano_notified=1
+  elif [ "$verdict_status" -eq 5 ]; then
+    # 巡数上限: verdict.md はまだ「継続」のままなので to-takano の verdict ガードに掛からないよう run_dir は "-" で渡す。
+    batch_notify_takano "$takano_inbox" "-" "エスカレーション" "巡数上限、verdict 継続のまま(run_dir: $run_dir)"
+    takano_notified=1
+  fi
+fi
 
 changed_files=()
 violations=()
@@ -852,7 +1047,11 @@ if [ "$git_repo" -eq 1 ]; then
       ref="${key#*|}"
       case "$ref" in
         refs/heads/main|refs/heads/master|refs/remotes/*)
-          violations+=("ref 変化を検出: $label $ref") ;;
+          if [ "$push_allowed" -eq 1 ]; then
+            echo "[$persona] push 許可により記録しない: $label $ref" >&2
+          else
+            violations+=("ref 変化を検出: $label $ref")
+          fi ;;
         refs/heads/*)
           # 新規 branch 作成と起動時 current branch への commit は許可。
           if [ -n "${pre_refs[$key]+present}" ] && [ "$ref" != "${initial_branch[$label]}" ]; then

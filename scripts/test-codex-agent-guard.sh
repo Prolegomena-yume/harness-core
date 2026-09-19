@@ -760,7 +760,11 @@ for n in 1 2 3; do
   [ -s "$rounds_run_dir/rounds/r$n/verdict.md" ] || fail "rounds-3: rounds/r$n/verdict.md is absent"
   [ -s "$rounds_run_dir/rounds/r$n/prompt.md" ] || fail "rounds-3: rounds/r$n/prompt.md is absent"
 done
-[ ! -e "$rounds_run_dir/verdict.md" ] || fail 'rounds-3: stale verdict.md remains in run_dir'
+# BRIEF-inbox-2(2026-09-20)以降、run_dir 直下の verdict.md は cp で残す(mv すると to-takano の
+# verdict ガードと便の終端通知が run_dir/verdict.md を読めなくなる)。round 3(最終巡)の写しと一致することを確かめる。
+[ -s "$rounds_run_dir/verdict.md" ] || fail 'rounds-3: run_dir 直下の verdict.md が消えている(終端通知に使う)'
+diff -q "$rounds_run_dir/verdict.md" "$rounds_run_dir/rounds/r3/verdict.md" >/dev/null 2>&1 \
+  || fail 'rounds-3: run_dir/verdict.md が最終巡(r3)の写しと一致しない'
 LC_ALL=C grep -Fq -- '巡: 2 / 12' "$test_root/capture-rounds-3/stdin-r2.txt" || fail 'rounds-3: round 2 prompt lacks the round line'
 LC_ALL=C grep -Fq -- '## 前巡までの checkpoint(この session は巡 2。' "$test_root/capture-rounds-3/stdin-r2.txt" || fail 'rounds-3: round 2 prompt lacks the checkpoint section'
 LC_ALL=C grep -Fq -- 'findings 巡 1' "$test_root/capture-rounds-3/stdin-r2.txt" || fail 'rounds-3: round 2 prompt lacks findings from round 1'
@@ -928,8 +932,9 @@ pass 'kimi-niekawa captures rates kimi once into <run_dir>/rates.json and sets t
 
 # roles/niekawa.md 欠落時は警告して空のまま続行する(水無瀬が並行で書いている最中を想定)
 missing_core="$test_root/missing-core"
-mkdir -p "$missing_core/scripts"
+mkdir -p "$missing_core/scripts/lib"
 cp "$kimi_launcher" "$missing_core/scripts/kimi-niekawa.sh"
+cp "$script_dir/lib/batch-inbox.sh" "$missing_core/scripts/lib/batch-inbox.sh"
 mkdir -p "$missing_core/roles" "$missing_core/codex" "$missing_core/kimi"
 repo="$test_root/kimi-missing-role"
 init_repo "$repo"

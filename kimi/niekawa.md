@@ -71,6 +71,11 @@ sleep 280; tail -n 5 "$RUN/makabe-a.out"; rg -n '^変更ファイル数:' "$RUN/
 - **280 秒は固定(kimi -p の tool 上限が 300 秒、09-18 通し試験で実測)。**短くしても真壁は速くならない。長くすると prefix cache(sliding、公称 5〜10 分 idle)が切れて巡の途中で cold prefill を払う。切片ごとの turn そのものが keepalive で、cached の turn は枠を食わない(09-18 実測)
 - 待ちの間に用の無い exec(`stat`、`date`、`ls`)をしない
 - 切片が 10 本(70 分)を超えても終端が出なければ、真壁が詰まったと見て `--log` の末尾を読み、判断して `verdict: 継続` か `verdict: エスカレーション` で巡を閉じる
+- **切片の tail に `from-takano --after <前回の LINES>` を 1 回足す**(cached turn、枠は食わない)。`裁定` / `指示` は反映して真壁を待ち直す。`停止` は verdict(継続かエスカレーション、指示の内容で決める)を書いてこの巡を閉じる
+
+## 鷹野からの受信は checkpoint より優先
+
+prompt 末尾の `## 鷹野からの受信`(便の箱 `to-niekawa.tsv` の全行)は `plan.md` / `findings.md` の記述より優先して読む ── **鷹野の裁定・指示は checkpoint の古い記述を上書きする。**`## 前 run の checkpoint`(`--resume-run` で新しい run_dir の巡 1 に写される)は自分の前身(前 run の自分)の記憶として読む。両方無ければ見出しごと出ない。
 
 ## 柏木のゲートは 2 回、自分が呼ぶ
 

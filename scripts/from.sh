@@ -1,53 +1,122 @@
 #!/usr/bin/env bash
-# usage: inbox-wait.sh [--cap <秒>=1800] [--after <N>] [--pid <pid>] \
-#                       [--label <str>] [--inbox <path>]
+# usage:
+#   from-niekawa [--wait] [--cap <秒>=1800] [--after <N>] [--pid <pid>] \
+#                [--label <str>] [--inbox <path>] [-n N=20]
+#   from-takano  [--after <N>] [--inbox <path>]
 #
-# 鷹野の受信箱(TSV、追記だけ)を見張り、新規行が届いたら種別で exit する。
-#   承認 0 / エスカレーション 2 / 異常終了 3
-# cap 到達で exit 1。--pid の pid が消えたら exit 3(ランチャ改修前の
-# 走行中プロセスに今回限り使う想定。pid 直指定なので pgrep の誤診は無い)。
-# 起動時点で --after N より後ろに対象行が既にあれば即返す(取りこぼし無し)。
-# 受信箱がまだ無いのはエラーでなく待つ(inbox-post が mkdir -p する)。
-# 1 秒 poll、heartbeat 30 秒、stdbuf -oL。一致行と、一致した行の行番号
-# (after + 何行目、次回の --after 用、LINES=N の形)を stdout に出す。
-# --pid の pid 消滅を検知した際は、exit 3 で返す前に受信箱をもう 1 回
-# 読み直す(post 直後に exit するランチャと 1 秒 poll の隙間で、行が
-# 届いているのに exit 3 と誤診するのを防ぐ)。行があれば種別の code で返す。
+# 向きは $0 の basename (from-niekawa / from-takano の symlink) で決める。
+# inbox-wait.sh / inbox-read.sh の統合(--wait 無しなら tail、--wait で見張り)。
+#
+# from-niekawa(鷹野が読む・待つ、箱は to-takano と同じ):
+#   箱 = --inbox > env TAKANO_INBOX > exit 4
+#   --wait なら見張り、新規行の種別で exit: 承認 0 / エスカレーション 2 /
+#     異常終了・pid消滅 3、cap 到達で exit 1、引数不正 exit 4。
+#     --pid の pid 消滅を検知した際は、exit 3 で返す前に受信箱をもう 1 回
+#     読み直す(post 直後に exit するランチャとの隙間の誤診対策)。
+#     一致行の行番号(after + 何行目)を LINES=N で stdout に出す。
+#   --wait 無しなら -n N(既定20)の tail を列を揃えて表示(最小実装)。
+# from-takano(贄川が読む、箱は to-niekawa と同じ):
+#   箱 = --inbox > env NIEKAWA_INBOX > $CODEX_AGENT_RUN_DIR/to-niekawa.tsv > exit 4
+#   tail だけ。--after N で未読だけを生の TSV で出し、最後に LINES=N(現在の
+#   総行数)を出す。--wait は受け付けない(exit 4)。
 
-if [ -z "${INBOX_WAIT_LINEBUF:-}" ] && command -v stdbuf >/dev/null 2>&1; then
-  export INBOX_WAIT_LINEBUF=1
+if [ -z "${FROM_LINEBUF:-}" ] && command -v stdbuf >/dev/null 2>&1; then
+  export FROM_LINEBUF=1
   exec stdbuf -oL bash "$0" "$@"
 fi
 
 set -u
 
+prog=$(basename "$0")
+case "$prog" in
+  from-niekawa) role=niekawa ;;
+  from-takano) role=takano ;;
+  *)
+    echo "[from] エラー: 不明な起動名 '$prog'(from-niekawa / from-takano の symlink 経由で呼ぶこと)" >&2
+    exit 4
+    ;;
+esac
+
 usage() {
-  echo "usage: inbox-wait [--cap <秒>=1800] [--after <N>] [--pid <pid>] [--label <str>] [--inbox <path>]" >&2
+  case "$role" in
+    niekawa)
+      echo "usage: from-niekawa [--wait] [--cap <秒>=1800] [--after <N>] [--pid <pid>] [--label <str>] [--inbox <path>] [-n N=20]" >&2
+      ;;
+    takano)
+      echo "usage: from-takano [--after <N>] [--inbox <path>]" >&2
+      ;;
+  esac
 }
 
+wait_mode=0
 cap=1800
 after=0
 pid=""
-label="inbox-wait"
-inbox="${TAKANO_INBOX:-}"
+label="from-$role"
+n=20
+if [ "$role" = niekawa ]; then
+  inbox="${TAKANO_INBOX:-}"
+else
+  inbox="${NIEKAWA_INBOX:-}"
+fi
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --wait) wait_mode=1; shift ;;
     --cap) cap="${2:-}"; shift 2 ;;
     --after) after="${2:-}"; shift 2 ;;
     --pid) pid="${2:-}"; shift 2 ;;
     --label) label="${2:-}"; shift 2 ;;
     --inbox) inbox="${2:-}"; shift 2 ;;
+    -n) n="${2:-}"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) usage; exit 4 ;;
   esac
 done
 
-if [ -z "$inbox" ]; then
-  echo "[inbox-wait] エラー: --inbox も TAKANO_INBOX も無い" >&2
+if [ "$role" = takano ] && [ "$wait_mode" -eq 1 ]; then
+  echo "[from-takano] エラー: --wait は受け付けない(tail 専用)" >&2
   exit 4
 fi
 
+if [ "$role" = takano ] && [ -z "$inbox" ] && [ -n "${CODEX_AGENT_RUN_DIR:-}" ]; then
+  inbox="${CODEX_AGENT_RUN_DIR}/to-niekawa.tsv"
+fi
+
+if [ -z "$inbox" ]; then
+  echo "[$prog] エラー: --inbox / env が無い" >&2
+  exit 4
+fi
+
+# --- tail 専用(--wait 無し) ---
+if [ "$wait_mode" -eq 0 ]; then
+  if [ "$role" = takano ]; then
+    # 機械可読: --after N で未読だけを生 TSV で、最後に LINES= を出す
+    cur=0
+    if [ -f "$inbox" ]; then
+      cur=$(wc -l < "$inbox" 2>/dev/null | tr -d ' ')
+      [ -n "$cur" ] || cur=0
+      if [ "$cur" -gt "$after" ]; then
+        sed -n "$((after + 1)),${cur}p" "$inbox"
+      fi
+    fi
+    echo "LINES=$cur"
+    exit 0
+  else
+    # 人間向け: -n N の tail、column 整形(最小実装)
+    if [ ! -f "$inbox" ]; then
+      echo "[$prog] 受信箱が無い: $inbox" >&2
+      exit 0
+    fi
+    {
+      printf '時刻\t差出人\t種別\trun_dir\t要旨\n'
+      tail -n "$n" "$inbox"
+    } | column -t -s "$(printf '\t')"
+    exit 0
+  fi
+fi
+
+# --- --wait(ここに来るのは role=niekawa のときだけ、上で takano は弾いている) ---
 ts() { date '+%H:%M:%S'; }
 
 exit_for_kind() {

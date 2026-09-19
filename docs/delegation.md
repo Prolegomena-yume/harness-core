@@ -119,7 +119,7 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 | `findings.md` | 真壁の commit sha、「どこまで」の充足(○ / × / 未)、P0 / P1 / P2 の一覧、自前修正の sha、走らせた検証と結果 |
 | `verdict.md` | 1 行目が `verdict: 継続` / `verdict: 承認` / `verdict: エスカレーション`。エスカレーションは見出し 3 本固定 ── `## 問い`(矛盾の所在、選択肢、贄川の推奨)/ `## 現在地`(どこまで終わりどこで止まったか、sha、真壁の状態)/ `## 裁定別の次の一手` |
 
-**エスカレーションで巡は必ず閉じる。裁定を session 内で待たない。**受信箱(`to-takano`)で鷹野を起こしてよいが、その session は `verdict.md` を書いて終わる。裁定は鷹野が `to-niekawa --kind 裁定` で便の箱(`<run_dir>/to-niekawa.tsv`)に書き、別巡として起こす。**鷹野は贄川の checkpoint(plan / findings / verdict)に書かない、箱に書く** ── checkpoint は贄川の記憶媒体で、他人が書いても差出人も位置も無く贄川には見えない(2b-2 の事故、2026-09-20)。理由:K3 の prefix cache は 14 分で消え、待ってから続けると全文が uncached で枠を食う(役員 人見 2026-09-20)。
+**エスカレーションで巡は必ず閉じる。裁定を session 内で待たない。**受信箱(`to-takano`)で鷹野を起こしてよいが、その session は `verdict.md` を書いて終わる。裁定は鷹野が `to-niekawa --kind 裁定` で便の箱(`~/.codex-agents/batches/<便名>/to-niekawa.tsv`、便名は BRIEF の `便:` 行)に書き、`kimi-niekawa -f <同じ BRIEF> --resume-run` で新しい run_dir を起こして別巡とする(同じ run_dir は再利用しない)。**鷹野は贄川の checkpoint(plan / findings / verdict)に書かない、箱に書く** ── checkpoint は贄川の記憶媒体で、他人が書いても差出人も位置も無く贄川には見えない(2b-2 の事故、2026-09-20)。理由:K3 の prefix cache は 14 分で消え、待ってから続けると全文が uncached で枠を食う(役員 人見 2026-09-20)。
 
 ## 待ちは 280 秒の切片(kimi の tool 上限 300 秒の内側)
 
@@ -187,13 +187,25 @@ Brief: <BRIEF のパス>
 
 ## Claude からの起動と待ち方
 
-贄川を `run_in_background` で起動し、ランチャの出力に `^変更ファイル数:` の footer が出るまで待つ(`until grep -q "^変更ファイル数:" launcher.out`)。`^session_id:` は巡ごとに出るので終端の印にしない。巡の進みは `^巡 [0-9]+ session_id:` の行で見える。**footer の語は `kimi-niekawa` と `codex-agent.sh` で同じ** ── 待ち方を経路で変えないため。
+贄川を `run_in_background` で起動し、`from-niekawa --wait --cap 1800` で終端を待つ(`^変更ファイル数:` の footer や `^session_id:` を自分で grep しない ── 待ちの実装は from.sh に寄せる)。巡の進みはランチャの出力の `^巡 [0-9]+ session_id:` の行で見える。**footer の語は `kimi-niekawa` と `codex-agent.sh` で同じ** ── 待ち方を経路で変えないため。
+
+箱は 2 つとも `~/.codex-agents/batches/<便名>/`(`to-takano.tsv` = 鷹野の箱、`to-niekawa.tsv` = 便の箱)に置く。**便名は BRIEF 本文の `便: <名>` 行に鷹野が書く**(scratchpad には置かない ── 別鷹野が session summary の便名からこの便ディレクトリを辿って再開できるように)。
 
 ```bash
 kimi-niekawa --log <固定パス> -f <BRIEF> > launcher.out 2>&1 &
+from-niekawa --wait --cap 1800 --inbox ~/.codex-agents/batches/<便名>/to-takano.tsv
 ```
 
-長時間の見張りは `timer.sh 1800` を bg で張り直す(ScheduleWakeup は使わない、人見 2026-09-17)。
+`from-niekawa --wait` の exit code で起きた後の手を決める。
+
+| exit | 意味 | 起きた後の手 |
+|---|---|---|
+| 0 | 承認 | 独立検算(diff、test、実測の再現)をして merge / push |
+| 1 | cap 到達(未終端) | `from-niekawa --wait --cap 1800` を張り直す |
+| 2 | エスカレーション | 自分で裁けるものは `to-niekawa --kind 裁定` で裁定を返す、人見の裁定が要るものは問いを出して待つ(PushNotification) |
+| 3 | 異常終了 / pid 消滅 | footer と `--log` を読んで原因を確かめる |
+
+長時間の見張りは `from-niekawa --wait --cap 1800` を bg で張り直す(`timer.sh` は鷹野が直接 codex を持っていた旧体制の道具で、贄川体制では使わない。後述「旧形」節を参照)。
 
 ## 起動の5点セット
 

@@ -13,6 +13,12 @@ options:
       --rounds <n>       巡数上限(既定 12)。verdict が「継続」の間、新しい session で次の巡を起こす
       --no-loop          1 session だけ走らせる(巡ループ無し)
       --effort <level>   low|high|max(既定 high)。kimi CLI に渡す手段が無く記録のみ(下記参照)
+      --batch <name>     便名を明示する(既定: BRIEF 本文の「便: <名>」行)
+      --inbox <path>     鷹野の箱(to-takano.tsv)を明示する。既定は便ディレクトリの to-takano.tsv
+      --resume-run [<前run_dir>]
+                         新しい run_dir で便を再開する。前 run(省略時は便の runs.tsv の最終行)の
+                         checkpoint を巡 1 の prompt 末尾に写す
+      --dry-run          prompt を組み立てて stdout に出し、kimi を起動せず exit 0(検算用)
   -h, --help             この usage を表示
 
 task と --file が無い場合は標準入力からタスク本文を読む。
@@ -26,6 +32,10 @@ model は kimi-code/k3-256k 固定(--model は受けない)。--resume は無い
 (kimi -p の argv は 128KB で落ちるため)。
 verdict.md の 1 行目が 継続 / 承認 / エスカレーション。巡ループ実行中に verdict が無い・不正なら exit 4、
 巡数上限に当たったら exit 5。--no-loop は 1 session だけ走らせ、verdict の値によらず exit 0。
+
+便のディレクトリ(${CODEX_AGENT_STATE_DIR:-~/.codex-agents}/batches/<便名>/)に to-takano.tsv(鷹野の箱)・
+to-niekawa.tsv(便の箱)・runs.tsv(便の run 台帳)を持つ。便名が解決できないときは post をスキップして
+警告だけ出し、続行する(run_dir 単位の旧動作にフォールバック)。
 
 --effort について: kimi CLI(0.40.1)の -p モードには reasoning effort を渡す CLI 引数が無い(config.toml の
 モデル別 default_effort だけが効く。kimi-code/k3-256k の既定は high で、このランチャの既定と一致する)。
@@ -70,6 +80,9 @@ fi
 script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 
+# shellcheck source=lib/batch-inbox.sh
+source "$CORE/scripts/lib/batch-inbox.sh"
+
 invocation_dir="$(pwd -P)"
 if default_root="$(git -C "$invocation_dir" rev-parse --show-toplevel 2>/dev/null)"; then
   :
@@ -84,6 +97,11 @@ max_rounds=12
 loop_enabled=1
 task_files=()
 task_args=()
+batch_name_arg=""
+takano_inbox_arg=""
+resume_run=0
+resume_run_arg=""
+dry_run=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -116,6 +134,30 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || die "$1 には level が必要"
       effort="$2"
       shift 2
+      ;;
+    --batch)
+      [ "$#" -ge 2 ] || die "$1 には name が必要"
+      batch_name_arg="$2"
+      shift 2
+      ;;
+    --inbox)
+      [ "$#" -ge 2 ] || die "$1 には path が必要"
+      takano_inbox_arg="$2"
+      shift 2
+      ;;
+    --resume-run)
+      resume_run=1
+      # 任意引数(次が option っぽくなければ前 run_dir として食う)
+      if [ "$#" -ge 2 ] && [[ "$2" != -* ]]; then
+        resume_run_arg="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
       ;;
     -h|--help)
       usage
@@ -163,10 +205,17 @@ mkdir -p "$run_dir"
 run_dir="$(cd -P "$run_dir" && pwd)"
 rounds_dir="$run_dir/rounds"
 
+log_path_was_default=0
 if [ -z "$log_path" ]; then
   log_path="$agent_state_dir/logs/$run_id.log"
+  log_path_was_default=1
 fi
 mkdir -p "$(dirname "$log_path")"
+if [ "$log_path_was_default" -eq 1 ]; then
+  # 既定の log は必ず作る(--log 未指定で作られない不具合の修正、2b-2 実測 09-20)。
+  # 明示 --log は触らない(テスト等で意図的に無効なパスを渡す場合があるため)。
+  : > "$log_path" 2>/dev/null || true
+fi
 
 # rates ゲートはランチャに入れない(裁定 #8)。自サービスの残量を起動時に 1 回だけ記録する。失敗は警告のみで続行。
 if command -v rates >/dev/null 2>&1; then
@@ -199,6 +248,40 @@ fi
 LC_ALL=C grep -q '[^[:space:]]' "$task_path" || die "タスク本文が空白のみ"
 
 export CODEX_AGENT_RUN_DIR="$run_dir"
+
+# 便名の解決(--batch > BRIEF 本文の「便:」行)。解決できなければ空(旧動作: run_dir 単位)。
+batch_name=""
+if batch_name="$(batch_resolve_name "$batch_name_arg" "$task_path")"; then
+  :
+else
+  batch_name=""
+  echo "警告: 便名が解決できない(--batch も BRIEF の「便:」行も無い)。run_dir を便扱いにする" >&2
+fi
+
+batch_dir=""
+if [ -n "$batch_name" ]; then
+  batch_dir="$agent_state_dir/batches/$batch_name"
+  mkdir -p "$batch_dir"
+  export NIEKAWA_INBOX="$batch_dir/to-niekawa.tsv"
+fi
+
+# 便の箱(NIEKAWA_INBOX があれば便ディレクトリ、無ければ run_dir 直下)。
+effective_niekawa_inbox="${NIEKAWA_INBOX:-$run_dir/to-niekawa.tsv}"
+
+# 鷹野の箱(--inbox > env TAKANO_INBOX > 便ディレクトリ)。
+takano_inbox="$(batch_resolve_takano_inbox "$takano_inbox_arg" "$batch_dir")" || true
+
+# --resume-run: 前 run を解決し、巡 1 に写す checkpoint を組む。
+prev_run_dir=""
+resume_checkpoint_text=""
+if [ "$resume_run" -eq 1 ]; then
+  if prev_run_dir="$(batch_resolve_prev_run "$resume_run_arg" "$batch_dir")"; then
+    [ -d "$prev_run_dir" ] || die "--resume-run: 前 run_dir が見つからない: $prev_run_dir"
+    resume_checkpoint_text="$(batch_render_resume_checkpoint "$prev_run_dir")"
+  else
+    die "--resume-run: 前 run_dir を解決できない(--resume-run <run_dir> を明示するか、便の runs.tsv が要る)"
+  fi
+fi
 
 # roles/niekawa.md と kimi/niekawa.md は水無瀬が並行で書いている最中の場合がある。無ければ空として扱い警告を出して続行する。
 role_content=""
@@ -240,8 +323,9 @@ render_agent_md() {
   } > "$out"
 }
 
-# 巡 N の -p 本文を組む(checkpoint の置き場 + 巡番号 + 前巡までの checkpoint + 今回のタスク)。
-# roles / kimi の起動契約は agent.md の system prompt 側に入るので、ここでは重複させない。
+# 巡 N の -p 本文を組む(checkpoint の置き場 + 巡番号 + 前巡までの checkpoint + 前 run の checkpoint(巡1のみ)
+# + 鷹野からの受信(全巡) + 今回のタスク)。roles / kimi の起動契約は agent.md の system prompt 側に入るので、
+# ここでは重複させない。
 build_round_prompt() {
   local round="$1"
   local out="$2"
@@ -266,6 +350,10 @@ build_round_prompt() {
         printf '\n'
       fi
     fi
+    if [ "$round" -eq 1 ] && [ -n "$resume_checkpoint_text" ]; then
+      printf '%s\n' "$resume_checkpoint_text"
+    fi
+    batch_render_niekawa_inbox "$effective_niekawa_inbox"
     printf '\n\n## 今回のタスク\n\n'
     cat "$task_path"
   } > "$out"
@@ -289,6 +377,31 @@ git_status_paths() {
   git -C "$1" status --porcelain=v1 --untracked-files=all 2>/dev/null | cut -c4- | LC_ALL=C sort -u
 }
 
+# --dry-run: 巡 1 の prompt を組み立てて出すだけで、kimi は起動しない。runs.tsv にも書かない。
+if [ "$dry_run" -eq 1 ]; then
+  dry_round_dir="$rounds_dir/r1"
+  mkdir -p "$dry_round_dir"
+  dry_prompt="$dry_round_dir/prompt.md"
+  build_round_prompt 1 "$dry_prompt"
+  echo "[niekawa] dry-run root=$root run_dir=$run_dir batch=${batch_name:-(無し)}"
+  echo "[niekawa] 便の箱: $effective_niekawa_inbox"
+  echo "[niekawa] 鷹野の箱: ${takano_inbox:-(post しない)}"
+  echo "--- prompt (巡1) ---"
+  cat "$dry_prompt"
+  exit 0
+fi
+
+# 便の run 台帳に 1 行 append(起動時のみ、更新しない)。
+if [ -n "$batch_dir" ]; then
+  brief_paths_joined=""
+  if [ "${#task_files[@]}" -gt 0 ]; then
+    brief_paths_joined="$(IFS=,; printf '%s' "${task_files[*]}")"
+  fi
+  batch_append_run "$batch_dir" "$run_dir" "kimi" "$brief_paths_joined" "$prev_run_dir"
+else
+  echo "警告: 便名が無いため runs.tsv に記録しない" >&2
+fi
+
 pre_status=""
 if [ "$git_repo" -eq 1 ]; then
   pre_status="$(git_status_paths "$root")"
@@ -302,6 +415,33 @@ verdict_status=0
 rounds_run=0
 session_id="不明"
 session_ids=()
+current_child_pid=""
+takano_notified=0
+
+# trap: verdict が確定せずに終わる経路(exit 4 / kimi 異常終了 / SIGTERM)は「異常終了」で鷹野へ通知する。
+# 正常終了(承認・エスカレーション・巡数上限)はメイン処理側で先に通知して takano_notified=1 にする。
+notify_abnormal_exit() {
+  local reason="$1"
+  [ "$takano_notified" -eq 0 ] || return 0
+  takano_notified=1
+  batch_notify_takano "$takano_inbox" "$run_dir" "異常終了" "$reason"
+}
+
+on_term() {
+  echo "[niekawa] SIGTERM/SIGINT を受けた。子プロセスを止めて異常終了を通知する" >&2
+  if [ -n "$current_child_pid" ]; then
+    kill -TERM -- "-$current_child_pid" 2>/dev/null || kill -TERM "$current_child_pid" 2>/dev/null || true
+  fi
+  notify_abnormal_exit "SIGTERM/SIGINT で中断(run_dir: $run_dir)"
+  exit 3
+}
+trap on_term TERM INT
+
+on_exit() {
+  local code=$?
+  notify_abnormal_exit "異常終了(exit $code, run_dir: $run_dir)"
+}
+trap on_exit EXIT
 
 round=1
 while :; do
@@ -326,9 +466,13 @@ while :; do
 
   round_log="$round_dir/log.jsonl"
   set +e
-  ( cd "$root" && kimi -p "$prompt_arg" --agent-file "$run_dir/agent.md" -m kimi-code/k3-256k --output-format stream-json ) \
-    < /dev/null > "$round_log" 2>"$round_dir/stderr.log"
+  setsid bash -c 'cd "$1" && exec kimi -p "$2" --agent-file "$3" -m kimi-code/k3-256k --output-format stream-json' \
+    _ "$root" "$prompt_arg" "$run_dir/agent.md" \
+    < /dev/null > "$round_log" 2>"$round_dir/stderr.log" &
+  current_child_pid=$!
+  wait "$current_child_pid"
   kimi_status=$?
+  current_child_pid=""
   set -e
   cat "$round_log" >> "$log_path"
   if [ -s "$round_dir/stderr.log" ]; then
@@ -355,7 +499,8 @@ while :; do
   rounds_run="$round"
   verdict="$(read_verdict "$run_dir/verdict.md")"
   if [ -s "$run_dir/verdict.md" ]; then
-    mv "$run_dir/verdict.md" "$round_dir/verdict.md"
+    # cp で残す(mv だと run_dir 直下の verdict.md が消え、終端の to-takano 検証・E2E の検算ができなくなる)。
+    cp "$run_dir/verdict.md" "$round_dir/verdict.md"
   fi
   echo "巡 $round session_id: $session_id verdict: ${verdict:-不明}"
 
@@ -392,6 +537,17 @@ changed_count=0
 if [ "$git_repo" -eq 1 ]; then
   post_status="$(git_status_paths "$root")"
   changed_count="$(comm -3 <(printf '%s\n' "$pre_status") <(printf '%s\n' "$post_status") | sed '/^$/d' | wc -l | tr -d ' ')"
+fi
+
+# 終端の通知(trap より先に、確定した結果で to-takano へ post する)。
+if [ "$kimi_status" -eq 0 ] && [ "$verdict_status" -ne 5 ] && { [ "$verdict" = "承認" ] || [ "$verdict" = "エスカレーション" ]; }; then
+  summary="$(batch_verdict_summary "$run_dir/verdict.md")"
+  batch_notify_takano "$takano_inbox" "$run_dir" "$verdict" "$summary"
+  takano_notified=1
+elif [ "$verdict_status" -eq 5 ]; then
+  # 巡数上限: verdict.md はまだ「継続」のままなので to-takano の verdict ガードに掛からないよう run_dir は "-" で渡す。
+  batch_notify_takano "$takano_inbox" "-" "エスカレーション" "巡数上限、verdict 継続のまま(run_dir: $run_dir)"
+  takano_notified=1
 fi
 
 echo "persona: niekawa"
