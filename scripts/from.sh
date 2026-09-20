@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # usage:
 #   from-niekawa [--wait] [--cap <秒>=1800] [--after <N>] [--pid <pid>] \
+#     (--wait の heartbeat は 300 秒ごと、環境 FROM_HEARTBEAT_INTERVAL で変えられる)
 #                [--label <str>] [--inbox <path>] [-n N=20]
 #   from-takano  [--after <N>] [--inbox <path>]
 #
@@ -128,7 +129,7 @@ exit_for_kind() {
   esac
 }
 
-HEARTBEAT_INTERVAL=30
+HEARTBEAT_INTERVAL="${FROM_HEARTBEAT_INTERVAL:-300}"  # 既定 300 秒(09-20_02「30 秒は過剰 → 既定 300」の実装漏れを 09-20 夜に訂正、鷹野)
 start_epoch=$(date +%s)
 last_heartbeat=$start_epoch
 cur=0
