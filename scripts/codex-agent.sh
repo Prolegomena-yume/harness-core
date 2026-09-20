@@ -350,7 +350,7 @@ if [ -n "$gate_batch_dir" ] && [ "$persona" = makabe ] && [ "$model" != "gpt-5.6
   else
     # die の前にこの経路で作った run_dir と(--log 未指定の既定 log のときだけ)log_path を消す。
     # 消さないと贄川が起こし直すたびに rates.json だけの空 run_dir と空 log が残り、runs/ を数える経路が紛れる
-    # (役員 鷹野 差し戻し 2026-09-20)。明示 --log は触らない。
+    # (鷹野[PDM] 差し戻し 2026-09-20)。明示 --log は触らない。
     rm -rf -- "$run_dir"
     if [ "$log_path_was_default" -eq 1 ]; then
       rm -f -- "$log_path"
