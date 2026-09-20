@@ -34,7 +34,7 @@
 3. **柏木のゲート 1** ── 贄川が `codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md` で起こす。**所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。**反映してから次へ。**ゲート 1 も便に 1 回**(役員 人見 2026-09-20)。P0 が出たら plan を直し、直ったかは贄川自身の検収で閉じて次(真壁)へ進む、柏木を呼び直さない。担保はゲート 2 と同じランチャ + hook の 2 段
 4. **真壁が実装する** ── 贄川が `codex-makabe` を起こす。指示書は run_dir のファイル、渡すのはパス 1 行。中身は plan のうち真壁の分だけ
 5. **贄川が巡ごとに検収する** ── `git diff` と実ファイル。P0 があれば `verdict: 継続` で真壁を起こし直す。P2 は自分で直して commit、P1 は記録
-6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**ゲート 2 の P0 を直す巡だけ、真壁を sol で起こす**(`codex-makabe --model gpt-5.6-sol`、codex weekly が 20% 以上のとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**担保は 2 段、ゲート 1 も 2 も同じ形** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、ゲート 1 への拡張は BRIEF-gate1-once、役員 人見 2026-09-20)
+6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**ゲート 2 の P0 を直す巡だけ、真壁を sol で起こす**(`codex-makabe --model gpt-5.6-sol`、codex が減りすぎでないとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**担保は 2 段、ゲート 1 も 2 も同じ形** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、ゲート 1 への拡張は BRIEF-gate1-once、役員 人見 2026-09-20)
 7. **鷹野へ納品** ── 贄川の `verdict: 承認`。鷹野が独立検算(diff、test、実測の再現)をして merge / push
 
 **水無瀬の plan 赤入れは無い**(2026-09-18 に廃止、ゲート 1 が代替)。**柏木は真壁を起こさない**、巡も回さない。
@@ -46,7 +46,7 @@
 ```bash
 kimi-niekawa -f docs/BRIEF-15.md                 # 贄川が plan → ゲート1 → 真壁 → 巡レビュー → ゲート2 → verdict
 kimi-niekawa --rounds 6 -f docs/BRIEF-15.md      # 巡数上限を変える(既定 12)。--no-loop で 1 session だけ
-codex-niekawa -f docs/BRIEF-15.md                # kimi weekly < 30% のフォールバック(sol)
+codex-niekawa -f docs/BRIEF-15.md                # kimi が減りすぎのときのフォールバック(sol)
 codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md "この plan を監査する"   # 贄川が呼ぶ
 codex-makabe -f docs/spec.md "仕様どおりに実装する"   # 贄川を通さない小作業だけ
 genai draft.md out.md                            # 源内。--k3 で Kimi フォールバック
@@ -55,16 +55,16 @@ harness-route                                    # 今日の配役表(read-only�
 
 作業ルートの既定はカレントの git toplevel。`-C <dir>` で明示できる。ランチャは Codex 本体へ必ず `-C` を渡す。MCP server は既定で無効(`--mcp` で有効)。**model は persona 別の既定で決まる** ── `--model` を手で足さない。
 
-## 枠の規則 ── `rates` の週間残量で振り先を替える
+## 枠の規則 ── `rates` の消費ペースで振り先を替える
 
-**潤沢度は Claude > Codex > Kimi > Agy。**照会は `rates claude` / `rates codex` / `rates kimi` / `rates agy`(JSON、`remaining.weekly` が百分率)。**`null` は「不明」であって 0 でも 100 でもない** ── 切替しない。
+**潤沢度は Claude > Codex > Kimi > Agy。**照会は `rates claude` / `rates codex` / `rates kimi` / `rates agy`(JSON)。見るのは `verdict.weekly` ── 窓の経過率(壁掛け時計、`elapsed`)に対して残量(`remaining`)が線形消費の期待より 10pt 以上少なければ「減りすぎ」、10pt 以上多ければ「残り気味」、差が `pace`(役員 人見 2026-09-21、残量 % の絶対閾値から置換)。**null は「無印(±10pt 以内)」か「不明(残量かリセット時刻が取れない)」で、どちらも切替しない** ── 0 でも 100 でもない。
 
-| 条件(weekly) | 切替 |
+| 条件(`verdict.weekly`) | 切替 |
 |---|---|
-| agy < 20% | 源内を K3 で動かす(`genai --k3`) |
-| kimi < 30% | 贄川を Codex sol で動かす(`codex-niekawa`) |
-| claude < 20% | Claude は鷹野の窓だけに絞る。庵野を使わず真壁へ。K3 は Fable の代替として温存し、段取りは sol |
-| codex < 20% | 実装は庵野(この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持ち、鷹野とはメッセージで連絡 |
+| agy が減りすぎ | 源内を K3 で動かす(`genai --k3`) |
+| kimi が減りすぎ | 贄川を Codex sol で動かす(`codex-niekawa`) |
+| claude が減りすぎ | Claude は鷹野の窓だけに絞る。庵野を使わず真壁へ。K3 は Fable の代替として温存し、段取りは sol |
+| codex が減りすぎ | 実装は庵野(この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持ち、鷹野とはメッセージで連絡 |
 
 **閾値の判定はランチャに入れない。**起こされた後のランチャに選択肢は無く、ランチャが別のランチャを起こす形は自己参照の事故に近づく。代わりに 2 つ ── 鷹野が起動前に `harness-route` を 1 回打って配役表を見る(read-only、起動しない)、各ランチャは起動時に自サービスの `rates` を 1 回だけ叩いて `<run_dir>/rates.json` に残す(失敗は警告だけで続行)。
 

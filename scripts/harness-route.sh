@@ -6,16 +6,17 @@ usage() {
   cat <<'USAGE'
 使い方: harness-route.sh
 
-4 サービス(claude / codex / kimi / agy)の `rates` を叩き、weekly 残量に発注書 14 の閾値表を当てて
-配役表を stdout に出す read-only の 1 コマンド。何も起動しない。
+4 サービス(claude / codex / kimi / agy)の `rates` を叩き、weekly の消費ペース(発注書 14 / 09-21 置換)に
+判定表を当てて配役表を stdout に出す read-only の 1 コマンド。何も起動しない。
 
-閾値表:
-  agy    < 20%  源内は K3 で動かす
-  kimi   < 30%  贄川は Codex sol で動かす
-  claude < 20%  Claude は鷹野の窓だけに絞る。庵野を使わず真壁へ。段取りは Codex sol
-  codex  < 20%  実装は庵野(この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持つ
+判定表(`verdict.weekly`):
+  agy    が減りすぎ  源内は K3 で動かす
+  kimi   が減りすぎ  贄川は Codex sol で動かす
+  claude が減りすぎ  Claude は鷹野の窓だけに絞る。庵野を使わず真壁へ。段取りは Codex sol
+  codex  が減りすぎ  実装は庵野(この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持つ
 
-`remaining.weekly` が null の場合は「不明」と表示し、切り替えない(null は 0 でも 100 でもない)。
+`verdict.weekly` が null の場合は切り替えない ── pace が ±10pt 以内の「無印」と、残量かリセット時刻が
+取れない「不明」を区別して表示する(null は 0 でも 100 でもない)。
 USAGE
 }
 
@@ -28,63 +29,90 @@ fi
 command -v rates >/dev/null 2>&1 || { echo "エラー: rates コマンドが見つからない" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "エラー: jq コマンドが見つからない" >&2; exit 2; }
 
-fetch_weekly() {
-  local service="$1" json
-  if ! json="$(rates "$service" 2>/dev/null)"; then
-    printf '\n'
-    return 0
-  fi
-  printf '%s\n' "$json" | jq -r '.remaining.weekly // empty' 2>/dev/null || true
+# 4 サービスは 1 回の `rates`(引数なし、並列)で揃える。1 サービスが失敗しても他は
+# 通常どおり出る({"error":"..."} になるだけ)ので、exit status は無視して拾う。
+rates_json="$(rates 2>/dev/null || true)"
+
+weekly_fields() {
+  local service="$1"
+  printf '%s\n' "$rates_json" | jq -r --arg s "$service" '
+    (.[$s] // {}) as $x
+    | [$x.remaining.weekly, $x.elapsed.weekly, $x.pace.weekly, $x.verdict.weekly]
+    | map(if . == null then "" else tostring end)
+    | join("\t")
+  ' 2>/dev/null || true
 }
 
-fmt_weekly() {
+fmt_percent() {
   local value="$1"
   if [ -z "$value" ] || [ "$value" = null ]; then
-    printf '不明'
+    printf -- '-'
   else
     printf '%s%%' "$value"
   fi
 }
 
-below_threshold() {
-  local value="$1" threshold="$2"
-  [ -n "$value" ] || return 1
-  awk -v v="$value" -v t="$threshold" 'BEGIN { exit !(v + 0 < t + 0) }'
+fmt_pace() {
+  local value="$1"
+  if [ -z "$value" ] || [ "$value" = null ]; then
+    printf -- '-'
+  else
+    awk -v v="$value" 'BEGIN { printf (v >= 0 ? "+%s" : "%s"), v }'
+  fi
 }
 
-claude_weekly="$(fetch_weekly claude)"
-codex_weekly="$(fetch_weekly codex)"
-kimi_weekly="$(fetch_weekly kimi)"
-agy_weekly="$(fetch_weekly agy)"
+fmt_verdict() {
+  local verdict="$1" pace="$2"
+  if [ -n "$verdict" ] && [ "$verdict" != null ]; then
+    printf '%s' "$verdict"
+  elif [ -n "$pace" ] && [ "$pace" != null ]; then
+    printf '無印'
+  else
+    printf '不明'
+  fi
+}
+
+# Prints the display line for real (not through a subshell) and stashes the
+# verdict into the caller's variable named by $3, so the switch section below
+# can branch on it without re-querying rates.
+print_service_line() {
+  local label="$1" service="$2" out_var="$3" remaining elapsed pace verdict
+  IFS=$'\t' read -r remaining elapsed pace verdict <<<"$(weekly_fields "$service")"
+  printf '  %-6s: 残 %s / 経過 %s / pace %s / %s\n' "$label" \
+    "$(fmt_percent "$remaining")" "$(fmt_percent "$elapsed")" \
+    "$(fmt_pace "$pace")" "$(fmt_verdict "$verdict" "$pace")"
+  printf -v "$out_var" '%s' "$verdict"
+}
 
 echo "== rates(weekly) =="
-printf '  claude: %s\n' "$(fmt_weekly "$claude_weekly")"
-printf '  codex : %s\n' "$(fmt_weekly "$codex_weekly")"
-printf '  kimi  : %s\n' "$(fmt_weekly "$kimi_weekly")"
-printf '  agy   : %s\n' "$(fmt_weekly "$agy_weekly")"
+claude_verdict='' codex_verdict='' kimi_verdict='' agy_verdict=''
+print_service_line claude claude claude_verdict
+print_service_line codex codex codex_verdict
+print_service_line kimi kimi kimi_verdict
+print_service_line agy agy agy_verdict
 echo
-echo "== 配役表(閾値表、null=不明は切替しない) =="
+echo "== 配役表(verdict.weekly == 減りすぎ のときだけ切替を出す) =="
 
-if below_threshold "$agy_weekly" 20; then
-  echo "  源内: K3(agy weekly < 20%)"
-else
-  echo "  源内: agy(通常)"
+switched=0
+
+if [ "$agy_verdict" = 減りすぎ ]; then
+  echo "  源内: K3(agy が減りすぎ)"
+  switched=1
 fi
 
-if below_threshold "$kimi_weekly" 30; then
-  echo "  贄川: Codex sol(kimi weekly < 30%)"
-else
-  echo "  贄川: Kimi K3(通常)"
+if [ "$kimi_verdict" = 減りすぎ ]; then
+  echo "  贄川: Codex sol(kimi が減りすぎ)"
+  switched=1
 fi
 
-if below_threshold "$claude_weekly" 20; then
-  echo "  Claude: 鷹野の窓だけに絞る。庵野を使わず真壁へ。段取りは Codex sol(claude weekly < 20%)"
-else
-  echo "  Claude: 通常(鷹野 / 水無瀬 / 庵野を使う)"
+if [ "$claude_verdict" = 減りすぎ ]; then
+  echo "  Claude: 鷹野の窓だけに絞る。庵野を使わず真壁へ。段取りは Codex sol(claude が減りすぎ)"
+  switched=1
 fi
 
-if below_threshold "$codex_weekly" 20; then
-  echo "  実装: 庵野(codex weekly < 20%、この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持つ"
-else
-  echo "  実装: 真壁(通常)"
+if [ "$codex_verdict" = 減りすぎ ]; then
+  echo "  実装: 庵野(codex が減りすぎ、この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持つ"
+  switched=1
 fi
+
+[ "$switched" -eq 1 ] || echo "  (切替なし)"
