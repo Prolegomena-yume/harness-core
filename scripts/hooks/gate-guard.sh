@@ -8,8 +8,13 @@
 # この hook の中身:Bash の command に `codex-kashiwagi` を含み、`-f` / `--file` の指す
 # ファイル名が `findings.md`(= ゲート 2)のとき、便ディレクトリの `gates.tsv`
 # (`時刻 \t run_dir \t gate`)を見て、ゲート 2 の行が既に 1 本あれば block する
-# (理由「ゲート 2 は便に 1 回、直った巡は自分の検収で閉じる」)。無ければ 1 行 append して通す。
-# ゲート 1(plan.md)は記録するだけで block しない。
+# (理由「ゲート 2 は便に 1 回、直った巡は自分の検収で閉じる」)。
+#
+# **この hook は検査だけで、gates.tsv には何も書かない**(BRIEF-gate2-launcher-guard、役員 人見 2026-09-20)。
+# append は `scripts/codex-agent.sh`(ランチャ)が persona=kashiwagi の起動時に行う ── K3 の PreToolUse hook は
+# sol 贄川(`codex-niekawa`)や人の手の起動には効かないため、記録の唯一の書き手をランチャに一本化して
+# 経路に依らず同じ gates.tsv を読み書きする。ゲート 1(plan.md)はここでは見ない(block 対象ではなく、
+# 記録もランチャの仕事)。
 #
 # NIEKAWA_INBOX が無い(人見の対話 kimi、または便ディレクトリが無いランチャ実行)なら素通し。
 # jq が無い環境でも素通し(壊れたシステムより通す方を選ぶ)。
@@ -51,15 +56,12 @@ fpath="${fpath#\'}"
 base=""
 [ -n "$fpath" ] && base="$(basename -- "$fpath")"
 
-gate=""
-case "$base" in
-  plan.md) gate=1 ;;
-  findings.md) gate=2 ;;
-esac
+if [ "$base" != "findings.md" ]; then
+  exit 0
+fi
 
 batch_dir="$(dirname -- "$NIEKAWA_INBOX")"
 gates_tsv="$batch_dir/gates.tsv"
-run_dir="${CODEX_AGENT_RUN_DIR:--}"
 
 # block は「exit 0 + stdout の JSON({hookSpecificOutput:{permissionDecision:"deny",...}})」の形
 # (verdict-stop.sh と同じ、kimi 0.40.1 実測)。
@@ -71,15 +73,8 @@ block() {
   exit 0
 }
 
-if [ "$gate" = "2" ] && [ -f "$gates_tsv" ] \
-  && awk -F'\t' '$3=="2"{found=1} END{exit !found}' "$gates_tsv"; then
+if [ -f "$gates_tsv" ] && awk -F'\t' '$3=="2"{found=1} END{exit !found}' "$gates_tsv"; then
   block "ゲート 2 は便に 1 回、直った巡は自分の検収で閉じる"
-fi
-
-if [ -n "$gate" ]; then
-  ts="$(date '+%Y-%m-%dT%H:%M:%S%:z')"
-  mkdir -p "$batch_dir"
-  printf '%s\t%s\t%s\n' "$ts" "$run_dir" "$gate" >> "$gates_tsv"
 fi
 
 exit 0

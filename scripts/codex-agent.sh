@@ -271,6 +271,43 @@ for task_file in "${task_files[@]}"; do
   [ -r "$task_file" ] || die "タスクファイルを読めない: $task_file"
 done
 
+# ゲート 2 の担保(ランチャ側)。kimi の PreToolUse hook(gate-guard.sh)は K3 経路にしか効かないため、
+# sol 贄川(codex-niekawa)・人の手・真壁の起動を含む全経路で同じ判定をランチャに置く
+# (BRIEF-gate2-launcher-guard、役員 人見 2026-09-20)。便の外(NIEKAWA_INBOX 無し)は素通し、挙動を変えない。
+gate_batch_dir=""
+if [ -n "${NIEKAWA_INBOX:-}" ]; then
+  gate_batch_dir="$(dirname -- "$NIEKAWA_INBOX")"
+fi
+gate_gates_tsv=""
+[ -z "$gate_batch_dir" ] || gate_gates_tsv="$gate_batch_dir/gates.tsv"
+
+gate_has_gate2_record() {
+  # $1 の gates.tsv(時刻 \t run_dir \t gate)にゲート 2 の行が既にあるか。
+  [ -f "$1" ] && awk -F'\t' '$3=="2"{found=1} END{exit !found}' "$1"
+}
+
+if [ -n "$gate_batch_dir" ] && [ "$persona" = kashiwagi ]; then
+  # 柏木の 2 回目は run_dir を作る前に die。findings.md(ゲート 2)だけを見る、plan.md(ゲート 1)は記録だけ。
+  gate_target=""
+  if [ "${#task_files[@]}" -gt 0 ]; then
+    gate_target="$(basename -- "${task_files[$((${#task_files[@]} - 1))]}")"
+  fi
+  gate_num=""
+  case "$gate_target" in
+    plan.md) gate_num=1 ;;
+    findings.md) gate_num=2 ;;
+  esac
+  if [ "$gate_num" = 2 ] && gate_has_gate2_record "$gate_gates_tsv"; then
+    die "ゲート 2 は便に 1 回、直った巡は贄川の検収で閉じる"
+  fi
+  if [ -n "$gate_num" ]; then
+    # append はランチャだけがやる(hook 側の 2 重記録を消す、hook は検査だけになる)。
+    gate_ts="$(date '+%Y-%m-%dT%H:%M:%S%:z')"
+    mkdir -p "$gate_batch_dir"
+    printf '%s\t%s\t%s\n' "$gate_ts" "${CODEX_AGENT_RUN_DIR:--}" "$gate_num" >> "$gate_gates_tsv"
+  fi
+fi
+
 timestamp="$(date '+%Y%m%d-%H%M%S')"
 agent_state_dir="${CODEX_AGENT_STATE_DIR:-$HOME/.codex-agents}"
 run_id="$persona-$timestamp-$$-$RANDOM"
@@ -298,6 +335,21 @@ if command -v rates >/dev/null 2>&1; then
   fi
 else
   echo "警告: rates コマンドが見つからない(続行)" >&2
+fi
+
+if [ -n "$gate_batch_dir" ] && [ "$persona" = makabe ] && [ "$model" != "gpt-5.6-sol" ] \
+  && gate_has_gate2_record "$gate_gates_tsv"; then
+  # ゲート 2 の後の真壁は sol でなければ die。例外は codex weekly < 20%(luna を残す、rates は起動時に取得済み)。
+  # ここは「luna を許すかどうか」の例外判定であって、起動可否を残量で決める rates ゲート(裁定 #8)ではない。
+  gate_weekly=""
+  if [ -s "$run_dir/rates.json" ] && command -v jq >/dev/null 2>&1; then
+    gate_weekly="$(jq -r '.remaining.weekly // empty' "$run_dir/rates.json" 2>/dev/null || true)"
+  fi
+  if [[ "$gate_weekly" =~ ^-?[0-9]+([.][0-9]+)?$ ]] && awk -v v="$gate_weekly" 'BEGIN { exit !(v + 0 < 20) }'; then
+    echo "[$persona] ゲート 2 の後だが codex weekly ${gate_weekly}%( < 20%)のため luna のまま続行する" >&2
+  else
+    die "ゲート 2 の後の真壁は sol で起こす: codex-makabe --model gpt-5.6-sol(codex weekly: ${gate_weekly:-不明})"
+  fi
 fi
 
 task_path="$run_dir/task.md"
