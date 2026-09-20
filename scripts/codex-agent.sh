@@ -348,6 +348,13 @@ if [ -n "$gate_batch_dir" ] && [ "$persona" = makabe ] && [ "$model" != "gpt-5.6
   if [[ "$gate_weekly" =~ ^-?[0-9]+([.][0-9]+)?$ ]] && awk -v v="$gate_weekly" 'BEGIN { exit !(v + 0 < 20) }'; then
     echo "[$persona] ゲート 2 の後だが codex weekly ${gate_weekly}%( < 20%)のため luna のまま続行する" >&2
   else
+    # die の前にこの経路で作った run_dir と(--log 未指定の既定 log のときだけ)log_path を消す。
+    # 消さないと贄川が起こし直すたびに rates.json だけの空 run_dir と空 log が残り、runs/ を数える経路が紛れる
+    # (役員 鷹野 差し戻し 2026-09-20)。明示 --log は触らない。
+    rm -rf -- "$run_dir"
+    if [ "$log_path_was_default" -eq 1 ]; then
+      rm -f -- "$log_path"
+    fi
     die "ゲート 2 の後の真壁は sol で起こす: codex-makabe --model gpt-5.6-sol(codex weekly: ${gate_weekly:-不明})"
   fi
 fi

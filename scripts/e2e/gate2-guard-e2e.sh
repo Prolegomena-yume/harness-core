@@ -109,7 +109,20 @@ launcher_out() { cat "$test_root/$1.out"; }
 
 runs_count() {
   local state_dir="$1"
-  find "$state_dir/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' '
+  if [ -d "$state_dir/runs" ]; then
+    find "$state_dir/runs" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '
+  else
+    printf '0\n'
+  fi
+}
+
+logs_count() {
+  local state_dir="$1"
+  if [ -d "$state_dir/logs" ]; then
+    find "$state_dir/logs" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' '
+  else
+    printf '0\n'
+  fi
 }
 
 echo "== 1. 柏木のゲート 2、1 回目は通り gates.tsv に append される =="
@@ -157,6 +170,8 @@ printf '%s\t-\t2\n' "$(date '+%Y-%m-%dT%H:%M:%S%:z')" > "$batch3/gates.tsv"
 task3="$batch3/task.md"
 printf 'guard test\n' > "$task3"
 state3="$test_root/state3"
+before_runs4="$(runs_count "$state3")"
+before_logs4="$(logs_count "$state3")"
 
 CODEX_AGENT_FAKE_RATES_WEEKLY=50 run_launcher m-luna-die "$state3" "$batch3/to-niekawa.tsv" \
   makabe -C "$repo" -f "$task3" --dry-run
@@ -174,6 +189,12 @@ CODEX_AGENT_FAKE_RATES_FAIL=1 run_launcher m-fail-die "$state3" "$batch3/to-niek
   makabe -C "$repo" -f "$task3" --dry-run
 [ "$(launcher_status m-fail-die)" != 0 ] && pass 'rates 取得失敗のときも die(sol を要求)' \
   || fail "m-fail-die: exit 0 になった。out: $(launcher_out m-fail-die)"
+
+after_runs4="$(runs_count "$state3")"
+after_logs4="$(logs_count "$state3")"
+[ "$before_runs4" = "$after_runs4" ] && [ "$before_logs4" = "$after_logs4" ] \
+  && pass 'die(3回)後も runs/ の件数と logs/ の件数が不変(rates.json だけの空 run_dir・空 log を残さない)' \
+  || fail "die の残骸: runs before=$before_runs4 after=$after_runs4, logs before=$before_logs4 after=$after_logs4"
 
 CODEX_AGENT_FAKE_RATES_WEEKLY=15 run_launcher m-low-weekly-ok "$state3" "$batch3/to-niekawa.tsv" \
   makabe -C "$repo" -f "$task3" --dry-run
