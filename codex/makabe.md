@@ -23,6 +23,7 @@ exec の出力はそのまま文脈に載り、以後の全 turn で再送され
 - **`cat` でソースの全文を取らない。**`rg -n` / `sed -n 'a,bp'` / `head` / `tail` / `jq` で必要範囲だけ
 - **1 回の tool 出力は 10KB 以内。**test・build・npm ci・型検査は `> build/<name>.txt 2>&1` へ流し、`tail -n 30` と `rg -n 'FAIL|error|✗'` で読む。全文が要るときはファイルを分けて読む
 - `git diff` は `--stat` を先に、本文はファイル単位
+- **DDL(migration / schema)を書いたら `results.md` の `## DDL` に path・変える表と列と制約と索引の要旨・schema の全体像への追随を書く。無い便も `## DDL` に「無し」。**staging / production には当てない ── 不可逆で鷹野専管、当てるのは承認後の鷹野(役員 人見 2026-09-20)
 - 状態(何を終えた、何が残る、詰まった点)は作業域の `results.md` に書く。transcript は記憶媒体でない。贄川は次の巡に別の session で来るので、`results.md` に無いことは贄川に届かない
 
 ## 出力契約

@@ -170,6 +170,12 @@ exec / Bash の出力はそのまま文脈に載り、以後の全 turn で再�
 
 **エスカレーションの受け方(鷹野)。**自分で裁けるもの(How ── 既裁定の適用、実装の選択、優先順位)はその場で裁定を書き、別巡を起こす。人見の裁定が要るもの(要件の矛盾、新しい要件、不可逆 ── データの形・外向きの契約・課金)は問いをチャットに出し、30 分の見張り(`from-niekawa --wait --cap 1800`)を張って待つ。**30 分で返答が無ければ「未裁定、便途中」で close session** ── summary に問いと再開の手を書く。人見が戻ったら新 session を summary から始める。理由:Claude の prompt cache は 60 分。30 分で見切れば close の turn まで cache 内に収まり、resume の uncached 再送を構造で作らない(役員 人見 2026-09-20)。
 
+## DDL は鷹野専管 ── 便の results.md に「DDL」の項を必ず置き、当てるのは承認後に鷹野
+
+**DDL(migration と schema の差分)は不可逆なので、staging / production に当てるのは鷹野だけ。**真壁と贄川は書くだけで当てない(local の test DB は除く)。便の `results.md` に `## DDL` の項を必ず置く ── 便が書いた migration の path、変える表・列・制約・索引の要旨、schema の全体像(musearch は `db/schema.sql`)への追随の有無。DDL の無い便も `## DDL` に「無し」の 1 行を書く。贄川は承認の前に `git diff --stat <基点> -- <DDL の置き場>`(musearch は `db/`)と照らし、差分があるのに項が無い・項と差分が食い違うなら `verdict: 継続` で差し戻す(P0 ── データの形は不可逆)。承認後、鷹野がその項を起点に migration をレビューして当て、証跡を `docs/evidence/` に残す(役員 人見 2026-09-20)。
+
+**Why:** schema と migration の二本立ては手の規律だけで揃っていた(musearch 2b-2 の差分は schema.sql に未追随)。項を必須にすると、抜けた便はその項が書けないので抜けが見える。置き場は musearch `db/migrations/README.md`。
+
 ## kimi hooks ── Stop と PreToolUse の 2 本、config.toml に適用済み
 
 **`~/.kimi-code/config.toml` の `[[hooks]]` に 2 本(役員 人見 2026-09-20 に適用、鷹野が実環境で発火を確認)。**`Stop` = `scripts/hooks/verdict-stop.sh`(`CODEX_AGENT_RUN_DIR/verdict.md` が無い・1 行目が不正なら deny、贄川は書いてから終わる)、`PreToolUse` = `scripts/hooks/gate-guard.sh`(Bash の command が `codex-kashiwagi -f …/findings.md` で便の `gates.tsv` にゲート 2 が既にあれば deny)。**`matcher` は書かない** ── kimi 0.40.1 では付けると hook が呼ばれない、tool の絞り込みは hook 内で `tool_name` を見る。`CODEX_AGENT_RUN_DIR` / `NIEKAWA_INBOX` が無い kimi(人見の対話)では両方とも素通し。block は exit 0 + stdout の `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}`。
