@@ -4,7 +4,8 @@
 # 書式(実測、kimi 0.40.1 の agent-core-v2 バイナリ文字列から復元):
 #   config.toml の `[[hooks]]` テーブル(HOOKS_SECTION="hooks"、HookDefSchema.strict()):
 #     event   = "Stop" | "PreToolUse" | ... (HOOK_EVENT_TYPES、20 種)
-#     matcher = 文字列・省略可(PreToolUse/PostToolUse では tool 名に対する正規表現)
+#     matcher = **使わない**。`matcher = "^Bash$"` を付けると hook が一度も呼ばれなかった(2026-09-20 実測、
+#               鷹野 probe)。tool の絞り込みは hook 内で stdin の tool_name を見る
 #     command = 文字列・必須(shell:true で spawn される)
 #     timeout = 1〜600 の整数・省略可(既定 30 秒)
 #   起動: node child_process.spawn(command, {shell:true, env:{...process.env,...hook.env}})

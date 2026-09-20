@@ -2,7 +2,8 @@
 # kimi 0.40.1 の PreToolUse hook。書式は verdict-stop.sh の冒頭コメントと同じ(実測の出所も同じ)。
 #
 # PreToolUse の inputData(camelCase → snake_case): {hook_event_name, session_id, cwd,
-#   tool_name, tool_input, tool_call_id}。matcherValue は tool_name。
+#   tool_name, tool_input, tool_call_id}。config の matcher は使わない(付けると呼ばれない、2026-09-20 実測)、
+#   tool_name はここで見る。
 #
 # この hook の中身:Bash の command に `codex-kashiwagi` を含み、`-f` / `--file` の指す
 # ファイル名が `findings.md`(= ゲート 2)のとき、便ディレクトリの `gates.tsv`
