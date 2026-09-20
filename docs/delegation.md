@@ -170,6 +170,10 @@ exec / Bash の出力はそのまま文脈に載り、以後の全 turn で再�
 
 **エスカレーションの受け方(鷹野)。**自分で裁けるもの(How ── 既裁定の適用、実装の選択、優先順位)はその場で裁定を書き、別巡を起こす。人見の裁定が要るもの(要件の矛盾、新しい要件、不可逆 ── データの形・外向きの契約・課金)は問いをチャットに出し、30 分の見張り(`from-niekawa --wait --cap 1800`)を張って待つ。**30 分で返答が無ければ「未裁定、便途中」で close session** ── summary に問いと再開の手を書く。人見が戻ったら新 session を summary から始める。理由:Claude の prompt cache は 60 分。30 分で見切れば close の turn まで cache 内に収まり、resume の uncached 再送を構造で作らない(役員 人見 2026-09-20)。
 
+## kimi hooks ── Stop と PreToolUse の 2 本、config.toml に適用済み
+
+**`~/.kimi-code/config.toml` の `[[hooks]]` に 2 本(役員 人見 2026-09-20 に適用、鷹野が実環境で発火を確認)。**`Stop` = `scripts/hooks/verdict-stop.sh`(`CODEX_AGENT_RUN_DIR/verdict.md` が無い・1 行目が不正なら deny、贄川は書いてから終わる)、`PreToolUse` = `scripts/hooks/gate-guard.sh`(Bash の command が `codex-kashiwagi -f …/findings.md` で便の `gates.tsv` にゲート 2 が既にあれば deny)。**`matcher` は書かない** ── kimi 0.40.1 では付けると hook が呼ばれない、tool の絞り込みは hook 内で `tool_name` を見る。`CODEX_AGENT_RUN_DIR` / `NIEKAWA_INBOX` が無い kimi(人見の対話)では両方とも素通し。block は exit 0 + stdout の `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}`。
+
 ## commit ── author も committer も役、trailer 4 本
 
 **commit の author と committer は役名(日本語)+ `<persona>@ai.yumemism.dev`。**`paxyuraranica` は人見本人の手の commit だけ。`git-as <役>` を使う(`--author` だけでは committer が残る)。リポの `git config user.*` は触らない。役は `minase` / `niekawa` / `kashiwagi` / `makabe` / `anno`(源内は commit しない)。
