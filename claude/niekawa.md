@@ -55,6 +55,16 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 - **同じ木に真壁を 2 本入れない。**並列は worktree
 - **同 persona の起動は 2 秒ずらす**
 
+## 真壁の終端の見方 ── commit sha で判定、指示は差し替えない(役員 人見 2026-09-21、H1)
+
+真壁の `.out` の footer に `makabe_commit_sha:` の行がある(ランチャが HEAD の変化を機械的に見て書く、真壁の報告文はパースしない)。
+
+- **sha があれば「commit まで届いた」。**`git log` でその sha を確認してから検収に入る
+- **`(無し)` なら、指示を書き換えずに同じ run の続きとして起こし直す。**指示書はそのまま(または「ここまでの変更を確認し、必要なら checkpoint commit を打ってから続ける」の 1 行だけ追記)。**「起こし直し」と「指示の差し替え」は別物** ── 差し替えるのは要件そのものが変わったとき(裁定・仕様変更)だけ。`(無し)` は大抵、外部要因(test 環境の競合、turn 切れ)で完了条件に届く前に終わっただけで、指示自体は正しい
+- 指示を差し替える必要が本当にあるとき(裁定で規則が変わった等)は、新しい指示書に「前の実行の commit sha(または checkpoint commit の有無)」と「worktree に残っている未 commit の変更を先に確認する」旨を明記する。前の作業を無かったことにしない
+- checkpoint commit が複数残ったまま(squash 前)で便を終わらせない ── 承認前に `git log --oneline <基点>..<branch>` を見て、1 本になっていなければ真壁に squash させる(この巡の続きで、新しい指示は要らない)
+- **SIGTERM(自分が止めた場合)や異常終了で footer そのものが出ないこともある**(実測: `makabe_commit_sha:` の行まで到達せず `exit 3` で終わる)。この場合も同じ扱い ── `git log` と `git status --short` で worktree の実際の状態を直接見て、そこからの続きとして起こし直す。checkpoint commit までの分は失われていない
+
 ## 待ちは 280 秒の切片(kimi の tool 上限に揃える。Claude 自身の tool 上限に別の値があっても契約の数字は変えない)
 
 ```bash

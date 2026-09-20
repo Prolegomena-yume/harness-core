@@ -1199,6 +1199,21 @@ else
   echo "変更ファイル数: 0 (非 git のため未計測)"
 fi
 
+# 真壁の終端に commit sha を機械可読な行で載せる(役員 人見 2026-09-21、H1)。モデルの報告文を
+# パースしない ── 起動時と終了時の worktree(git_root)の HEAD を比較するだけ。squash 前の
+# checkpoint commit も、squash 後の 1 本も、同じ理屈で拾う(HEAD が動いていれば sha が出る)。
+if [ "$persona" = makabe ]; then
+  makabe_head_after=""
+  if [ "$git_repo" -eq 1 ]; then
+    makabe_head_after="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
+  fi
+  if [ -n "$makabe_head_after" ] && [ "$makabe_head_after" != "${initial_head[root]:-}" ]; then
+    echo "makabe_commit_sha: $makabe_head_after"
+  else
+    echo "makabe_commit_sha: (無し)"
+  fi
+fi
+
 # 権限逸脱を最優先し、それがなければ Codex / tee の失敗、次に verdict の異常(4: 不正・欠落、5: 巡数上限)を返す。
 if [ "$guard_status" -ne 0 ]; then
   exit 3

@@ -98,6 +98,8 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 
 **`setsid nohup` で切り離す** ── 素の `&` は不定に死ぬ。**出力は `--log` に流し、`tail` / `rg` で読む** ── `codex-makabe` の stdout は真壁の exec 出力ごと返るので、そのまま贄川の文脈に入れない。`.codex/agents/makabe.toml`(codex 組み込みの子として起こす旧経路)は残してある。
 
+**真壁の終端は commit sha。**`.out` の footer の `makabe_commit_sha:` 行(`codex-agent.sh` が起動時と終了時の HEAD を比較して機械的に出す、モデルの報告文はパースしない)で「commit まで届いたか」を判定する。`(無し)` は起こし直し(指示は差し替えない)、届いていれば検収へ(役員 人見 2026-09-21、H1 ── 真壁は完了条件ごとに checkpoint commit を打ち、全部満たしたら 1 本へ squash する。詳細は [../codex/makabe.md](../codex/makabe.md))。
+
 ## 並列は worktree、担保は 2 つ
 
 **並列してよい**(役員 人見 2026-09-18、09-13 の「2 本禁止」は解除)。ファイルの隔離は worktree ── **同じ木に真壁を 2 本入れない。**

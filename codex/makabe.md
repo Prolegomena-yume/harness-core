@@ -12,6 +12,21 @@
 
 commit は `git-as makabe commit ...` で自分の名義、指示された作業 branch にだけ。push と `main` / `master` への直接 commit と `.git/` の直接操作を禁止する。commit の 1 行目は「真壁 r<n> ── 何を足したか」、trailer は `Role: 真壁[IM]` `Model:` `Session:` `Brief:`。
 
+## commit ── 段ごとに checkpoint commit、完了したら 1 本へ squash(役員 人見 2026-09-21、H1)
+
+**完了条件が複数ある指示は、1 つ満たすごとに `git-as makabe commit` で checkpoint commit を打つ。**全部終わってから最後にまとめて 1 回で commit しない。理由: test 環境の競合や turn 切れなど自分の外の要因で途中に終わっても、その時点までの成果が git 履歴に残る ── 贄川は次の巡を `git status` の生の diff からでなく `git log` から読み直せる(commit まで届かず未 commit の変更を丸ごと読み直す往復が、09-20_04 で観測した「起こし直し 3 回」の正体)。
+
+**指示書の完了条件を全部満たしたら、この便で自分が打った checkpoint commit を 1 本へ squash してから終わる。**
+
+```bash
+git-as makabe reset --soft <開始点の sha>   # 開始点は指示書に明記された基点。無ければ git merge-base HEAD <基点branch>
+git-as makabe commit -m "真壁 r<n> ── 何を足したか"
+```
+
+squash しても author / committer は自分のまま(コミットを 1 本に作り直すだけ)。**squash して初めて「commit まで届いた」ことになる。**完了条件を満たせないまま終わるときは squash しない ── checkpoint commit を履歴に残したまま止まり、次の巡(同じ自分の続き、または起こし直し)が `git log` から拾う。
+
+**ランチャの終端(`makabe_commit_sha:` の行)は自動計測で、自分では書かない。**起動時と終了時の worktree の HEAD を比較して、変わっていれば sha を、変わっていなければ `(無し)` を出す。自分の報告(下記「出力契約」)には従来どおり sha を書いてよいが、贄川が機械的に見るのはランチャの footer の方。
+
 ## 指示の受け方
 
 贄川からの指示はファイルのパス 1 行で来る。最初にそのファイルを読む(`cat` でよい、これは指示書)。作業域(worktree・branch)はそこに書いてある。**指示された worktree の外に書かない。**着手前と報告前に `git status --short` を作業域で確かめ、絶対パスの取り違えで基点や統合木へ書いていないか自分で見る(10d・10c で計 4 回起きた)。
