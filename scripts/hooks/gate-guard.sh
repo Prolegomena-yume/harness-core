@@ -6,15 +6,15 @@
 #   tool_name はここで見る。
 #
 # この hook の中身:Bash の command に `codex-kashiwagi` を含み、`-f` / `--file` の指す
-# ファイル名が `findings.md`(= ゲート 2)のとき、便ディレクトリの `gates.tsv`
-# (`時刻 \t run_dir \t gate`)を見て、ゲート 2 の行が既に 1 本あれば block する
-# (理由「ゲート 2 は便に 1 回、直った巡は自分の検収で閉じる」)。
+# ファイル名が `findings.md`(= ゲート 2)または `plan.md`(= ゲート 1)のとき、便ディレクトリの
+# `gates.tsv`(`時刻 \t run_dir \t gate`)を見て、そのゲート番号の行が既に 1 本あれば block する
+# (理由「ゲート N は便に 1 回、直った巡は自分の検収で閉じる」。ゲート 1 も 1 回にする裁定は
+# BRIEF-gate1-once、役員 人見 2026-09-20)。
 #
 # **この hook は検査だけで、gates.tsv には何も書かない**(BRIEF-gate2-launcher-guard、役員 人見 2026-09-20)。
 # append は `scripts/codex-agent.sh`(ランチャ)が persona=kashiwagi の起動時に行う ── K3 の PreToolUse hook は
 # sol 贄川(`codex-niekawa`)や人の手の起動には効かないため、記録の唯一の書き手をランチャに一本化して
-# 経路に依らず同じ gates.tsv を読み書きする。ゲート 1(plan.md)はここでは見ない(block 対象ではなく、
-# 記録もランチャの仕事)。
+# 経路に依らず同じ gates.tsv を読み書きする。
 #
 # NIEKAWA_INBOX が無い(人見の対話 kimi、または便ディレクトリが無いランチャ実行)なら素通し。
 # jq が無い環境でも素通し(壊れたシステムより通す方を選ぶ)。
@@ -56,9 +56,12 @@ fpath="${fpath#\'}"
 base=""
 [ -n "$fpath" ] && base="$(basename -- "$fpath")"
 
-if [ "$base" != "findings.md" ]; then
-  exit 0
-fi
+gate_check=""
+case "$base" in
+  findings.md) gate_check=2 ;;
+  plan.md) gate_check=1 ;;
+  *) exit 0 ;;
+esac
 
 batch_dir="$(dirname -- "$NIEKAWA_INBOX")"
 gates_tsv="$batch_dir/gates.tsv"
@@ -73,8 +76,8 @@ block() {
   exit 0
 }
 
-if [ -f "$gates_tsv" ] && awk -F'\t' '$3=="2"{found=1} END{exit !found}' "$gates_tsv"; then
-  block "ゲート 2 は便に 1 回、直った巡は自分の検収で閉じる"
+if [ -f "$gates_tsv" ] && awk -F'\t' -v g="$gate_check" '$3==g{found=1} END{exit !found}' "$gates_tsv"; then
+  block "ゲート ${gate_check} は便に 1 回、直った巡は自分の検収で閉じる"
 fi
 
 exit 0

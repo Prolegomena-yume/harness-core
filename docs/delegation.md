@@ -31,10 +31,10 @@
 
 1. **鷹野が BRIEF を書く**(ファイル)
 2. **贄川が plan を書く** ── 作業域(worktree / branch)、真壁ごとの担当、完了条件、検収の手、並列の割り付け。置き場は作業木でなく贄川の run_dir(`~/.codex-agents/runs/niekawa-<run_id>/plan.md`)── 同じ木で動く真壁に検収の手を見せないため
-3. **柏木のゲート 1** ── 贄川が `codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md` で起こす。**所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。**反映してから次へ
+3. **柏木のゲート 1** ── 贄川が `codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md` で起こす。**所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。**反映してから次へ。**ゲート 1 も便に 1 回**(役員 人見 2026-09-20)。P0 が出たら plan を直し、直ったかは贄川自身の検収で閉じて次(真壁)へ進む、柏木を呼び直さない。担保はゲート 2 と同じランチャ + hook の 2 段
 4. **真壁が実装する** ── 贄川が `codex-makabe` を起こす。指示書は run_dir のファイル、渡すのはパス 1 行。中身は plan のうち真壁の分だけ
 5. **贄川が巡ごとに検収する** ── `git diff` と実ファイル。P0 があれば `verdict: 継続` で真壁を起こし直す。P2 は自分で直して commit、P1 は記録
-6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**ゲート 2 の P0 を直す巡だけ、真壁を sol で起こす**(`codex-makabe --model gpt-5.6-sol`、codex weekly が 20% 以上のとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**担保は 2 段** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、役員 人見 2026-09-20)
+6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**ゲート 2 の P0 を直す巡だけ、真壁を sol で起こす**(`codex-makabe --model gpt-5.6-sol`、codex weekly が 20% 以上のとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**担保は 2 段、ゲート 1 も 2 も同じ形** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、ゲート 1 への拡張は BRIEF-gate1-once、役員 人見 2026-09-20)
 7. **鷹野へ納品** ── 贄川の `verdict: 承認`。鷹野が独立検算(diff、test、実測の再現)をして merge / push
 
 **水無瀬の plan 赤入れは無い**(2026-09-18 に廃止、ゲート 1 が代替)。**柏木は真壁を起こさない**、巡も回さない。
@@ -178,7 +178,7 @@ exec / Bash の出力はそのまま文脈に載り、以後の全 turn で再�
 
 ## kimi hooks ── Stop と PreToolUse の 2 本、config.toml に適用済み
 
-**`~/.kimi-code/config.toml` の `[[hooks]]` に 2 本(役員 人見 2026-09-20 に適用、鷹野が実環境で発火を確認)。**`Stop` = `scripts/hooks/verdict-stop.sh`(`CODEX_AGENT_RUN_DIR/verdict.md` が無い・1 行目が不正なら deny、贄川は書いてから終わる)、`PreToolUse` = `scripts/hooks/gate-guard.sh`(Bash の command が `codex-kashiwagi -f …/findings.md` で便の `gates.tsv` にゲート 2 が既にあれば deny。**gates.tsv への append はしない** ── 書くのは `codex-agent.sh` だけで、hook は検査専任)。**`matcher` は書かない** ── kimi 0.40.1 では付けると hook が呼ばれない、tool の絞り込みは hook 内で `tool_name` を見る。`CODEX_AGENT_RUN_DIR` / `NIEKAWA_INBOX` が無い kimi(人見の対話)では両方とも素通し。block は exit 0 + stdout の `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}`。
+**`~/.kimi-code/config.toml` の `[[hooks]]` に 2 本(役員 人見 2026-09-20 に適用、鷹野が実環境で発火を確認)。**`Stop` = `scripts/hooks/verdict-stop.sh`(`CODEX_AGENT_RUN_DIR/verdict.md` が無い・1 行目が不正なら deny、贄川は書いてから終わる)、`PreToolUse` = `scripts/hooks/gate-guard.sh`(Bash の command が `codex-kashiwagi -f …/findings.md`(ゲート 2)または `-f …/plan.md`(ゲート 1)で、便の `gates.tsv` に該当ゲートが既にあれば deny。**gates.tsv への append はしない** ── 書くのは `codex-agent.sh` だけで、hook は検査専任)。**`matcher` は書かない** ── kimi 0.40.1 では付けると hook が呼ばれない、tool の絞り込みは hook 内で `tool_name` を見る。`CODEX_AGENT_RUN_DIR` / `NIEKAWA_INBOX` が無い kimi(人見の対話)では両方とも素通し。block は exit 0 + stdout の `{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":…}}`。
 
 ## commit ── author も committer も役、trailer 4 本
 

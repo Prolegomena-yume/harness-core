@@ -150,19 +150,29 @@ LC_ALL=C grep -q 'ゲート 2 は便に 1 回' "$test_root/k-second.out" && pass
 [ "$(count_gate "$batch1/gates.tsv" 2)" = 1 ] && pass '2回目の die で gates.tsv に重複 append されない' \
   || fail "gates.tsv に重複記録: $(cat "$batch1/gates.tsv")"
 
-echo "== 3. plan.md(ゲート1)は毎回 append、block しない =="
+echo "== 3. 柏木のゲート 1(plan.md)、1回目は通り append、2回目は run_dir 作成前に die(BRIEF-gate1-once) =="
 batch2="$(new_batch batch2)"
 printf 'plan body\n' > "$batch2/plan.md"
 state2="$test_root/state2"
 run_launcher k-plan-1 "$state2" "$batch2/to-niekawa.tsv" \
   kashiwagi --no-loop -C "$repo" -f "$batch2/plan.md" --dry-run
+[ "$(launcher_status k-plan-1)" = 0 ] && pass 'kashiwagi gate1 1回目は --dry-run で exit 0' \
+  || fail "k-plan-1: exit $(launcher_status k-plan-1), expected 0. out: $(launcher_out k-plan-1)"
+[ "$(count_gate "$batch2/gates.tsv" 1)" = 1 ] && pass 'kashiwagi gate1 1回目で gates.tsv に gate=1 が1行 append される' \
+  || fail "gates.tsv の gate=1 行数が想定外: $(cat "$batch2/gates.tsv" 2>/dev/null || echo なし)"
+
+before_runs_g1="$(runs_count "$state2")"
 run_launcher k-plan-2 "$state2" "$batch2/to-niekawa.tsv" \
   kashiwagi --no-loop -C "$repo" -f "$batch2/plan.md" --dry-run
-[ "$(launcher_status k-plan-1)" = 0 ] && [ "$(launcher_status k-plan-2)" = 0 ] \
-  && pass 'plan.md は2回呼んでもどちらも exit 0(block されない)' \
-  || fail "plan.md 呼び出しが die した: 1=$(launcher_status k-plan-1) 2=$(launcher_status k-plan-2)"
-[ "$(count_gate "$batch2/gates.tsv" 1)" = 2 ] && pass 'plan.md は毎回 gates.tsv に gate=1 を append する(dedupe しない)' \
-  || fail "gates.tsv の gate=1 行数が想定外: $(cat "$batch2/gates.tsv" 2>/dev/null || echo なし)"
+after_runs_g1="$(runs_count "$state2")"
+[ "$(launcher_status k-plan-2)" != 0 ] && pass 'kashiwagi gate1 2回目は非0で die' \
+  || fail "k-plan-2: exit 0 になった(die していない)。out: $(launcher_out k-plan-2)"
+LC_ALL=C grep -q 'ゲート 1 は便に 1 回' "$test_root/k-plan-2.out" && pass 'gate1 die の理由文が stderr に出る' \
+  || fail "die の理由文が出力に無い: $(launcher_out k-plan-2)"
+[ "$before_runs_g1" = "$after_runs_g1" ] && pass 'gate1 の die も run_dir を作らない' \
+  || fail "run_dir が作られた(before=$before_runs_g1 after=$after_runs_g1)"
+[ "$(count_gate "$batch2/gates.tsv" 1)" = 1 ] && pass '2回目の die で gates.tsv に gate=1 が重複 append されない' \
+  || fail "gates.tsv に重複記録: $(cat "$batch2/gates.tsv")"
 
 echo "== 4. 真壁 ── ゲート2の後、既定(luna)は die。sol は通る。weekly<20 は例外で通る =="
 batch3="$(new_batch batch3)"
@@ -223,6 +233,10 @@ run_launcher k-outside "$state5" "" \
   kashiwagi --no-loop -C "$repo" -f "$batch1/findings.md" --dry-run
 [ "$(launcher_status k-outside)" = 0 ] && pass '柏木: 便の外では gates.tsv に既存の gate2 があっても exit 0' \
   || fail "k-outside: exit $(launcher_status k-outside)。out: $(launcher_out k-outside)"
+run_launcher k-outside-plan "$state5" "" \
+  kashiwagi --no-loop -C "$repo" -f "$batch2/plan.md" --dry-run
+[ "$(launcher_status k-outside-plan)" = 0 ] && pass '柏木: 便の外では gates.tsv に既存の gate1 があっても exit 0' \
+  || fail "k-outside-plan: exit $(launcher_status k-outside-plan)。out: $(launcher_out k-outside-plan)"
 CODEX_AGENT_FAKE_RATES_WEEKLY=90 run_launcher m-outside "$state5" "" \
   makabe -C "$repo" -f "$task3" --dry-run
 [ "$(launcher_status m-outside)" = 0 ] && pass '真壁: 便の外では weekly が高くても exit 0(luna のまま)' \
@@ -254,11 +268,23 @@ LC_ALL=C grep -q '"permissionDecision":"deny"' "$hook_out1" && pass 'hook はラ
 [ "$(count_gate "$batch5/gates.tsv" 2)" = 1 ] && pass 'hook 自身は gates.tsv に何も書かない(2重記録が無い)' \
   || fail "hook が gates.tsv に書き足した: $(cat "$batch5/gates.tsv")"
 
-hook_out2="$test_root/hook-plan.out"
+hook_out2="$test_root/hook-plan-no-record.out"
 hook_json "codex-kashiwagi --no-loop -C $repo -f $batch5/plan.md" \
-  | NIEKAWA_INBOX="$batch5/to-niekawa.tsv" bash "$hook" > "$hook_out2" 2>"$test_root/hook-plan.err"
-[ -s "$hook_out2" ] && fail "hook が plan.md 呼び出しを誤って deny した: $(cat "$hook_out2")" \
-  || pass 'hook は plan.md(ゲート1)には反応しない(gate2 記録があっても通す)'
+  | NIEKAWA_INBOX="$batch5/to-niekawa.tsv" bash "$hook" > "$hook_out2" 2>"$test_root/hook-plan-no-record.err"
+[ -s "$hook_out2" ] && fail "hook が gate1 記録の無い便で plan.md 呼び出しを誤って deny した: $(cat "$hook_out2")" \
+  || pass 'hook は gate1 の記録が無い便では plan.md を通す(gate2 記録は見ない)'
+
+echo "== 7b. hook は plan.md(ゲート1)の2回目も deny する(BRIEF-gate1-once) =="
+hook_out2b="$test_root/hook-plan-second.out"
+hook_json "codex-kashiwagi --no-loop -C $repo -f $batch2/plan.md" \
+  | NIEKAWA_INBOX="$batch2/to-niekawa.tsv" bash "$hook" > "$hook_out2b" 2>"$test_root/hook-plan-second.err"
+hook_status2b=$?
+[ "$hook_status2b" -eq 0 ] && pass 'hook は plan.md の deny でも exit 0 で返す' \
+  || fail "hook exit $hook_status2b、期待は 0"
+LC_ALL=C grep -q '"permissionDecision":"deny"' "$hook_out2b" && pass 'hook はランチャが書いた gate=1 記録を読んで plan.md の2回目を deny する' \
+  || fail "hook が plan.md の2回目を deny しなかった: $(cat "$hook_out2b")"
+[ "$(count_gate "$batch2/gates.tsv" 1)" = 1 ] && pass 'hook 自身は plan.md でも gates.tsv に何も書かない' \
+  || fail "hook が gates.tsv に書き足した: $(cat "$batch2/gates.tsv")"
 
 hook_out3="$test_root/hook-no-inbox.out"
 hook_json "codex-kashiwagi --no-loop -C $repo -f $batch5/findings.md" \
