@@ -20,9 +20,13 @@
 # 種別の集合は向きで排他(to-takano に裁定、to-niekawa に承認、は exit 4)。
 #
 # 差出人・run_dir・要旨は改行/TAB を空白に潰す(列がズレないよう全列で行う)。
-# 要旨はさらに UTF-8 の文字境界を壊さず 1024 バイトで切る。
-# 行全体は PIPE_BUF(4096 バイト)を超えない(超過時は要旨をさらに削る)。
-# append は `printf '%s\n' >>` 1 回だけ(原子的、ロック無し)。
+# 行全体は PIPE_BUF(4096 バイト)を超えない ── ロック無しで複数 writer が
+# `printf '%s\n' >>` 1 回だけの原子的 append を行うための不変条件で、これは落とさない。
+# 要旨は上限まで丸ごと入れる(1024 バイト固定切り詰めは廃止、BRIEF-inbox-limits)。
+# 行が 4096 バイトを超える場合だけ、要旨を切って末尾に
+# `…[切れた N 字、全文は <path>]`(N は元の全文字数)を付け、元の全文(改行/TAB を
+# 潰す前のもの)を便ディレクトリの messages/<時刻>-<pid>.md に残す。読み手は
+# その path を辿れば裁定文を取りこぼさない。
 #
 # verdict ガード(to-takano のみ): run_dir が "-" 以外かつ種別が
 # 承認/エスカレーション のとき、"<run_dir>/verdict.md" が存在し 1 行目が
@@ -154,21 +158,34 @@ truncate_utf8() {
   printf '%s' "$s" | head -c "$max" | iconv -f utf-8 -t utf-8 -c 2>/dev/null
 }
 
-summary=$(truncate_utf8 "$flat_summary" 1024)
-
 ts=$(date '+%Y-%m-%dT%H:%M:%S%:z')
 mkdir -p "$(dirname "$inbox")"
 
-line=$(printf '%s\t%s\t%s\t%s\t%s' "$ts" "$from" "$kind" "$rundir" "$summary")
-line_bytes=$(printf '%s' "$line" | wc -c)
-if [ "$line_bytes" -gt 4096 ]; then
-  overflow=$((line_bytes - 4096))
-  new_max=$((1024 - overflow))
-  [ "$new_max" -lt 0 ] && new_max=0
-  summary=$(truncate_utf8 "$summary" "$new_max")
-  line=$(printf '%s\t%s\t%s\t%s\t%s' "$ts" "$from" "$kind" "$rundir" "$summary")
+# 要旨列以外(時刻・差出人・種別・run_dir・列区切りタブ4本・末尾改行1)のバイト数を
+# 引いた残りが要旨の予算。ここまでは丸ごと入れ、1024 バイト固定切り詰めはしない。
+prefix_bytes=$(printf '%s\t%s\t%s\t%s\t' "$ts" "$from" "$kind" "$rundir" | wc -c)
+budget=$((4096 - prefix_bytes - 1))
+[ "$budget" -lt 0 ] && budget=0
+
+flat_bytes=$(printf '%s' "$flat_summary" | wc -c)
+if [ "$flat_bytes" -le "$budget" ]; then
+  summary="$flat_summary"
+else
+  # 便ディレクトリ(inbox と同階層)の messages/ に全文(改行/TAB を潰す前の原文)を残す。
+  msg_dir="$(dirname "$inbox")/messages"
+  mkdir -p "$msg_dir"
+  msg_file="$msg_dir/$(date '+%Y%m%d-%H%M%S')-$$.md"
+  printf '%s\n' "$raw_summary" > "$msg_file"
+  orig_chars=$(printf '%s' "$flat_summary" | wc -m)
+  marker=$(printf '…[切れた %s 字、全文は %s]' "$orig_chars" "$msg_file")
+  marker_bytes=$(printf '%s' "$marker" | wc -c)
+  body_budget=$((budget - marker_bytes))
+  [ "$body_budget" -lt 0 ] && body_budget=0
+  body=$(truncate_utf8 "$flat_summary" "$body_budget")
+  summary="${body}${marker}"
 fi
 
+line=$(printf '%s\t%s\t%s\t%s\t%s' "$ts" "$from" "$kind" "$rundir" "$summary")
 printf '%s\n' "$line" >> "$inbox"
 printf '%s\n' "$line"
 exit 0

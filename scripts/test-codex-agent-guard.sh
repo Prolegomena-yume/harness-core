@@ -93,6 +93,9 @@ case "${CODEX_AGENT_FAKE_ACTION:-none}" in
     fake_status=7 ;;
   submodule_commit)
     git -C modules/child -c user.name=Guard -c user.email=guard@example.invalid commit --allow-empty -qm child ;;
+  worktree_branch_commit)
+    [ -n "${CODEX_AGENT_FAKE_WORKTREE_DIR:-}" ] || exit 92
+    git -C "$CODEX_AGENT_FAKE_WORKTREE_DIR" -c user.name=Guard -c user.email=guard@example.invalid commit --allow-empty -qm worktree-test ;;
 
   append_tracked) printf 'post\n' >> tracked.txt ;;
   append_untracked) printf 'post\n' >> untracked.txt ;;
@@ -262,6 +265,7 @@ run_launcher() {
     CODEX_AGENT_FAKE_CAPTURE_DIR="$capture_dir" \
     CODEX_AGENT_FAKE_ACTION="$action" \
     CODEX_AGENT_FAKE_VERDICT="${FAKE_VERDICT:-承認}" \
+    CODEX_AGENT_FAKE_WORKTREE_DIR="${FAKE_WORKTREE_DIR:-}" \
     "$launcher" "$persona" -C "$repo" "$@" "guard test" > "$output_path" 2>&1
   status=$?
   set -e
@@ -714,6 +718,23 @@ assert_status submodule-commit 3
 assert_output submodule-commit 'modules/child refs/heads/main'
 pass 'protected branch changes in direct submodules are rejected'
 
+# ---- 同じリポの他 worktree が動かした branch は逸脱にしない(BRIEF-inbox-limits、並列 makabe の誤検知対策)
+repo="$test_root/worktree-main"
+init_repo "$repo"
+git -C "$repo" checkout -qb work
+git -C "$repo" worktree add -q "$test_root/worktree-sibling" -b sibling-work
+FAKE_WORKTREE_DIR="$test_root/worktree-sibling" run_launcher worktree-other-branch makabe "$repo" worktree_branch_commit
+assert_status worktree-other-branch 0
+assert_output worktree-other-branch '他 worktree の作業 branch のため記録しない'
+pass 'a branch moved in another worktree of the same repo is not recorded as a violation'
+
+git -C "$repo" worktree add -q "$test_root/worktree-main-branch" main
+FAKE_WORKTREE_DIR="$test_root/worktree-main-branch" run_launcher worktree-main-branch makabe "$repo" worktree_branch_commit
+assert_status worktree-main-branch 3
+assert_output worktree-main-branch 'ref 変化を検出: root refs/heads/main'
+pass 'main moved in another worktree still counts as a violation'
+
+repo="$test_root/superproject"
 run_launcher removed-option kashiwagi "$repo" none --notify-sock /unused
 assert_status removed-option 2
 assert_output removed-option '不明な option: --notify-sock'

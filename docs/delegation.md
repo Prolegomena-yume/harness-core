@@ -85,6 +85,8 @@ harness-route                                    # 今日の配役表(read-only�
 
 **`main` / `master` への直接 commit と push は全員不可。**外へ出る境界は鷹野の merge と push で越える。事後ガードは真壁・水無瀬に既定 on(現 branch への commit は逸脱にしない ── `main` の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする)、柏木と贄川は既定 off(自分で木を動かすため)。
 
+**同じリポの他 worktree が動かしている作業 branch は「他 ref の移動」に数えない。**`git worktree list` で他 worktree の branch を除外してから判定する(BRIEF-inbox-limits、2026-09-21 ── 並列真壁が別 worktree で自分の branch に commit すると、もう一方の真壁の事後ガードが「権限逸脱: ref 変化」と誤記録した事故の再発防止)。`main` / `master` / remote-tracking の移動は worktree 経由でも引き続き逸脱。
+
 ## 真壁はトップレベル session ── codex 組み込みの子にしない
 
 **贄川は真壁を `codex-makabe` で起こす。**Kimi に codex 組み込みの子を起こす手段は無く、sol の贄川も形を揃えて使わない。真壁はトップレベルの codex session になるので、**外から `--resume <session_id>` が効く**(子の thread は外から resume できなかった、09-13 の制約が消えた)。
@@ -200,6 +202,8 @@ Brief: <BRIEF のパス>
 贄川を `run_in_background` で起動し、`from-niekawa --wait --cap 1800` で終端を待つ(`^変更ファイル数:` の footer や `^session_id:` を自分で grep しない ── 待ちの実装は from.sh に寄せる)。巡の進みはランチャの出力の `^巡 [0-9]+ session_id:` の行で見える。**footer の語は `kimi-niekawa` と `codex-agent.sh` で同じ** ── 待ち方を経路で変えないため。
 
 箱は 2 つとも `~/.codex-agents/batches/<便名>/`(`to-takano.tsv` = 鷹野の箱、`to-niekawa.tsv` = 便の箱)に置く。**便名は BRIEF 本文の `便: <名>` 行に鷹野が書く**(scratchpad には置かない ── 別鷹野が session summary の便名からこの便ディレクトリを辿って再開できるように)。
+
+**要旨は 1024 バイト固定切り詰めをしない。**行全体が PIPE_BUF(4096 バイト、ロック無し原子的 append の不変条件)を超える場合だけ切り、末尾に `…[切れた N 字、全文は <path>]` を付けて全文を同じ便の `messages/<時刻>-<pid>.md` に残す(BRIEF-inbox-limits、2026-09-21 ── gen-5 で 1040 字の裁定が旧 1024 バイト上限で「黙っ」に切れ、贄川が文脈で読みを補った事故の再発防止)。
 
 ```bash
 kimi-niekawa --log <固定パス> -f <BRIEF> > launcher.out 2>&1 &

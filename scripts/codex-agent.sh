@@ -1106,6 +1106,35 @@ if [ "$git_repo" -eq 1 ]; then
       esac
     done
 
+    # 同じリポの他 worktree が使っている作業 branch は「他人の作業 branch」として
+    # 逸脱判定から除外する(BRIEF-inbox-limits、並列 makabe が別 worktree で自分の
+    # branch を動かした際の誤検知対策)。main/master/remote-tracking は worktree でも
+    # 常に逸脱のまま(上の case で先に確定するため、ここには影響しない)。
+    declare -A other_worktree_branch=()
+    for index in "${!repository_dirs[@]}"; do
+      label="${repository_labels[$index]}"
+      repo_dir="${repository_dirs[$index]}"
+      self_dir="$(cd "$repo_dir" 2>/dev/null && pwd -P || printf '%s' "$repo_dir")"
+      wt_path=""
+      while IFS= read -r wt_line; do
+        case "$wt_line" in
+          "worktree "*)
+            wt_path="${wt_line#worktree }"
+            wt_path="$(cd "$wt_path" 2>/dev/null && pwd -P || printf '%s' "$wt_path")"
+            ;;
+          "branch "*)
+            wt_branch="${wt_line#branch }"
+            if [ -n "$wt_path" ] && [ "$wt_path" != "$self_dir" ]; then
+              other_worktree_branch["$label|$wt_branch"]=1
+            fi
+            ;;
+          "")
+            wt_path=""
+            ;;
+        esac
+      done < <(git -C "$repo_dir" worktree list --porcelain 2>/dev/null)
+    done
+
     declare -A checked_refs=()
     for key in "${!pre_refs[@]}" "${!post_refs[@]}"; do
       [ -z "${checked_refs[$key]+present}" ] || continue
@@ -1121,8 +1150,10 @@ if [ "$git_repo" -eq 1 ]; then
             violations+=("ref 変化を検出: $label $ref")
           fi ;;
         refs/heads/*)
+          if [ -n "${other_worktree_branch[$key]+present}" ]; then
+            echo "[$persona] 他 worktree の作業 branch のため記録しない: $label $ref" >&2
           # 新規 branch 作成と起動時 current branch への commit は許可。
-          if [ -n "${pre_refs[$key]+present}" ] && [ "$ref" != "${initial_branch[$label]}" ]; then
+          elif [ -n "${pre_refs[$key]+present}" ] && [ "$ref" != "${initial_branch[$label]}" ]; then
             violations+=("ref 変化を検出: $label $ref")
           fi ;;
         *) violations+=("ref 変化を検出: $label $ref") ;;
