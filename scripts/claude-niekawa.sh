@@ -36,8 +36,10 @@ options:
       --rounds <n>       巡数上限(既定 12)。verdict が「継続」の間、新しい claude -p プロセスで次の巡を起こす
       --no-loop          1 session だけ走らせる(巡ループ無し)
       --effort <level>   low|high|max(既定 high)。記録のみ、claude には常に high を渡す
-      --kashiwagi-model <id>  贄川が柏木を起こすときの model(既定は persona 既定の astra、env
-                         KASHIWAGI_MODEL でも指定できる。工程限定でゲートを sol に通すときに使う)
+      --kashiwagi-model <id>  贄川が柏木を起こすときの model(既定は KASHIWAGI_ROUTE 別 ── opus なら opus、
+                         codex なら astra。env KASHIWAGI_MODEL でも指定できる)
+                         柏木の実行経路は env KASHIWAGI_ROUTE(opus|codex、既定 opus)で切り替える。
+                         opus は claude-kashiwagi.sh(effort xhigh)、codex は従来の codex-kashiwagi
       --makabe-model <id>     贄川が真壁を起こすときの model(既定は persona 既定の luna、env
                          MAKABE_MODEL でも指定できる。ゲート 2 の P0 を直す巡は既存の作法どおり sol)
       --batch <name>     便名を明示する(既定: BRIEF 本文の「便: <名>」行)
@@ -119,6 +121,14 @@ resume_run_arg=""
 dry_run=0
 kashiwagi_model="${KASHIWAGI_MODEL:-}"
 makabe_model="${MAKABE_MODEL:-}"
+# 柏木の実行経路(役員 人見 2026-09-21 23:55、実行経路 C の新設)。既定 opus = claude-kashiwagi.sh(Opus,
+# effort xhigh)。codex = 従来の codex-kashiwagi(gpt-6-astra または --kashiwagi-model の指定先)。
+# 走行中の run には効かない(env は起動時に固定、新しい起動からだけ適用される)。
+kashiwagi_route="${KASHIWAGI_ROUTE:-opus}"
+case "$kashiwagi_route" in
+  opus|codex) ;;
+  *) die "KASHIWAGI_ROUTE は opus か codex のどちらか: $kashiwagi_route" ;;
+esac
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -329,6 +339,7 @@ export GIT_AUTHOR_EMAIL="niekawa@ai.yumemism.dev" GIT_COMMITTER_EMAIL="niekawa@a
 # 2 段で確実にする ── LLM が env を自発的に読みに行くとは限らないため。
 export KASHIWAGI_MODEL="$kashiwagi_model"
 export MAKABE_MODEL="$makabe_model"
+export KASHIWAGI_ROUTE="$kashiwagi_route"
 
 # hooks 設定(run_dir 直下に 1 回だけ書く。全巡で同じものを使う)。
 # ~/.claude/settings.json 等の母艦設定は一切触らない ── --settings <path> でこの run だけに効かせる。
@@ -365,10 +376,20 @@ build_round_prompt() {
     printf 'checkpoint の置き場: %s(plan.md / findings.md / verdict.md)\n' "$run_dir"
     printf 'plan の置き場: %s/plan.md\n' "$run_dir"
     printf '巡: %s / %s\n' "$round" "$max_rounds"
-    if [ -n "$kashiwagi_model" ]; then
-      printf '柏木の model 指定: codex-kashiwagi に --model %s を足す(env KASHIWAGI_MODEL、工程限定の裁定)\n' "$kashiwagi_model"
+    if [ "$kashiwagi_route" = opus ]; then
+      printf '柏木の呼び出し: claude-kashiwagi を使う(env KASHIWAGI_ROUTE=opus、役員 人見 2026-09-21 23:55、実行経路C)。codex-kashiwagi は使わない\n'
+      if [ -n "$kashiwagi_model" ]; then
+        printf '柏木の model 指定: claude-kashiwagi に --model %s を足す(env KASHIWAGI_MODEL)\n' "$kashiwagi_model"
+      else
+        printf '柏木の model 指定: 既定のまま(--model を足さない、既定 opus)\n'
+      fi
     else
-      printf '柏木の model 指定: 既定のまま(--model を足さない、persona 既定 astra)\n'
+      printf '柏木の呼び出し: codex-kashiwagi を使う(env KASHIWAGI_ROUTE=codex)\n'
+      if [ -n "$kashiwagi_model" ]; then
+        printf '柏木の model 指定: codex-kashiwagi に --model %s を足す(env KASHIWAGI_MODEL、工程限定の裁定)\n' "$kashiwagi_model"
+      else
+        printf '柏木の model 指定: 既定のまま(--model を足さない、persona 既定 astra)\n'
+      fi
     fi
     if [ -n "$makabe_model" ]; then
       printf '真壁の model 指定: codex-makabe に --model %s を足す(env MAKABE_MODEL、工程限定の裁定)\n' "$makabe_model"

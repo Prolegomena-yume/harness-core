@@ -14,7 +14,7 @@
 # matcher は "Bash" を明示。kimi と違い Claude Code は matcher を使わないと効かない訳ではないが、
 # ここでは Bash だけに絞って kimi 版と同じ判定に揃える)。
 #
-# 契約は gate-guard.sh と同じ: Bash の command に codex-kashiwagi を含み、-f / --file の指す
+# 契約は gate-guard.sh と同じ: Bash の command に codex-kashiwagi または claude-kashiwagi を含み、-f / --file の指す
 # ファイル名が findings.md(ゲート2)または plan.md(ゲート1)のとき、便ディレクトリの gates.tsv に
 # そのゲート番号の行が既に 1 本あれば block。append はしない(書き手は codex-agent.sh だけ)。
 # NIEKAWA_INBOX が無い・jq が無いなら素通し。
@@ -38,7 +38,7 @@ fi
 
 command_str="$(printf '%s' "$stdin_json" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
 case "$command_str" in
-  *codex-kashiwagi*) ;;
+  *codex-kashiwagi*|*claude-kashiwagi*) ;;
   *) exit 0 ;;
 esac
 

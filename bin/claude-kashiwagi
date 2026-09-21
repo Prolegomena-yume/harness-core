@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${CODEX_AGENT_CORE:-}" ]; then
+  launcher="$CODEX_AGENT_CORE/scripts/claude-kashiwagi.sh"
+elif repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" && [ -f "$repo_root/.claude/_core/scripts/claude-kashiwagi.sh" ]; then
+  launcher="$repo_root/.claude/_core/scripts/claude-kashiwagi.sh"
+else
+  launcher="$HOME/canonical/tech/.claude/_core/scripts/claude-kashiwagi.sh"
+fi
+
+if [ ! -x "$launcher" ]; then
+  echo "エラー: claude-kashiwagi.sh が見つからないか実行できない: $launcher" >&2
+  exit 2
+fi
+
+exec "$launcher" "$@"

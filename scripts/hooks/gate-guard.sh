@@ -5,7 +5,7 @@
 #   tool_name, tool_input, tool_call_id}。config の matcher は使わない(付けると呼ばれない、2026-09-20 実測)、
 #   tool_name はここで見る。
 #
-# この hook の中身:Bash の command に `codex-kashiwagi` を含み、`-f` / `--file` の指す
+# この hook の中身:Bash の command に `codex-kashiwagi` または `claude-kashiwagi` を含み、`-f` / `--file` の指す
 # ファイル名が `findings.md`(= ゲート 2)または `plan.md`(= ゲート 1)のとき、便ディレクトリの
 # `gates.tsv`(`時刻 \t run_dir \t gate`)を見て、そのゲート番号の行が既に 1 本あれば block する
 # (理由「ゲート N は便に 1 回、直った巡は自分の検収で閉じる」。ゲート 1 も 1 回にする裁定は
@@ -40,7 +40,7 @@ fi
 
 command_str="$(printf '%s' "$stdin_json" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
 case "$command_str" in
-  *codex-kashiwagi*) ;;
+  *codex-kashiwagi*|*claude-kashiwagi*) ;;
   *) exit 0 ;;
 esac
 
