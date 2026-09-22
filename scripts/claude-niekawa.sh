@@ -42,6 +42,9 @@ options:
                          opus は claude-kashiwagi.sh(effort xhigh)、codex は従来の codex-kashiwagi
       --makabe-model <id>     贄川が真壁を起こすときの model(既定は persona 既定の luna、env
                          MAKABE_MODEL でも指定できる。ゲート 2 の P0 を直す巡は既存の作法どおり sol)
+                         真壁の実行経路は env MAKABE_ROUTE(claude|codex、既定 codex)で切り替える。
+                         claude は codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する経路
+                         (codex weekly 逼迫時の代替、庵野 2026-09-22)、codex は従来の codex-makabe
       --batch <name>     便名を明示する(既定: BRIEF 本文の「便: <名>」行)
       --inbox <path>     鷹野の箱(to-takano.tsv)を明示する。既定は便ディレクトリの to-takano.tsv
       --resume-run [<前run_dir>]
@@ -128,6 +131,15 @@ kashiwagi_route="${KASHIWAGI_ROUTE:-opus}"
 case "$kashiwagi_route" in
   opus|codex) ;;
   *) die "KASHIWAGI_ROUTE は opus か codex のどちらか: $kashiwagi_route" ;;
+esac
+# 真壁の実行経路(codex weekly 逼迫時の代替、庵野 2026-09-22)。既定 codex = 従来の codex-makabe
+# (gpt-5.6-luna)。claude なら codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する ──
+# 贄川の呼び出しコマンド自体は codex-makabe のまま変えない。走行中の run には効かない(env は
+# 起動時に固定、新しい起動からだけ適用される)。
+makabe_route="${MAKABE_ROUTE:-codex}"
+case "$makabe_route" in
+  claude|codex) ;;
+  *) die "MAKABE_ROUTE は claude か codex のどちらか: $makabe_route" ;;
 esac
 
 while [ "$#" -gt 0 ]; do
@@ -340,6 +352,7 @@ export GIT_AUTHOR_EMAIL="niekawa@ai.yumemism.dev" GIT_COMMITTER_EMAIL="niekawa@a
 export KASHIWAGI_MODEL="$kashiwagi_model"
 export MAKABE_MODEL="$makabe_model"
 export KASHIWAGI_ROUTE="$kashiwagi_route"
+export MAKABE_ROUTE="$makabe_route"
 
 # hooks 設定(run_dir 直下に 1 回だけ書く。全巡で同じものを使う)。
 # ~/.claude/settings.json 等の母艦設定は一切触らない ── --settings <path> でこの run だけに効かせる。
@@ -391,10 +404,13 @@ build_round_prompt() {
         printf '柏木の model 指定: 既定のまま(--model を足さない、persona 既定 astra)\n'
       fi
     fi
+    if [ "$makabe_route" = claude ]; then
+      printf '真壁の呼び出し: codex-makabe をそのまま使う(env MAKABE_ROUTE=claude、wrapper が内部で claude-makabe(Claude sonnet)へ分岐する。codex weekly 逼迫時の代替経路、庵野 2026-09-22)\n'
+    fi
     if [ -n "$makabe_model" ]; then
-      printf '真壁の model 指定: codex-makabe に --model %s を足す(env MAKABE_MODEL、工程限定の裁定)\n' "$makabe_model"
+      printf '真壁の model 指定: codex-makabe に --model %s を足す(env MAKABE_MODEL、工程限定の裁定。MAKABE_ROUTE=claude の間は無視されて claude sonnet 固定)\n' "$makabe_model"
     else
-      printf '真壁の model 指定: 既定のまま(--model を足さない、persona 既定 luna。ゲート 2 の P0 を直す巡は従来どおり --model gpt-5.6-sol)\n'
+      printf '真壁の model 指定: 既定のまま(--model を足さない、persona 既定 luna。ゲート 2 の P0 を直す巡は従来どおり --model gpt-5.6-sol、MAKABE_ROUTE=claude の間は sonnet 固定)\n'
     fi
     if [ "$round" -gt 1 ]; then
       prev_verdict="$rounds_dir/r$((round - 1))/verdict.md"
