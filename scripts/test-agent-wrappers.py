@@ -284,7 +284,7 @@ print(json.dumps({'email': 'fake@example.invalid', 'remaining': {'5h': None, 'we
     result = run('harness-route.sh', overrides={'FAKE_RATES_WEEKLY': json.dumps(
         {'claude': 15, 'codex': 69, 'kimi': 25, 'agy': 10})})
     assert result.returncode == 0, result.stderr
-    assert '源内: K3(agy weekly < 20%)' in result.stdout
+    assert '源内: K3(agy が減りすぎ)' in result.stdout
     assert '贄川: Codex sol(kimi weekly < 30%)' in result.stdout
     assert 'Claude: 鷹野の窓だけに絞る' in result.stdout
     assert '実装: 真壁(通常)' in result.stdout
