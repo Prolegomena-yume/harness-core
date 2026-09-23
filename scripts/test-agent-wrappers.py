@@ -271,34 +271,45 @@ print(json.dumps({'role': 'meta', 'type': 'session.resume_hint', 'session_id': '
     passed('genai.sh rejects a wrong argument count and a missing input file')
 
     # ---- harness-route.sh(4 サービスの rates、fake rates)----
+    # 09-21 以降の rates は `verdict.weekly`("減りすぎ" / "残り気味" / null)で判定する
+    # (harness-route.sh の weekly_fields())。fake は実物の rates の形(トップレベルが
+    # サービス名、各サービスが remaining/elapsed/pace/verdict の weekly キーを持つ)に合わせ、
+    # 引数なしで 1 回呼ばれて全サービスをまとめて返す。verdict は env の JSON で駆動する。
     rates_fake = '''#!/usr/bin/env python3
-import json, os, sys
-service = sys.argv[1] if len(sys.argv) > 1 else ''
-weekly_by_service = json.loads(os.environ.get('FAKE_RATES_WEEKLY', '{}'))
-weekly = weekly_by_service.get(service)
-print(json.dumps({'email': 'fake@example.invalid', 'remaining': {'5h': None, 'weekly': weekly, 'monthly': None}}))
+import json, os
+verdict_by_service = json.loads(os.environ.get('FAKE_RATES_VERDICT', '{}'))
+out = {}
+for s in ('claude', 'codex', 'kimi', 'agy'):
+    verdict = verdict_by_service.get(s)
+    remaining, elapsed, pace = (10, 90, -5) if verdict is not None else (None, None, None)
+    out[s] = {
+        'email': 'fake@example.invalid',
+        'remaining': {'5h': None, 'weekly': remaining, 'monthly': None},
+        'elapsed': {'5h': None, 'weekly': elapsed, 'monthly': None},
+        'pace': {'5h': None, 'weekly': pace, 'monthly': None},
+        'verdict': {'5h': None, 'weekly': verdict, 'monthly': None},
+    }
+print(json.dumps(out))
 '''
     (binary / 'rates').write_text(rates_fake)
     (binary / 'rates').chmod(0o755)
 
-    result = run('harness-route.sh', overrides={'FAKE_RATES_WEEKLY': json.dumps(
-        {'claude': 15, 'codex': 69, 'kimi': 25, 'agy': 10})})
+    result = run('harness-route.sh', overrides={'FAKE_RATES_VERDICT': json.dumps(
+        {'claude': '減りすぎ', 'codex': None, 'kimi': '減りすぎ', 'agy': '減りすぎ'})})
     assert result.returncode == 0, result.stderr
     assert '源内: K3(agy が減りすぎ)' in result.stdout
-    assert '贄川: Codex sol(kimi weekly < 30%)' in result.stdout
-    assert 'Claude: 鷹野の窓だけに絞る' in result.stdout
-    assert '実装: 真壁(通常)' in result.stdout
-    passed('harness-route applies the threshold table to fake rates output and never launches anything')
+    assert '贄川: Codex sol(kimi が減りすぎ)' in result.stdout
+    assert 'Claude: 鷹野の窓だけに絞る。庵野を使わず真壁へ。段取りは Codex sol(claude が減りすぎ)' in result.stdout
+    # codex が減りすぎでない(null)ときは「実装:」の切替行自体が出ない ── harness-route.sh に
+    # 「真壁(通常)」のような無印表記は無い(実出力で確認、庵野 09-24)。
+    assert '実装:' not in result.stdout
+    passed('harness-route applies the verdict table to fake rates output and never launches anything')
 
-    result_null = run('harness-route.sh', overrides={'FAKE_RATES_WEEKLY': json.dumps(
+    result_null = run('harness-route.sh', overrides={'FAKE_RATES_VERDICT': json.dumps(
         {'claude': None, 'codex': None, 'kimi': None, 'agy': None})})
     assert result_null.returncode == 0, result_null.stderr
-    assert result_null.stdout.count('claude: 不明') == 1
-    assert result_null.stdout.count('codex : 不明') == 1
-    assert result_null.stdout.count('kimi  : 不明') == 1
-    assert result_null.stdout.count('agy   : 不明') == 1
-    assert '源内: agy(通常)' in result_null.stdout
-    assert '贄川: Kimi K3(通常)' in result_null.stdout
-    passed('harness-route shows 不明 for null weekly and does not switch routing on it')
+    assert result_null.stdout.count('不明') == 4
+    assert '(切替なし)' in result_null.stdout
+    passed('harness-route shows 不明 for null verdict/pace and does not switch routing on it')
 
 print(f'1..{count}')
