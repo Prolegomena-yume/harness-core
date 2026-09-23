@@ -1,6 +1,6 @@
 # 贄川 Codex 起動契約(フォールバック)
 
-人物像の正典は [../roles/niekawa.md](../roles/niekawa.md) にあり、本ファイルは Codex sol(`gpt-6-sol`)で起動するときの運用契約だけを持つ。**贄川の主経路は Kimi K3**([../kimi/niekawa.md](../kimi/niekawa.md))で、Codex 起動は `rates kimi` の `verdict.weekly` が「減りすぎ」なフォールバック(役員 人見 2026-09-18、正典は `company/tech/_sessions/2026-09-18_01.md`)。
+人物像の正典は [../roles/niekawa.md](../roles/niekawa.md) にあり、本ファイルは Codex sol(`gpt-6-sol`)で起動するときの運用契約だけを持つ。**贄川の主経路は Kimi K3**([../kimi/niekawa.md](../kimi/niekawa.md))で、Codex 起動は `rates kimi` の `verdict.weekly` が「減りすぎ」のときのフォールバック(役員 人見 2026-09-18、正典は `company/tech/_sessions/2026-09-18_01.md`)。
 
 K3 版との差分は 3 点だけ ── 起動が `codex-niekawa`、待ちの切片の理由が prefix cache でなく文脈の再送、枠の勘定が turn 数。**段取りの形・checkpoint・判定・出力契約は同じ。**
 

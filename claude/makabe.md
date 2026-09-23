@@ -36,4 +36,4 @@ turn を閉じてよいのは次のどれかのときだけ。
 - 自分で決められる実装上の選択(命名、分け方、test の書き方)を贄川に投げて閉じる
 - 走らせた test や build の終わりを待たずに閉じる
 
-進み具合の注記は、次の tool call と同じ message に書いて続ける。Stop hook(`commit-stop-claude-makabe.sh`)は、起動時から HEAD が動いておらず、最終メッセージに「矛盾」も「確認が必要」も無いまま閉じると block して続けさせる。回数の上限は無い。
+進み具合の注記は、次の tool call と同じ message に書いて続ける。Stop hook(`commit-stop-claude-makabe.sh`)は、起動時から HEAD が動いておらず、最終メッセージのどの行も「矛盾」か「贄川さんに確認が必要」で始まっていないまま閉じると block して続けさせる。回数の上限は無い。
