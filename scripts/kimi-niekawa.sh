@@ -13,11 +13,23 @@ options:
       --rounds <n>       巡数上限(既定 12)。verdict が「継続」の間、新しい session で次の巡を起こす
       --no-loop          1 session だけ走らせる(巡ループ無し)
       --effort <level>   low|high|max(既定 high)。kimi CLI に渡す手段が無く記録のみ(下記参照)
+      --kashiwagi-model <id>  贄川が柏木を起こすときの model(既定は KASHIWAGI_ROUTE 別 ── opus なら opus、
+                         codex なら sol(astra は既定から退役、役員 人見 2026-09-24)。env KASHIWAGI_MODEL でも指定できる)
+                         柏木の実行経路は env KASHIWAGI_ROUTE(opus|codex、既定 opus)で切り替える。
+                         opus は claude-kashiwagi.sh(effort xhigh)、codex は従来の codex-kashiwagi
+      --makabe-model <id>     贄川が真壁を起こすときの model(既定は persona 既定の luna、env
+                         MAKABE_MODEL でも指定できる。ゲート 2 の P0 を直す巡は既存の作法どおり sol)
+                         真壁の実行経路は env MAKABE_ROUTE(claude|codex、既定 codex)で切り替える。
+                         claude は codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する経路
+                         (codex weekly 逼迫時の代替、庵野 2026-09-22)、codex は従来の codex-makabe
       --batch <name>     便名を明示する(既定: BRIEF 本文の「便: <名>」行)
       --inbox <path>     鷹野の箱(to-takano.tsv)を明示する。既定は便ディレクトリの to-takano.tsv
       --resume-run [<前run_dir>]
                          新しい run_dir で便を再開する。前 run(省略時は便の runs.tsv の最終行)の
                          checkpoint を巡 1 の prompt 末尾に写す
+      --budget <分>      便全体の時間予算(分)。env NIEKAWA_BUDGET_MIN でも指定できる。指定時は
+                         巡ごとの prompt 冒頭に経過時間を出す。起点は便の最初の run(runs.tsv 1 行目)の
+                         起動時刻 ── --resume-run で起こし直しても通算する。無指定なら行を出さない
       --dry-run          prompt を組み立てて stdout に出し、kimi を起動せず exit 0(検算用)
   -h, --help             この usage を表示
 
@@ -104,6 +116,26 @@ takano_inbox_arg=""
 resume_run=0
 resume_run_arg=""
 dry_run=0
+kashiwagi_model="${KASHIWAGI_MODEL:-}"
+makabe_model="${MAKABE_MODEL:-}"
+budget_min="${NIEKAWA_BUDGET_MIN:-}"
+# 柏木の実行経路(役員 人見 2026-09-21 23:55、実行経路 C の新設)。既定 opus = claude-kashiwagi.sh(Opus,
+# effort xhigh)。codex = 従来の codex-kashiwagi(既定 gpt-6-sol、astra は既定から退役。--kashiwagi-model の指定先も可)。
+# 走行中の run には効かない(env は起動時に固定、新しい起動からだけ適用される)。
+kashiwagi_route="${KASHIWAGI_ROUTE:-opus}"
+case "$kashiwagi_route" in
+  opus|codex) ;;
+  *) die "KASHIWAGI_ROUTE は opus か codex のどちらか: $kashiwagi_route" ;;
+esac
+# 真壁の実行経路(codex weekly 逼迫時の代替、庵野 2026-09-22)。既定 codex = 従来の codex-makabe
+# (gpt-6-luna)。claude なら codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する ──
+# 贄川の呼び出しコマンド自体は codex-makabe のまま変えない。走行中の run には効かない(env は
+# 起動時に固定、新しい起動からだけ適用される)。
+makabe_route="${MAKABE_ROUTE:-codex}"
+case "$makabe_route" in
+  claude|codex) ;;
+  *) die "MAKABE_ROUTE は claude か codex のどちらか: $makabe_route" ;;
+esac
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -115,6 +147,22 @@ while [ "$#" -gt 0 ]; do
     -C|--cd)
       [ "$#" -ge 2 ] || die "$1 には dir が必要"
       root_input="$2"
+      shift 2
+      ;;
+    --kashiwagi-model)
+      [ "$#" -ge 2 ] || die "$1 には id が必要"
+      kashiwagi_model="$2"
+      shift 2
+      ;;
+    --makabe-model)
+      [ "$#" -ge 2 ] || die "$1 には id が必要"
+      makabe_model="$2"
+      shift 2
+      ;;
+    --budget)
+      [ "$#" -ge 2 ] || die "$1 には 分 が必要"
+      [[ "$2" =~ ^[1-9][0-9]*$ ]] || die "--budget は 1 以上の整数(分): $2"
+      budget_min="$2"
       shift 2
       ;;
     --log)
@@ -184,6 +232,9 @@ case "$effort" in
 esac
 if [ "$effort" != high ]; then
   echo "警告: kimi CLI に effort を渡す手段が無い(config.toml の kimi-code/k3-256k 既定 high が使われる。指定値 $effort は記録のみ)" >&2
+fi
+if [ -n "$budget_min" ] && ! [[ "$budget_min" =~ ^[1-9][0-9]*$ ]]; then
+  die "budget(分)は 1 以上の整数: $budget_min(env NIEKAWA_BUDGET_MIN か --budget で指定)"
 fi
 
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
@@ -303,6 +354,34 @@ git_name="贄川"
 export GIT_AUTHOR_NAME="$git_name" GIT_COMMITTER_NAME="$git_name"
 export GIT_AUTHOR_EMAIL="niekawa@ai.yumemism.dev" GIT_COMMITTER_EMAIL="niekawa@ai.yumemism.dev"
 
+# 柏木 / 真壁の model 指定(工程限定、役員 人見 2026-09-21 の追加裁定)。子の kimi プロセスから
+# Bash で起こす codex-kashiwagi / codex-makabe / claude-kashiwagi へ env で渡す(Bash tool から素直に
+# `echo $KASHIWAGI_MODEL` できる)のと、round prompt に明示の 2 段で確実にする ── LLM が env を
+# 自発的に読みに行くとは限らないため。
+export KASHIWAGI_MODEL="$kashiwagi_model"
+export MAKABE_MODEL="$makabe_model"
+export KASHIWAGI_ROUTE="$kashiwagi_route"
+export MAKABE_ROUTE="$makabe_route"
+
+# 時間予算の起点(genesis)。--budget / env NIEKAWA_BUDGET_MIN が無ければ計算しない。
+# 便の最初の run の開始時刻(runs.tsv 1 行目、この run 自身がまだ append していない時点で読む)を
+# 起点にする ── --resume-run で新しい run_dir を起こしても、同じ便なら runs.tsv の 1 行目は
+# 変わらないので通算になる。runs.tsv が無い(この run が便の最初、または便名が無い)ときは
+# この run 自身の起動時刻を起点にする(elapsed は 0 から始まり、この run 内では正しく進む)。
+budget_sec=""
+elapsed_genesis_epoch=""
+if [ -n "$budget_min" ]; then
+  budget_sec=$((budget_min * 60))
+  genesis_ts=""
+  if [ -n "$batch_dir" ] && [ -s "$batch_dir/runs.tsv" ]; then
+    genesis_ts="$(head -n 1 "$batch_dir/runs.tsv" | awk -F'\t' '{print $1}')"
+  fi
+  if [ -n "$genesis_ts" ]; then
+    elapsed_genesis_epoch="$(date -d "$genesis_ts" +%s 2>/dev/null || true)"
+  fi
+  [ -n "$elapsed_genesis_epoch" ] || elapsed_genesis_epoch="$(date +%s)"
+fi
+
 # agent.md を run_dir 直下の 1 箇所に巡ごとに描画し直す(--agent-file <path>)。
 # frontmatter は name / description / tools だけ(Agent は渡さない = 真壁を起こす手段は Bash からの codex-makabe だけ)。
 render_agent_md() {
@@ -336,6 +415,36 @@ build_round_prompt() {
     printf 'checkpoint の置き場: %s(plan.md / findings.md / verdict.md)\n' "$run_dir"
     printf 'plan の置き場: %s/plan.md\n' "$run_dir"
     printf '巡: %s / %s\n' "$round" "$max_rounds"
+    if [ -n "$budget_min" ]; then
+      local now_epoch elapsed_sec
+      now_epoch="$(date +%s)"
+      elapsed_sec=$((now_epoch - elapsed_genesis_epoch))
+      [ "$elapsed_sec" -ge 0 ] || elapsed_sec=0
+      printf '時間: elapsed %ss / %ss\n' "$elapsed_sec" "$budget_sec"
+    fi
+    if [ "$kashiwagi_route" = opus ]; then
+      printf '柏木の呼び出し: claude-kashiwagi を使う(env KASHIWAGI_ROUTE=opus、役員 人見 2026-09-21 23:55、実行経路C)。codex-kashiwagi は使わない\n'
+      if [ -n "$kashiwagi_model" ]; then
+        printf '柏木の model 指定: claude-kashiwagi に --model %s を足す(env KASHIWAGI_MODEL)\n' "$kashiwagi_model"
+      else
+        printf '柏木の model 指定: 既定のまま(--model を足さない、既定 opus)\n'
+      fi
+    else
+      printf '柏木の呼び出し: codex-kashiwagi を使う(env KASHIWAGI_ROUTE=codex)\n'
+      if [ -n "$kashiwagi_model" ]; then
+        printf '柏木の model 指定: codex-kashiwagi に --model %s を足す(env KASHIWAGI_MODEL、工程限定の裁定)\n' "$kashiwagi_model"
+      else
+        printf '柏木の model 指定: 既定のまま(--model を足さない、persona 既定 sol)\n'
+      fi
+    fi
+    if [ "$makabe_route" = claude ]; then
+      printf '真壁の呼び出し: codex-makabe をそのまま使う(env MAKABE_ROUTE=claude、wrapper が内部で claude-makabe(Claude sonnet)へ分岐する。codex weekly 逼迫時の代替経路、庵野 2026-09-22)\n'
+    fi
+    if [ -n "$makabe_model" ]; then
+      printf '真壁の model 指定: codex-makabe に --model %s を足す(env MAKABE_MODEL、工程限定の裁定。MAKABE_ROUTE=claude の間は無視されて claude sonnet 固定)\n' "$makabe_model"
+    else
+      printf '真壁の model 指定: 既定のまま(--model を足さない、persona 既定 luna。ゲート 2 の P0 を直す巡は従来どおり --model %s、MAKABE_ROUTE=claude の間は sonnet 固定)\n' "$CODEX_SOL_MODEL"
+    fi
     if [ "$round" -gt 1 ]; then
       prev_verdict="$rounds_dir/r$((round - 1))/verdict.md"
       printf '\n## 前巡までの checkpoint(この session は巡 %s。以下は前の session が残したもの)\n' "$round"

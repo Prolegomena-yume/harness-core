@@ -52,6 +52,9 @@ options:
       --resume-run [<前run_dir>]
                          新しい run_dir で便を再開する。前 run(省略時は便の runs.tsv の最終行)の
                          checkpoint を巡 1 の prompt 末尾に写す
+      --budget <分>      便全体の時間予算(分)。env NIEKAWA_BUDGET_MIN でも指定できる。指定時は
+                         巡ごとの prompt 冒頭に経過時間を出す。起点は便の最初の run(runs.tsv 1 行目)の
+                         起動時刻 ── --resume-run で起こし直しても通算する。無指定なら行を出さない
       --dry-run          prompt を組み立てて stdout に出し、claude を起動せず exit 0(検算用)
   -h, --help             この usage を表示
 
@@ -126,6 +129,7 @@ takano_inbox_arg=""
 resume_run=0
 resume_run_arg=""
 dry_run=0
+budget_min="${NIEKAWA_BUDGET_MIN:-}"
 kashiwagi_model="${KASHIWAGI_MODEL:-}"
 makabe_model="${MAKABE_MODEL:-}"
 # 柏木の実行経路(役員 人見 2026-09-21 23:55、実行経路 C の新設)。既定 opus = claude-kashiwagi.sh(Opus,
@@ -207,6 +211,12 @@ while [ "$#" -gt 0 ]; do
         shift
       fi
       ;;
+    --budget)
+      [ "$#" -ge 2 ] || die "$1 には 分 が必要"
+      [[ "$2" =~ ^[1-9][0-9]*$ ]] || die "--budget は 1 以上の整数(分): $2"
+      budget_min="$2"
+      shift 2
+      ;;
     --dry-run)
       dry_run=1
       shift
@@ -234,6 +244,9 @@ case "$effort" in
 esac
 if [ "$effort" != "$NIEKAWA_CLAUDE_EFFORT" ]; then
   echo "警告: claude には常に --effort $NIEKAWA_CLAUDE_EFFORT を渡す(persona 既定 models.env の NIEKAWA_CLAUDE_EFFORT、指定値 $effort は記録のみ)" >&2
+fi
+if [ -n "$budget_min" ] && ! [[ "$budget_min" =~ ^[1-9][0-9]*$ ]]; then
+  die "budget(分)は 1 以上の整数: $budget_min(env NIEKAWA_BUDGET_MIN か --budget で指定)"
 fi
 
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
@@ -358,6 +371,25 @@ export MAKABE_MODEL="$makabe_model"
 export KASHIWAGI_ROUTE="$kashiwagi_route"
 export MAKABE_ROUTE="$makabe_route"
 
+# 時間予算の起点(genesis)。--budget / env NIEKAWA_BUDGET_MIN が無ければ計算しない。
+# 便の最初の run の開始時刻(runs.tsv 1 行目、この run 自身がまだ append していない時点で読む)を
+# 起点にする ── --resume-run で新しい run_dir を起こしても、同じ便なら runs.tsv の 1 行目は
+# 変わらないので通算になる。runs.tsv が無い(この run が便の最初、または便名が無い)ときは
+# この run 自身の起動時刻を起点にする(elapsed は 0 から始まり、この run 内では正しく進む)。
+budget_sec=""
+elapsed_genesis_epoch=""
+if [ -n "$budget_min" ]; then
+  budget_sec=$((budget_min * 60))
+  genesis_ts=""
+  if [ -n "$batch_dir" ] && [ -s "$batch_dir/runs.tsv" ]; then
+    genesis_ts="$(head -n 1 "$batch_dir/runs.tsv" | awk -F'\t' '{print $1}')"
+  fi
+  if [ -n "$genesis_ts" ]; then
+    elapsed_genesis_epoch="$(date -d "$genesis_ts" +%s 2>/dev/null || true)"
+  fi
+  [ -n "$elapsed_genesis_epoch" ] || elapsed_genesis_epoch="$(date +%s)"
+fi
+
 # hooks 設定(run_dir 直下に 1 回だけ書く。全巡で同じものを使う)。
 # ~/.claude/settings.json 等の母艦設定は一切触らない ── --settings <path> でこの run だけに効かせる。
 hooks_dir="$CORE/scripts/hooks"
@@ -393,6 +425,13 @@ build_round_prompt() {
     printf 'checkpoint の置き場: %s(plan.md / findings.md / verdict.md)\n' "$run_dir"
     printf 'plan の置き場: %s/plan.md\n' "$run_dir"
     printf '巡: %s / %s\n' "$round" "$max_rounds"
+    if [ -n "$budget_min" ]; then
+      local now_epoch elapsed_sec
+      now_epoch="$(date +%s)"
+      elapsed_sec=$((now_epoch - elapsed_genesis_epoch))
+      [ "$elapsed_sec" -ge 0 ] || elapsed_sec=0
+      printf '時間: elapsed %ss / %ss\n' "$elapsed_sec" "$budget_sec"
+    fi
     if [ "$kashiwagi_route" = opus ]; then
       printf '柏木の呼び出し: claude-kashiwagi を使う(env KASHIWAGI_ROUTE=opus、役員 人見 2026-09-21 23:55、実行経路C)。codex-kashiwagi は使わない\n'
       if [ -n "$kashiwagi_model" ]; then
