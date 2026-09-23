@@ -15,7 +15,7 @@
 #                                          → 全 log 累計 3 回で解除
 # log 無指定なら pure sleep(ハートビートのみ)。
 #
-# 30 秒ごとに「監視中 経過=N秒 残=N秒」ハートビート行を吐く(両モード共通)。
+# 300 秒ごと(env TIMER_HEARTBEAT で上書き)に「監視中 経過=N秒 残=N秒」ハートビート行を吐く(両モード共通)。
 # これにより動作中も .output に内容が積まれ続け、バックグラウンドタスク欄の
 # トグルが count 中から開けるようになる。
 #
@@ -54,7 +54,7 @@ trap '
 ' EXIT
 
 ERR_THRESHOLD=3
-HEARTBEAT_INTERVAL=30
+HEARTBEAT_INTERVAL="${TIMER_HEARTBEAT:-300}"
 
 ts() { date '+%H:%M:%S'; }
 start=$(date -Iseconds)
