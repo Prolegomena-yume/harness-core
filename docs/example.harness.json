@@ -6,11 +6,10 @@
   },
   "neon": {
     "urlFile": "~/.ssh/neon-harness-index-url.txt",
-    "limit": 10
+    "limit": 5
   },
   "sessions": {
-    "dir": "_sessions",
-    "dailySummaryFilename": "daily_summary.md"
+    "dir": "_sessions"
   },
   "mirror": {
     "enabled": false

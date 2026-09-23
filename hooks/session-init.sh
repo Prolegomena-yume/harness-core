@@ -43,9 +43,9 @@ path = sys.argv[1]
 SESSION_DEFAULTS = {
     "project_name": "prolegomena",
     "neon_url_file": "",
-    "neon_limit": 10,
+    "neon_limit": 5,
     "sessions_dir": "docs/_sessions",
-    "daily_summary_filename": "daily_summary.md",
+    "daily_summary_filename": "daily_summary.md",  # deprecated 2026-09-24: session-v1 は _sessions/YYYY-MM-DD_NN.md の1本、daily_summary は廃止済み(keiei/_sessions/README.md)。値は互換のため受理するだけで未使用
     "mirror_enabled": True,
     "mirror_state_file": "MIRROR_STATE.txt",
     "canonical_links": [
@@ -144,7 +144,7 @@ if "project" in raw and "name" not in project:
     errors.append("project.name is required when project is set")
 
 neon_url_file = string_at(neon, "urlFile", "neon.urlFile", "")
-neon_limit = number_at(neon, "limit", "neon.limit", 10)
+neon_limit = number_at(neon, "limit", "neon.limit", 5)
 if errors:
     fail("; ".join(errors))
 
@@ -200,52 +200,51 @@ def run_git(args, fallback):
 git_log = run_git(["log", "-5", "--oneline", "--no-decorate"], "(git log unavailable)")
 git_status = run_git(["status", "--short"], "(clean working tree)")
 
+import re
+
+# session-v1 (keiei/_sessions/README.md 正典): サマリは `_sessions/YYYY-MM-DD_NN.md` の
+# 1本。日付ディレクトリは作らない。旧形式(日付ディレクトリ + daily_summary.md)は
+# 2026-08-09 の session-v1 移行以前の消えた consumer だけが残しており、いま追随している
+# 全 consumer(tech / keiei / hanabi)は flat file なので後方互換は持たない。
+SESSION_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d+\.md$")
 sessions_dir = cfg["sessions_dir"]
-daily_name = cfg["daily_summary_filename"]
-latest_session_dir = "(none)"
-daily_summary_status = "(none)"
+latest_session_line = ""
 session_abs = os.path.join(repo_root, sessions_dir)
 if os.path.isdir(session_abs):
-    children = [
-        os.path.join(sessions_dir, name).replace("\\", "/")
-        for name in os.listdir(session_abs)
-        if os.path.isdir(os.path.join(session_abs, name))
-    ]
-    if children:
-        latest_session_dir = sorted(children, reverse=True)[0]
-        ds_path = f"{latest_session_dir}/{daily_name}"
-        if os.path.isfile(os.path.join(repo_root, ds_path)):
-            daily_summary_status = ds_path
-        else:
-            daily_summary_status = f"{latest_session_dir} ({daily_name} not yet)"
+    candidates = sorted(
+        (name for name in os.listdir(session_abs) if SESSION_FILE_RE.match(name)),
+        reverse=True,
+    )
+    if candidates:
+        rel_path = os.path.join(sessions_dir, candidates[0]).replace("\\", "/")
+        try:
+            with open(os.path.join(session_abs, candidates[0]), encoding="utf-8", errors="replace") as f:
+                title = f.readline().strip().lstrip("#").strip() or candidates[0]
+        except Exception:
+            title = candidates[0]
+        latest_session_line = f"- latest session summary: `{rel_path}` ── {title}\n"
 
-mirror_md = ""
 if is_cloud:
-    mirror_md = "### mirror state\n(cloud mode: skipped)\n"
+    mirror_line = "- mirror: skipped (cloud mode)\n"
 elif not cfg["mirror_enabled"]:
-    mirror_md = "### mirror state\n(mirror disabled)\n"
+    mirror_line = "- mirror: disabled\n"
 else:
     state_file = cfg["mirror_state_file"]
     state_abs = os.path.join(repo_root, state_file)
     if os.path.isfile(state_abs):
         try:
             with open(state_abs, encoding="utf-8", errors="replace") as f:
-                state = "".join(f.readlines()[:5]).rstrip() or "(empty)"
+                state = f.readline().strip() or "(empty)"
         except Exception as exc:
-            state = f"({state_file} unreadable: {exc})"
+            state = f"unreadable: {exc}"
     else:
-        state = f"({state_file} not found)"
-    mirror_md = f"### mirror state ({state_file})\n```\n{state}\n```\n"
+        state = f"{state_file} not found"
+    mirror_line = f"- mirror ({state_file}): {state}\n"
 
 if is_cloud:
-    env_mode_md = "\n".join([
-        "### environment",
-        "- mode: **cloud** (CLAUDE_CODE_REMOTE=true)",
-        "- implementation layer: Claude subagent/workflow",
-        "- Drive mirror skipped",
-    ])
+    mode_desc = "**cloud** (CLAUDE_CODE_REMOTE=true, impl layer: subagent, Drive mirror skipped)"
 else:
-    env_mode_md = "### environment\n- mode: local"
+    mode_desc = "local"
 
 config_section = ""
 if cfg["config_status"] == "missing":
@@ -253,45 +252,33 @@ if cfg["config_status"] == "missing":
 elif cfg["config_status"] == "error":
     config_section = f"\n### .harness.json error\n- warning: {cfg['config_message']}\n- fallback: using compatibility defaults\n"
 
-canonical_lines = []
-for link in cfg["canonical_links"]:
-    canonical_lines.append(f"- [{link['label']}]({link['path']})")
+link_parts = [
+    link["label"] if link["label"] == link["path"] else f"{link['label']}({link['path']})"
+    for link in cfg["canonical_links"]
+]
+canonical_md = ", ".join(link_parts) if link_parts else "(no canonical links configured)"
 close_reminder = cfg["close_session_reminder"]
 if close_reminder:
-    canonical_lines.append(f"- {close_reminder}")
-canonical_md = "\n".join(canonical_lines) if canonical_lines else "- (no canonical links configured)"
+    canonical_md += f" / {close_reminder}"
 
 ctx = f"""## SessionStart context (auto-injected by hooks/session-init.sh)
 {config_section}
-{env_mode_md}
-
-### git
-- branch: `{git_branch}`
+### status
+- mode: {mode_desc}; branch: `{git_branch}`; working tree: {"clean" if git_status == "(clean working tree)" else git_status.replace(chr(10), "; ")}
 - recent commits:
 ```
 {git_log}
 ```
-- working tree:
-```
-{git_status}
-```
-
-### session
-- sessions dir: `{sessions_dir}`
-- daily_summary filename: `{daily_name}`
-- latest session dir: `{latest_session_dir}`
-- daily_summary: `{daily_summary_status}`
-
-{mirror_md}
+{latest_session_line}{mirror_line}
 ### startup reminders
-{canonical_md}
+- {canonical_md}
 """
 
 def fetch_neon():
     url_file = cfg["neon_url_file"]
     if not url_file:
         return ""
-    heading = "\n### Neon recent documents (harness_index_db)"
+    heading = "\n### Neon recent documents (harness_index_db, JST)"
     url_path = os.path.expanduser(url_file)
     if not os.path.isfile(url_path):
         return f"{heading}\n- fetch failed: urlFile not found: {url_file}\n"
@@ -304,8 +291,12 @@ def fetch_neon():
         return f"{heading}\n- fetch failed: urlFile unreadable: {exc}\n"
     if not url:
         return f"{heading}\n- fetch failed: urlFile is empty: {url_file}\n"
-    limit = cfg["neon_limit"] or 10
-    query = f"SELECT path, coalesce(title,''), to_char(updated_at, 'MM-DD HH24:MI') FROM documents ORDER BY updated_at DESC LIMIT {limit};"
+    limit = cfg["neon_limit"] or 5
+    query = (
+        "SELECT path, coalesce(title,''), "
+        "to_char(updated_at AT TIME ZONE 'Asia/Tokyo', 'MM-DD HH24:MI') "
+        f"FROM documents ORDER BY updated_at DESC LIMIT {limit};"
+    )
     try:
         result = subprocess.run(
             ["psql", url, "-X", "-tA", "-F", "\t", "-c", query],
@@ -326,7 +317,7 @@ def fetch_neon():
         return f"{heading}\n- fetch failed: {reason}\n"
     except Exception as exc:
         return f"{heading}\n- fetch failed: {type(exc).__name__}: {exc}\n"
-    lines = ["", "### Neon recent documents (harness_index_db)"]
+    lines = ["", "### Neon recent documents (harness_index_db, JST)"]
     for row in result.stdout.splitlines():
         fields = row.split("\t", 2)
         if len(fields) == 3:

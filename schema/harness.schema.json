@@ -44,7 +44,8 @@
           "type": "string"
         },
         "dailySummaryFilename": {
-          "type": "string"
+          "type": "string",
+          "description": "deprecated 2026-09-24: session-v1(keiei/_sessions/README.md)は daily_summary を廃止し、_sessions/YYYY-MM-DD_NN.md の1本に統一した。hook はこの値を読まない。既存 .harness.json に残っていても検証は通す(削除は任意)"
         }
       }
     },

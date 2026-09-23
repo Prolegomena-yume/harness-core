@@ -88,11 +88,10 @@ setup 完了後の consumer 配下:
   },
   "neon": {
     "urlFile": "~/.ssh/neon-harness-index-url.txt",
-    "limit": 10
+    "limit": 5
   },
   "sessions": {
-    "dir": "docs/_sessions",
-    "dailySummaryFilename": "daily_summary.md"
+    "dir": "docs/_sessions"
   },
   "mirror": {
     "enabled": false
@@ -143,8 +142,9 @@ setup 完了後の consumer 配下:
 |---|---|---|
 | `project.name` | string (required) | 内部識別子(英数 + `-`) |
 | `neon.urlFile` | string | Neon 接続 URL を書いた file への path。未指定時は SessionStart の Neon 参照なし |
-| `neon.limit` | integer | SessionStart に出す Neon の最新 document 件数(default 10) |
-| `sessions.{dir,dailySummaryFilename}` | string | session_summary 配置 |
+| `neon.limit` | integer | SessionStart に出す Neon の最新 document 件数(default 5) |
+| `sessions.dir` | string | session summary(`YYYY-MM-DD_NN.md`)を置く directory。SessionStart はここ直下の最新 file 1本を拾う |
+| `sessions.dailySummaryFilename` | string | **deprecated(2026-09-24)。**session-v1 で daily_summary は廃止済みで hook は読まない。書いても壊れない |
 | `mirror.{enabled,stateFile}` | bool/string | Drive mirror 設定(consumer 固有、default off) |
 | `canonical.links[]` | object[] | 起動チェックリマインダ link |
 | `orch.defaultRounds` | integer | 実装・レビュー往復の既定上限(default 3) |
