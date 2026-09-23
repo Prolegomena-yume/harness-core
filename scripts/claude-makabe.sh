@@ -275,6 +275,9 @@ settings = {
                 "hooks": [{"type": "command", "command": guard, "timeout": 10}],
             },
         ],
+        "Stop": [
+            {"hooks": [{"type": "command", "command": f"{hooks_dir}/commit-stop-claude-makabe.sh", "timeout": 10}]}
+        ],
     }
 }
 with open(out_path, "w") as f:
@@ -309,6 +312,9 @@ fi
 
 pre_status="$(git -C "$root" status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort -u)"
 pre_head="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
+# Stop hook(commit-stop-claude-makabe.sh)は別プロセスなのでこの bash 変数を読めない。
+# ファイルへ写しておく(役員 人見 2026-09-24)。
+printf '%s' "$pre_head" > "$run_dir/pre_head.txt"
 pre_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
 pre_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
 

@@ -829,10 +829,10 @@ assert_no_arg argv-minase 'features.multi_agent_v2.default_wait_timeout_ms=12000
 pass 'wait timeout override is kashiwagi-only'
 
 # ---- persona 別の既定 model(発注書 14)
-assert_arg_sequence argv-kashiwagi '-m' 'gpt-6-astra'
+assert_arg_sequence argv-kashiwagi '-m' 'gpt-6-sol'
 assert_arg_sequence argv-makabe '-m' 'gpt-6-luna'
 assert_no_arg argv-minase '-m'
-pass 'kashiwagi defaults to gpt-6-astra, makabe to gpt-6-luna, minase has no default model'
+pass 'kashiwagi defaults to gpt-6-sol (astra retired from the default, 役員 人見 2026-09-24), makabe to gpt-6-luna, minase has no default model'
 
 repo="$test_root/niekawa"
 init_repo "$repo"

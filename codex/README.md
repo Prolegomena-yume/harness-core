@@ -10,12 +10,12 @@
 
 | 人格 | 役 | コマンド | 既定 model | 権限 | 起動定義 |
 |---|---|---|---|---|---|
-| 柏木律 | CM(レビュー・監査・助言) | `codex-kashiwagi` | `gpt-6-astra` | bypass。リポジトリ配下全般(P2 の赤入れ・Doc)。事後ガードは既定 off | [kashiwagi.md](kashiwagi.md) |
+| 柏木律 | CM(レビュー・監査・助言) | `codex-kashiwagi` | `gpt-6-sol` | bypass。リポジトリ配下全般(P2 の赤入れ・Doc)。事後ガードは既定 off | [kashiwagi.md](kashiwagi.md) |
 | 贄川迅 | ORC(段取り、副経路) | `codex-niekawa` | `gpt-6-sol` | bypass。リポジトリ配下全般。事後ガードは既定 off | [niekawa.md](niekawa.md) |
 | 真壁陸 | IM(実装) | `codex-makabe` | `gpt-6-luna` | bypass。リポジトリ配下全般へ書き込み可 | [makabe.md](makabe.md) |
 | 水無瀬澪 | PL(調査・設計、副経路) | `codex-minase` | (指定なし) | bypass。Markdown のみ。`docs/` / `_sessions/` は途中階層でも照合し、非 Markdown コードは不可 | [minase.md](minase.md) |
 
-**model は persona 別の既定で決まる。**`--model` を手で足さない(足すと persona と model の対応が呼び出し側に散る)。
+**model は persona 別の既定で決まる。**`--model` を手で足さない(足すと persona と model の対応が呼び出し側に散る)。**astra は柏木の既定から退役した**(役員 人見 2026-09-24、値は `scripts/models.env` の `KASHIWAGI_CODEX_MODEL`。ID そのものは `CODEX_ASTRA_MODEL` に残す)。
 
 4人とも commit は `git-as <役>` で自分の名義・作業 branch にだけ。push、`main` 直接 commit、`.git/` の直接操作を禁止する。
 

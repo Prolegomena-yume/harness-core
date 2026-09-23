@@ -89,7 +89,7 @@ prompt 末尾の `## 鷹野からの受信`(便の箱 `to-niekawa.tsv` の全行
 
 ## 柏木のゲートは 2 回、自分が呼ぶ
 
-柏木[CM]は立場が上だが、呼ぶのは自分。`--no-loop` で 1 session だけ走らせる(巡ループに入らない)。model は persona 既定の astra で、`--model` を手で足さない。
+柏木[CM]は立場が上だが、呼ぶのは自分。`--no-loop` で 1 session だけ走らせる(巡ループに入らない)。model は persona 既定の sol で、`--model` を手で足さない(astra は既定から退役、役員 人見 2026-09-24)。
 
 ```bash
 # ゲート 1 ── plan の後

@@ -20,8 +20,8 @@
 #   - 1 巡 = 1 session は `--resume` を渡さないことで担保(kimi の --agent-file 制約と同じ効果を構造で作る)
 #
 # 使い方は kimi-niekawa.sh --help と同じ(-f / --cd / --log / --rounds / --no-loop / --batch / --inbox /
-# --resume-run / --dry-run)。--effort は low|high|max を検証するが記録のみで claude には models.env の
-# NIEKAWA_CLAUDE_EFFORT(既定 high)を渡す(persona 既定は astra/luna と同じく high、他ランチャの語彙に揃える)。
+# --resume-run / --dry-run)。--effort は low|medium|high|max を検証するが記録のみで claude には models.env の
+# NIEKAWA_CLAUDE_EFFORT(既定 medium、役員 人見 2026-09-24。high→medium)を渡す。
 # model も models.env の NIEKAWA_CLAUDE_MODEL 固定
 # (--model は受けない)。
 
@@ -37,9 +37,9 @@ options:
       --log <path>      ログ出力先
       --rounds <n>       巡数上限(既定 12)。verdict が「継続」の間、新しい claude -p プロセスで次の巡を起こす
       --no-loop          1 session だけ走らせる(巡ループ無し)
-      --effort <level>   low|high|max(既定 high)。記録のみ、claude には常に models.env の NIEKAWA_CLAUDE_EFFORT を渡す
+      --effort <level>   low|medium|high|max(既定 medium)。記録のみ、claude には常に models.env の NIEKAWA_CLAUDE_EFFORT を渡す
       --kashiwagi-model <id>  贄川が柏木を起こすときの model(既定は KASHIWAGI_ROUTE 別 ── opus なら opus、
-                         codex なら astra。env KASHIWAGI_MODEL でも指定できる)
+                         codex なら sol(astra は既定から退役、役員 人見 2026-09-24)。env KASHIWAGI_MODEL でも指定できる)
                          柏木の実行経路は env KASHIWAGI_ROUTE(opus|codex、既定 opus)で切り替える。
                          opus は claude-kashiwagi.sh(effort xhigh)、codex は従来の codex-kashiwagi
       --makabe-model <id>     贄川が真壁を起こすときの model(既定は persona 既定の luna、env
@@ -116,7 +116,7 @@ fi
 
 root_input="$default_root"
 log_path=""
-effort="high"
+effort="$NIEKAWA_CLAUDE_EFFORT"
 max_rounds=12
 loop_enabled=1
 task_files=()
@@ -129,7 +129,7 @@ dry_run=0
 kashiwagi_model="${KASHIWAGI_MODEL:-}"
 makabe_model="${MAKABE_MODEL:-}"
 # 柏木の実行経路(役員 人見 2026-09-21 23:55、実行経路 C の新設)。既定 opus = claude-kashiwagi.sh(Opus,
-# effort xhigh)。codex = 従来の codex-kashiwagi(gpt-6-astra または --kashiwagi-model の指定先)。
+# effort xhigh)。codex = 従来の codex-kashiwagi(既定 gpt-6-sol、astra は既定から退役。--kashiwagi-model の指定先も可)。
 # 走行中の run には効かない(env は起動時に固定、新しい起動からだけ適用される)。
 kashiwagi_route="${KASHIWAGI_ROUTE:-opus}"
 case "$kashiwagi_route" in
@@ -229,8 +229,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$effort" in
-  low|high|max) ;;
-  *) die "--effort は low|high|max のどれか: $effort" ;;
+  low|medium|high|max) ;;
+  *) die "--effort は low|medium|high|max のどれか: $effort" ;;
 esac
 if [ "$effort" != "$NIEKAWA_CLAUDE_EFFORT" ]; then
   echo "警告: claude には常に --effort $NIEKAWA_CLAUDE_EFFORT を渡す(persona 既定 models.env の NIEKAWA_CLAUDE_EFFORT、指定値 $effort は記録のみ)" >&2
@@ -405,7 +405,7 @@ build_round_prompt() {
       if [ -n "$kashiwagi_model" ]; then
         printf '柏木の model 指定: codex-kashiwagi に --model %s を足す(env KASHIWAGI_MODEL、工程限定の裁定)\n' "$kashiwagi_model"
       else
-        printf '柏木の model 指定: 既定のまま(--model を足さない、persona 既定 astra)\n'
+        printf '柏木の model 指定: 既定のまま(--model を足さない、persona 既定 sol)\n'
       fi
     fi
     if [ "$makabe_route" = claude ]; then

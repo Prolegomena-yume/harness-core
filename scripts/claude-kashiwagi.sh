@@ -319,6 +319,9 @@ settings = {
                 "hooks": [{"type": "command", "command": f"{hooks_dir}/worktree-guard-claude.sh", "timeout": 10}],
             }
         ],
+        "Stop": [
+            {"hooks": [{"type": "command", "command": f"{hooks_dir}/verdict-stop-claude-kashiwagi.sh", "timeout": 10}]}
+        ],
     }
 }
 with open(out_path, "w") as f:
