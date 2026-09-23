@@ -2,6 +2,7 @@
 """Fake CLI checks for the delegation wrappers; no model is started."""
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -15,6 +16,67 @@ def passed(label):
     global count
     count += 1
     print(f'ok {count} - {label}')
+
+
+def load_models_env():
+    """scripts/models.env を実際に bash で source して解決済みの値を読む(python 側で
+    `${VAR:-...}` の展開ロジックを再実装しない、役員 人見 2026-09-24 裁定 A1/A2)。"""
+    script = f'set -a; source "{CORE}/scripts/models.env"; set +a; env -0'
+    out = subprocess.run(['bash', '-c', script], capture_output=True, timeout=10, check=True).stdout
+    env = {}
+    for chunk in out.split(b'\x00'):
+        if b'=' in chunk:
+            key, _, value = chunk.partition(b'=')
+            env[key.decode()] = value.decode()
+    return env
+
+
+MODELS = load_models_env()
+
+# ---- 退役した ID / 別名が scripts・agents・setup・各プロンプト(claude/codex/kimi)に残っていないか ----
+_RETIRED_PATTERN = re.compile(r'gpt-5\.6-[a-z]+|claude-opus-5(?!-5)|--model[= ](opus|sonnet)\b')
+_SCAN_DIRS = ['scripts', 'agents', 'setup', 'claude', 'codex', 'kimi']
+_offenders = []
+_self_path = Path(__file__).resolve()
+for _dir_name in _SCAN_DIRS:
+    _base = CORE / _dir_name
+    if not _base.exists():
+        continue
+    for _path in sorted(_base.rglob('*')):
+        if not _path.is_file() or _path.resolve() == _self_path:
+            continue
+        try:
+            _text = _path.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        for _match in _RETIRED_PATTERN.finditer(_text):
+            _offenders.append(f'{_path.relative_to(CORE)}: {_match.group(0)!r}')
+assert not _offenders, '退役した model id / 別名の --model が残っている:\n' + '\n'.join(_offenders)
+passed('no retired model ids (gpt-5.6-*, bare claude-opus-5) or --model opus|sonnet aliases remain '
+       'in scripts/agents/setup/claude/codex/kimi')
+
+# ---- agents/*.md の frontmatter model: が scripts/models.env の値と一致するか ----
+_frontmatter_expect = {
+    'agents/minase.md': MODELS['MINASE_MODEL'],
+    'agents/anno.md': MODELS['ANNO_MODEL'],
+}
+for _rel, _expect in _frontmatter_expect.items():
+    _text = (CORE / _rel).read_text()
+    _match = re.search(r'^model:\s*(\S+)\s*$', _text, re.MULTILINE)
+    assert _match, f'{_rel}: frontmatter に model: が無い'
+    assert _match.group(1) == _expect, f'{_rel}: frontmatter model {_match.group(1)!r} != models.env {_expect!r}'
+passed('agents/*.md frontmatter model: matches scripts/models.env')
+
+# ---- codex/agents/*.toml.tmpl の model が scripts/models.env の値と一致するか ----
+_toml_expect = {
+    'codex/agents/makabe.toml.tmpl': MODELS['MAKABE_CODEX_MODEL'],
+}
+for _rel, _expect in _toml_expect.items():
+    _text = (CORE / _rel).read_text()
+    _match = re.search(r'^model\s*=\s*"([^"]+)"', _text, re.MULTILINE)
+    assert _match, f'{_rel}: model = が無い'
+    assert _match.group(1) == _expect, f'{_rel}: toml model {_match.group(1)!r} != models.env {_expect!r}'
+passed('codex/agents/*.toml.tmpl model matches scripts/models.env')
 
 
 with tempfile.TemporaryDirectory(prefix='agent-wrappers-') as directory:
@@ -78,7 +140,7 @@ if Path(sys.argv[0]).name == 'claude':
     assert result.returncode == 0, result.stderr
     data = json.loads(capture.read_text())
     args = data['argv']
-    assert args[:5] == ['-p', '--model', 'claude-opus-5', '--output-format', 'json']
+    assert args[:5] == ['-p', '--model', 'claude-opus-5-5', '--output-format', 'json']
     assert args[args.index('--resume') + 1] == 'prior-session'
     assert args[args.index('--effort') + 1] == 'high'
     assert args[-2] == '--'

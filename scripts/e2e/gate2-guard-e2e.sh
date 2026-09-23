@@ -212,8 +212,8 @@ CODEX_AGENT_FAKE_RATES_WEEKLY=15 run_launcher m-low-weekly-ok "$state3" "$batch3
   || fail "m-low-weekly-ok: exit $(launcher_status m-low-weekly-ok)。out: $(launcher_out m-low-weekly-ok)"
 
 CODEX_AGENT_FAKE_RATES_WEEKLY=50 run_launcher m-sol-ok "$state3" "$batch3/to-niekawa.tsv" \
-  makabe -C "$repo" -f "$task3" --dry-run --model gpt-5.6-sol
-[ "$(launcher_status m-sol-ok)" = 0 ] && pass '--model gpt-5.6-sol は weekly に関わらず続行(exit 0)' \
+  makabe -C "$repo" -f "$task3" --dry-run --model gpt-6-sol
+[ "$(launcher_status m-sol-ok)" = 0 ] && pass '--model gpt-6-sol は weekly に関わらず続行(exit 0)' \
   || fail "m-sol-ok: exit $(launcher_status m-sol-ok)。out: $(launcher_out m-sol-ok)"
 
 echo "== 5. gate2 記録が無い便では真壁は既定(luna)のまま通る =="

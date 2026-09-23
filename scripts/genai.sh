@@ -26,6 +26,26 @@ die() {
   exit 2
 }
 
+resolve_self() {
+  local source_path="${BASH_SOURCE[0]}"
+  local source_dir link_target
+  while [ -L "$source_path" ]; do
+    source_dir="$(cd -P "$(dirname "$source_path")" && pwd)"
+    link_target="$(readlink "$source_path")"
+    if [[ "$link_target" = /* ]]; then
+      source_path="$link_target"
+    else
+      source_path="$source_dir/$link_target"
+    fi
+  done
+  source_dir="$(cd -P "$(dirname "$source_path")" && pwd)"
+  printf '%s/%s\n' "$source_dir" "$(basename "$source_path")"
+}
+script_path="$(resolve_self)"
+CORE="$(dirname "$(dirname "$script_path")")"
+# shellcheck source=models.env
+source "$CORE/scripts/models.env"
+
 if [ "${1:-}" = -h ] || [ "${1:-}" = --help ]; then
   usage
   exit 0
@@ -92,7 +112,7 @@ if [ "$use_k3" -eq 1 ]; then
   k3_cwd="$work_dir/cwd"
   mkdir -p "$k3_cwd"
   set +e
-  ( cd "$k3_cwd" && kimi -p "$prompt_content" --agent-file "$agent_file" -m kimi-code/k3-256k --output-format stream-json ) \
+  ( cd "$k3_cwd" && kimi -p "$prompt_content" --agent-file "$agent_file" -m "$KIMI_MODEL" --output-format stream-json ) \
     < /dev/null > "$out_jsonl" 2>"$work_dir/kimi.err"
   kimi_status=$?
   set -e
@@ -111,7 +131,7 @@ else
   mkdir -p "$agy_cwd"
   agy_out="$work_dir/agy.json"
   set +e
-  ( cd "$agy_cwd" && agy -p "$prompt_content" --model gemini-3.8-flash-high --output-format json \
+  ( cd "$agy_cwd" && agy -p "$prompt_content" --model "$GEMINI_MODEL" --output-format json \
       --dangerously-skip-permissions --disable-slash-commands ) > "$agy_out" 2>"$work_dir/agy.err"
   agy_status=$?
   set -e

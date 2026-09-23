@@ -6,7 +6,7 @@
 
 | 人格 | 役 | `subagent_type` | model | 用途 | 定義 |
 |---|---|---|---|---|---|
-| 水無瀬澪 | PL=Planner | `minase` | `claude-opus-5` | 調査・設計案・影響範囲 | [minase.md](minase.md) |
+| 水無瀬澪 | PL=Planner | `minase` | `claude-opus-5-5` | 調査・設計案・影響範囲 | [minase.md](minase.md) |
 | 庵野奏 | EXP=Experimenter | `anno` | `claude-sonnet-5` | 道具作り・Playwright・PoC・検証しながらの実装 | [anno.md](anno.md) |
 
 **2 人とも鷹野直属で横並び**(源内も同列だが Agent tool を持たず `genai` で呼ぶ)。実装ラインの序列は 鷹野 > 柏木 > 贄川 > 真壁 で、この 2 人はその指揮下に入らない。**Claude 側の実装の手は庵野、Claude 側の第二の目は水無瀬。**再帰委譲(Agent tool の入れ子呼び出し)は tools に含めていない。
@@ -17,7 +17,7 @@
 
 ## モデル ID を明示指定する
 
-**エイリアス(`opus` / `sonnet`)を使わない** ── 世代が上がったときにどの実体を指すか曖昧になるため、モデル ID で固定する(人見指示 2026-08-11)。水無瀬は `claude-opus-5`、庵野は `claude-sonnet-5`。
+**エイリアス(`opus` / `sonnet`)を使わない** ── 世代が上がったときにどの実体を指すか曖昧になるため、モデル ID で固定する(人見指示 2026-08-11)。水無瀬は `claude-opus-5-5`、庵野は `claude-sonnet-5`。
 
 ## tools 行は必ず書く
 

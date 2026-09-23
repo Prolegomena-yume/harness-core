@@ -16,6 +16,8 @@ USAGE
 }
 die() { echo "エラー: $*" >&2; exit 2; }
 core_dir="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+# shellcheck source=models.env
+source "$core_dir/scripts/models.env"
 root_input="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
 resume_id=""
 log_path=""
@@ -82,7 +84,7 @@ PY
 )"
 export GIT_AUTHOR_NAME=水無瀬 GIT_COMMITTER_NAME=水無瀬
 export GIT_AUTHOR_EMAIL=minase@ai.yumemism.dev GIT_COMMITTER_EMAIL=minase@ai.yumemism.dev
-command_args=(claude -p --model claude-opus-5 --output-format json
+command_args=(claude -p --model "$MINASE_MODEL" --output-format json
   --append-system-prompt "$append_prompt"
   --allowedTools 'Read,Glob,Grep,Edit,Write,WebFetch,WebSearch,Bash(ls:*),Bash(cat:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*)')
 [ -z "$resume_id" ] || command_args+=(--resume "$resume_id")

@@ -80,6 +80,8 @@ fi
 script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 
+# shellcheck source=models.env
+source "$CORE/scripts/models.env"
 # shellcheck source=lib/batch-inbox.sh
 source "$CORE/scripts/lib/batch-inbox.sh"
 
@@ -466,8 +468,8 @@ while :; do
 
   round_log="$round_dir/log.jsonl"
   set +e
-  setsid bash -c 'cd "$1" && exec kimi -p "$2" --agent-file "$3" -m kimi-code/k3-256k --output-format stream-json' \
-    _ "$root" "$prompt_arg" "$run_dir/agent.md" \
+  setsid bash -c 'cd "$1" && exec kimi -p "$2" --agent-file "$3" -m "$4" --output-format stream-json' \
+    _ "$root" "$prompt_arg" "$run_dir/agent.md" "$KIMI_MODEL" \
     < /dev/null > "$round_log" 2>"$round_dir/stderr.log" &
   current_child_pid=$!
   wait "$current_child_pid"

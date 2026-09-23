@@ -10,7 +10,8 @@
 #   - -f <plan.md|findings.md> でゲート番号を判定、-C で作業ルート、--log、--dry-run
 #
 # 差分(意図的):
-#   - engine は claude -p --model opus --effort xhigh(--dangerously-skip-permissions は渡さない)。
+#   - engine は claude -p --model <KASHIWAGI_OPUS_MODEL> --effort <KASHIWAGI_OPUS_EFFORT>(既定値は
+#     scripts/models.env、2026-09-24 時点で claude-opus-5-5 / xhigh。--dangerously-skip-permissions は渡さない)。
 #     **ゲート1(-f が plan.md、-C は贄川の run_dir 自身)は permission-mode を渡さない**(既定モードは
 #     非対話では Write/Edit/NotebookEdit を一切承認しない、実測)。**ゲート2(-f が findings.md、-C は作業木)
 #     だけ --permission-mode acceptEdits を足す**(cwd = 作業木 の中は自動承認、外は拒否、実測)。
@@ -33,7 +34,7 @@
 #   - --resume / --rounds は受けない(kashiwagi は元々巡ループを持たない。1 session = 1 ゲート)
 #
 # env:
-#   KASHIWAGI_MODEL(既定 opus) / KASHIWAGI_EFFORT(既定 xhigh)
+#   KASHIWAGI_MODEL(既定は models.env の KASHIWAGI_OPUS_MODEL) / KASHIWAGI_EFFORT(既定は同 KASHIWAGI_OPUS_EFFORT)
 #
 # 使い方: claude-kashiwagi.sh --no-loop [-C dir] -f <path> [--log path] [--model id] [--effort level] [--dry-run]
 # -f は複数可(codex-agent.sh と同じ、末尾のファイル名でゲート番号を判定)。task 引数(-f 以外)も付けられる。
@@ -49,8 +50,8 @@ options:
                        plan.md → ゲート1、findings.md → ゲート2、それ以外は判定なし)
   -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)
       --log <path>     ログ出力先
-      --model <id>     Claude model(既定 opus、env KASHIWAGI_MODEL でも指定可)
-      --effort <level> reasoning effort(既定 xhigh、env KASHIWAGI_EFFORT でも指定可)
+      --model <id>     Claude model(既定は models.env の KASHIWAGI_OPUS_MODEL、env KASHIWAGI_MODEL でも指定可)
+      --effort <level> reasoning effort(既定は models.env の KASHIWAGI_OPUS_EFFORT、env KASHIWAGI_EFFORT でも指定可)
       --no-loop        受理するが no-op(この経路は常に 1 session)
       --dry-run        起動コマンドを組み立てて stdout に出し、claude を起動せず exit 0(検算用)
   -h, --help           この usage を表示
@@ -91,6 +92,8 @@ resolve_self() {
 
 script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
+# shellcheck source=models.env
+source "$CORE/scripts/models.env"
 [ -f "$CORE/roles/kashiwagi.md" ] || die "人物像の正典が見つからない: $CORE/roles/kashiwagi.md"
 [ -f "$CORE/claude/kashiwagi.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/kashiwagi.md"
 
@@ -106,8 +109,8 @@ fi
 
 root_input="$default_root"
 log_path=""
-model="${KASHIWAGI_MODEL:-opus}"
-effort="${KASHIWAGI_EFFORT:-xhigh}"
+model="${KASHIWAGI_MODEL:-$KASHIWAGI_OPUS_MODEL}"
+effort="${KASHIWAGI_EFFORT:-$KASHIWAGI_OPUS_EFFORT}"
 task_files=()
 task_args=()
 dry_run=0

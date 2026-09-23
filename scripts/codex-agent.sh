@@ -15,7 +15,9 @@ options:
       --log <path>         ログ出力先
       --resume <id>        同じ Codex セッションを継続
       --effort <level>     reasoning effort。既定は makabe が max、他は high
-      --model <id>         Codex model を指定(既定は persona 別: kashiwagi=gpt-6-astra / makabe=gpt-5.6-luna / niekawa=gpt-5.6-sol / minase=指定無し)
+      --model <id>         Codex model を指定(既定は persona 別、値は scripts/models.env:
+                            kashiwagi=KASHIWAGI_CODEX_MODEL / makabe=MAKABE_CODEX_MODEL /
+                            niekawa=NIEKAWA_CODEX_MODEL / minase=指定無し)
       --guard              実行後の権限ガードを有効化(既定: minase / makabe は on、kashiwagi / niekawa は off)
       --no-guard           実行後の権限ガードを省略
       --mcp                MCP server を有効のまま起動
@@ -93,6 +95,8 @@ esac
 
 script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
+# shellcheck source=models.env
+source "$CORE/scripts/models.env"
 [ -d "$CORE/roles" ] || die "roles ディレクトリが見つからない: $CORE/roles"
 [ -d "$CORE/codex" ] || die "codex ディレクトリが見つからない: $CORE/codex"
 [ -f "$CORE/roles/$persona.md" ] || die "人物像の正典が見つからない: $CORE/roles/$persona.md"
@@ -111,16 +115,21 @@ fi
 root_input="$default_root"
 log_path=""
 resume_id=""
-# 既定の reasoning effort は persona 別(役員 人見 09-13 ── astra は high、luna は max)
+# 既定の reasoning effort は persona 別(役員 人見 09-13 ── astra/sol は high、luna は max)。
+# 値は scripts/models.env(世代交代のたびに直すのはそこだけ)。
 case "$persona" in
-  makabe) effort="max" ;;
+  kashiwagi) effort="$KASHIWAGI_CODEX_EFFORT" ;;
+  makabe) effort="$MAKABE_CODEX_EFFORT" ;;
+  niekawa) effort="$NIEKAWA_CODEX_EFFORT" ;;
+  minase) effort="$MINASE_CODEX_EFFORT" ;;
   *) effort="high" ;;
 esac
-# 既定の model は persona 別(発注書 14 ── ランチャが --model を渡さないと codex の既定 gpt-5.6-sol になる欠陥への対処)。
+# 既定の model は persona 別(発注書 14 ── ランチャが --model を渡さないと codex の既定モデルになる欠陥への対処)。
+# 値は scripts/models.env。
 case "$persona" in
-  kashiwagi) model="gpt-6-astra" ;;
-  makabe) model="gpt-5.6-luna" ;;
-  niekawa) model="gpt-5.6-sol" ;;
+  kashiwagi) model="$KASHIWAGI_CODEX_MODEL" ;;
+  makabe) model="$MAKABE_CODEX_MODEL" ;;
+  niekawa) model="$NIEKAWA_CODEX_MODEL" ;;
   *) model="" ;;
 esac
 guard_enabled=1
@@ -346,7 +355,7 @@ else
   echo "警告: rates コマンドが見つからない(続行)" >&2
 fi
 
-if [ -n "$gate_batch_dir" ] && [ "$persona" = makabe ] && [ "$model" != "gpt-5.6-sol" ] \
+if [ -n "$gate_batch_dir" ] && [ "$persona" = makabe ] && [ "$model" != "$CODEX_SOL_MODEL" ] \
   && gate_has_gate2_record "$gate_gates_tsv"; then
   # ゲート 2 の後の真壁は sol でなければ die。例外は codex weekly < 20%(luna を残す、rates は起動時に取得済み)。
   # ここは「luna を許すかどうか」の例外判定であって、起動可否を残量で決める rates ゲート(裁定 #8)ではない。
@@ -364,7 +373,7 @@ if [ -n "$gate_batch_dir" ] && [ "$persona" = makabe ] && [ "$model" != "gpt-5.6
     if [ "$log_path_was_default" -eq 1 ]; then
       rm -f -- "$log_path"
     fi
-    die "ゲート 2 の後の真壁は sol で起こす: codex-makabe --model gpt-5.6-sol(codex weekly: ${gate_weekly:-不明})"
+    die "ゲート 2 の後の真壁は sol で起こす: codex-makabe --model $CODEX_SOL_MODEL(codex weekly: ${gate_weekly:-不明})"
   fi
 fi
 

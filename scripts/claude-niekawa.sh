@@ -10,7 +10,8 @@
 # round prompt に明示し、贄川(opus)が codex-kashiwagi / codex-makabe の起動コマンドに反映する。
 #
 # kimi-niekawa.sh との差分は起動系だけ:
-#   - engine は `claude -p --model opus --dangerously-skip-permissions --output-format json`
+#   - engine は `claude -p --model <NIEKAWA_CLAUDE_MODEL> --dangerously-skip-permissions --output-format json`
+#     (既定値は scripts/models.env、2026-09-24 時点で claude-opus-5-5)
 #   - 人格の載せ方は --append-system-prompt(roles/niekawa.md + claude/niekawa.md)
 #   - hooks は起動のたびに書く run_dir/settings.json から --settings で渡す(Stop = verdict-stop-claude.sh、
 #     PreToolUse = gate-guard-claude.sh。kimi の hook と判定ロジックは同じだが、Claude Code は
@@ -19,8 +20,9 @@
 #   - 1 巡 = 1 session は `--resume` を渡さないことで担保(kimi の --agent-file 制約と同じ効果を構造で作る)
 #
 # 使い方は kimi-niekawa.sh --help と同じ(-f / --cd / --log / --rounds / --no-loop / --batch / --inbox /
-# --resume-run / --dry-run)。--effort は low|high|max を検証するが記録のみで claude には high 固定で渡す
-# (persona 既定は astra/luna と同じく high、他ランチャの語彙に揃える)。model は claude opus 固定
+# --resume-run / --dry-run)。--effort は low|high|max を検証するが記録のみで claude には models.env の
+# NIEKAWA_CLAUDE_EFFORT(既定 high)を渡す(persona 既定は astra/luna と同じく high、他ランチャの語彙に揃える)。
+# model も models.env の NIEKAWA_CLAUDE_MODEL 固定
 # (--model は受けない)。
 
 set -euo pipefail
@@ -35,7 +37,7 @@ options:
       --log <path>      ログ出力先
       --rounds <n>       巡数上限(既定 12)。verdict が「継続」の間、新しい claude -p プロセスで次の巡を起こす
       --no-loop          1 session だけ走らせる(巡ループ無し)
-      --effort <level>   low|high|max(既定 high)。記録のみ、claude には常に high を渡す
+      --effort <level>   low|high|max(既定 high)。記録のみ、claude には常に models.env の NIEKAWA_CLAUDE_EFFORT を渡す
       --kashiwagi-model <id>  贄川が柏木を起こすときの model(既定は KASHIWAGI_ROUTE 別 ── opus なら opus、
                          codex なら astra。env KASHIWAGI_MODEL でも指定できる)
                          柏木の実行経路は env KASHIWAGI_ROUTE(opus|codex、既定 opus)で切り替える。
@@ -97,6 +99,8 @@ fi
 script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 
+# shellcheck source=models.env
+source "$CORE/scripts/models.env"
 # shellcheck source=lib/batch-inbox.sh
 source "$CORE/scripts/lib/batch-inbox.sh"
 
@@ -133,7 +137,7 @@ case "$kashiwagi_route" in
   *) die "KASHIWAGI_ROUTE は opus か codex のどちらか: $kashiwagi_route" ;;
 esac
 # 真壁の実行経路(codex weekly 逼迫時の代替、庵野 2026-09-22)。既定 codex = 従来の codex-makabe
-# (gpt-5.6-luna)。claude なら codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する ──
+# (gpt-6-luna)。claude なら codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する ──
 # 贄川の呼び出しコマンド自体は codex-makabe のまま変えない。走行中の run には効かない(env は
 # 起動時に固定、新しい起動からだけ適用される)。
 makabe_route="${MAKABE_ROUTE:-codex}"
@@ -228,8 +232,8 @@ case "$effort" in
   low|high|max) ;;
   *) die "--effort は low|high|max のどれか: $effort" ;;
 esac
-if [ "$effort" != high ]; then
-  echo "警告: claude には常に --effort high を渡す(persona 既定、指定値 $effort は記録のみ)" >&2
+if [ "$effort" != "$NIEKAWA_CLAUDE_EFFORT" ]; then
+  echo "警告: claude には常に --effort $NIEKAWA_CLAUDE_EFFORT を渡す(persona 既定 models.env の NIEKAWA_CLAUDE_EFFORT、指定値 $effort は記録のみ)" >&2
 fi
 
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
@@ -410,7 +414,7 @@ build_round_prompt() {
     if [ -n "$makabe_model" ]; then
       printf '真壁の model 指定: codex-makabe に --model %s を足す(env MAKABE_MODEL、工程限定の裁定。MAKABE_ROUTE=claude の間は無視されて claude sonnet 固定)\n' "$makabe_model"
     else
-      printf '真壁の model 指定: 既定のまま(--model を足さない、persona 既定 luna。ゲート 2 の P0 を直す巡は従来どおり --model gpt-5.6-sol、MAKABE_ROUTE=claude の間は sonnet 固定)\n'
+      printf '真壁の model 指定: 既定のまま(--model を足さない、persona 既定 luna。ゲート 2 の P0 を直す巡は従来どおり --model %s、MAKABE_ROUTE=claude の間は sonnet 固定)\n' "$CODEX_SOL_MODEL"
     fi
     if [ "$round" -gt 1 ]; then
       prev_verdict="$rounds_dir/r$((round - 1))/verdict.md"
@@ -539,8 +543,8 @@ while :; do
 
   round_json="$round_dir/last.json"
   set +e
-  setsid bash -c 'cd "$1" && exec claude -p --model opus --effort high --dangerously-skip-permissions --output-format json --append-system-prompt "$3" --settings "$4" -- "$2"' \
-    _ "$root" "$prompt_arg" "$system_prompt" "$settings_path" \
+  setsid bash -c 'cd "$1" && exec claude -p --model "$5" --effort "$6" --dangerously-skip-permissions --output-format json --append-system-prompt "$3" --settings "$4" -- "$2"' \
+    _ "$root" "$prompt_arg" "$system_prompt" "$settings_path" "$NIEKAWA_CLAUDE_MODEL" "$NIEKAWA_CLAUDE_EFFORT" \
     < /dev/null > "$round_json" 2>"$round_dir/stderr.log" &
   current_child_pid=$!
   wait "$current_child_pid"

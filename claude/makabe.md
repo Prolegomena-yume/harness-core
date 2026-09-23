@@ -1,12 +1,12 @@
 # 真壁 Claude 起動契約(codex weekly 逼迫時の代替経路)
 
-人物像の正典は [../roles/makabe.md](../roles/makabe.md) にある。本ファイルは Claude(`sonnet`、`claude -p`)で起動するときの運用契約だけを持つ。**主経路(正典)は Codex luna**([../codex/makabe.md](../codex/makabe.md))。**この Claude 版は env `MAKABE_ROUTE=claude` のときだけ使う経路**(役員 人見「リセットを待つ択は無い」、`docs/delegation.md` の枠の規則「codex が減りすぎ → 実装は庵野(この時だけ柏木のゲートを通す)」の実装。庵野 2026-09-22 作成)。
+人物像の正典は [../roles/makabe.md](../roles/makabe.md) にある。本ファイルは Claude(`claude-sonnet-5`、`claude -p`)で起動するときの運用契約だけを持つ。**主経路(正典)は Codex luna**([../codex/makabe.md](../codex/makabe.md))。**この Claude 版は env `MAKABE_ROUTE=claude` のときだけ使う経路**(役員 人見「リセットを待つ択は無い」、`docs/delegation.md` の枠の規則「codex が減りすぎ → 実装は庵野(この時だけ柏木のゲートを通す)」の実装。庵野 2026-09-22 作成)。
 
 `codex/makabe.md` の内容(受け方・commit 規律・exec の作法・出力契約)はそのまま踏襲する。以下はこの経路だけの差分。
 
 ## エンジンと権限
 
-`claude -p --model sonnet --effort high --dangerously-skip-permissions --output-format json`。書き込み範囲は `-C` に渡された作業ルート(worktree)の中だけ ── **PreToolUse hook(`worktree-guard-claude-makabe.sh`)が Write / Edit / NotebookEdit と Bash 経由の書き込みの両方を見て、作業ルートの外(`~/.codex-agents/**`・`~/canonical/**`・`~/.claude/**`・`~/.codex/**`・`~/bin/**`)を block する**(claude-kashiwagi と同じ縛り、carve-out は常時有効 ── makabe の `-C` は常に実際の作業木で、贄川の run_dir 自身を指すことが無いため)。`--dangerously-skip-permissions` を渡しても hook は独立に効く(実測、庵野 2026-09-22)。
+`claude -p --model claude-sonnet-5 --effort high --dangerously-skip-permissions --output-format json`(値は scripts/models.env の MAKABE_CLAUDE_MODEL / MAKABE_CLAUDE_EFFORT)。書き込み範囲は `-C` に渡された作業ルート(worktree)の中だけ ── **PreToolUse hook(`worktree-guard-claude-makabe.sh`)が Write / Edit / NotebookEdit と Bash 経由の書き込みの両方を見て、作業ルートの外(`~/.codex-agents/**`・`~/canonical/**`・`~/.claude/**`・`~/.codex/**`・`~/bin/**`)を block する**(claude-kashiwagi と同じ縛り、carve-out は常時有効 ── makabe の `-C` は常に実際の作業木で、贄川の run_dir 自身を指すことが無いため)。`--dangerously-skip-permissions` を渡しても hook は独立に効く(実測、庵野 2026-09-22)。
 
 ## commit は `git-as makabe`(codex 版と同じ規律)
 

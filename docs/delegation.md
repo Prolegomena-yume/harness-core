@@ -5,10 +5,10 @@
 | 人格 | 実体 | model | 職務 | 起こし方 |
 |---|---|---|---|---|
 | 鷹野[PDM] | Claude(GUI) | Fable | 人見との要件定義、BRIEF 起草、終端の受領と独立検算、merge / push | ── |
-| 水無瀬[PL] | Claude | `claude-opus-5` | 調査、設計案、影響範囲。鷹野直属 | Agent tool `subagent_type: minase` |
+| 水無瀬[PL] | Claude | `claude-opus-5-5` | 調査、設計案、影響範囲。鷹野直属 | Agent tool `subagent_type: minase` |
 | 贄川[ORC] | Kimi K3 | `kimi-code/k3-256k` | 段取り(plan)、真壁の起動と差し戻し、巡ごとのレビュー、鷹野への納品 | `kimi-niekawa -f <BRIEF>`(枠切れは `codex-niekawa`、sol) |
 | 柏木[CM] | **Claude opus(effort xhigh)= 実行経路 C、既定** / Codex `gpt-6-astra`(`KASHIWAGI_ROUTE=codex`) | レビュー・監査・助言。ゲート 1(plan 後)とゲート 2(納品前)。ゲート 1 は書き込み無し、ゲート 2 は作業木の中だけ書ける(P2 の自己 commit) | 贄川が `claude-kashiwagi --no-loop`(codex 経路は `codex-kashiwagi --no-loop`)── 役員 人見 2026-09-21 23:55(PoC:Opus 5 / 5、K3 2 / 5、`_sessions/2026-09-21_09`) |
-| 真壁[IM] | Codex | `gpt-5.6-luna` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から |
+| 真壁[IM] | Codex | `gpt-6-luna` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から |
 | 庵野[EXP] | Claude | `claude-sonnet-5` | 道具作り、Playwright、PoC、検証しながらの実装。鷹野直属 | Agent tool `subagent_type: anno` |
 | 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(枠切れは `--k3`) |
 
@@ -34,7 +34,7 @@
 3. **柏木のゲート 1** ── 贄川が `codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md` で起こす。**所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。**反映してから次へ。**ゲート 1 も便に 1 回**(役員 人見 2026-09-20)。P0 が出たら plan を直し、直ったかは贄川自身の検収で閉じて次(真壁)へ進む、柏木を呼び直さない。担保はゲート 2 と同じランチャ + hook の 2 段
 4. **真壁が実装する** ── 贄川が `codex-makabe` を起こす。指示書は run_dir のファイル、渡すのはパス 1 行。中身は plan のうち真壁の分だけ
 5. **贄川が巡ごとに検収する** ── `git diff` と実ファイル。P0 があれば `verdict: 継続` で真壁を起こし直す。P2 は自分で直して commit、P1 は記録
-6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**ゲート 2 の P0 を直す巡だけ、真壁を sol で起こす**(`codex-makabe --model gpt-5.6-sol`、codex が減りすぎでないとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**担保は 2 段、ゲート 1 も 2 も同じ形** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、ゲート 1 への拡張は BRIEF-gate1-once、役員 人見 2026-09-20)
+6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**ゲート 2 の P0 を直す巡だけ、真壁を sol で起こす**(`codex-makabe --model gpt-6-sol`、codex が減りすぎでないとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**担保は 2 段、ゲート 1 も 2 も同じ形** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、ゲート 1 への拡張は BRIEF-gate1-once、役員 人見 2026-09-20)
 7. **鷹野へ納品** ── 贄川の `verdict: 承認`。鷹野が独立検算(diff、test、実測の再現)をして merge / push
 
 **水無瀬の plan 赤入れは無い**(2026-09-18 に廃止、ゲート 1 が代替)。**柏木は真壁を起こさない**、巡も回さない。

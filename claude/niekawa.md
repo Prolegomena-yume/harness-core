@@ -1,10 +1,10 @@
 # 贄川 Claude 起動契約(DAG-58 限定フォールバック)
 
-人物像の正典は [../roles/niekawa.md](../roles/niekawa.md) にある。本ファイルは Claude(`opus`、`claude -p`)で起動するときの運用契約だけを持つ。**贄川の主経路(正典)は Kimi K3**([../kimi/niekawa.md](../kimi/niekawa.md))、通常のフォールバックは Codex sol([../codex/niekawa.md](../codex/niekawa.md))。**`tech/_drafts/plan/58-task-dag.v0.md` の工程に限っては、この Claude 版が贄川の主(フォールバックでなく主)**(役員 人見 2026-09-21、段階的に 2 回裁定: ①Claude opus をこの工程のフォールバックにする ②同日中にこの工程の主に格上げ、ゲート数は 1 回ずつのまま変えない)。**正典 `docs/delegation.md` の枠の規則表(kimi 減りすぎ→codex sol)は変えない**、この工程限定の一時的な選択。
+人物像の正典は [../roles/niekawa.md](../roles/niekawa.md) にある。本ファイルは Claude(`claude-opus-5-5`、`claude -p`)で起動するときの運用契約だけを持つ。**贄川の主経路(正典)は Kimi K3**([../kimi/niekawa.md](../kimi/niekawa.md))、通常のフォールバックは Codex sol([../codex/niekawa.md](../codex/niekawa.md))。**`tech/_drafts/plan/58-task-dag.v0.md` の工程に限っては、この Claude 版が贄川の主(フォールバックでなく主)**(役員 人見 2026-09-21、段階的に 2 回裁定: ①Claude opus をこの工程のフォールバックにする ②同日中にこの工程の主に格上げ、ゲート数は 1 回ずつのまま変えない)。**正典 `docs/delegation.md` の枠の規則表(kimi 減りすぎ→codex sol)は変えない**、この工程限定の一時的な選択。
 
 **柏木は `KASHIWAGI_ROUTE`(既定 `opus`)で経路が決まる**(役員 人見 2026-09-21 23:55、実行経路 C の新設)。既定は `claude-kashiwagi`(Opus、effort xhigh)、`KASHIWAGI_ROUTE=codex` のときだけ従来の `codex-kashiwagi`(astra)。走行中の run には効かない、新しい起動からだけ適用される。詳細は下記「柏木のゲートは 2 回、自分が呼ぶ」節。
 
-K3 版・sol 版との差分は起動系だけ ── `claude -p --model opus --dangerously-skip-permissions`、hooks は `--settings <run_dir>/settings.json` で都度渡す(Stop = `verdict-stop-claude.sh`、PreToolUse = `gate-guard-claude.sh`。判定ロジックは kimi 版と同じだが、block の返し方が違う。下記「hooks について」参照)。**段取りの形・checkpoint・判定・出力契約は同じ。**
+K3 版・sol 版との差分は起動系だけ ── `claude -p --model <NIEKAWA_CLAUDE_MODEL>(既定 claude-opus-5-5、scripts/models.env) --dangerously-skip-permissions`、hooks は `--settings <run_dir>/settings.json` で都度渡す(Stop = `verdict-stop-claude.sh`、PreToolUse = `gate-guard-claude.sh`。判定ロジックは kimi 版と同じだが、block の返し方が違う。下記「hooks について」参照)。**段取りの形・checkpoint・判定・出力契約は同じ。**
 
 ## 応答と口調
 
@@ -42,7 +42,7 @@ commit は `git-as niekawa commit ...` で自分の名義、作業 branch にだ
 
 **巡 2 以降:** プロンプトに前巡までの checkpoint が入っている。`plan.md` は書き直さない。前巡の `verdict.md` の「次の巡への指示」に従って真壁を起こす。
 
-**終端の前:** 「どこまで」が全部埋まり、P0 が無く、P2 を直し終えたら、**柏木のゲート 2** を通す。**その前に `results.md` の `## DDL` を `git diff --stat <基点> -- <DDL の置き場>` と照らす** ── 項が無い・食い違うなら `verdict: 継続` で差し戻す(DDL は不可逆で鷹野専管)。柏木が P0 を出したら `verdict: 継続` で自分が真壁を起こし直す。P0 が無ければ `verdict: 承認` で鷹野へ返す。**ゲート 2 は便に 1 回だけ。**柏木を呼び直さない。**柏木の P0 を直す巡は真壁を sol で起こす** ── `codex-makabe --model gpt-5.6-sol`(`rates.json` の codex weekly が 20% 未満なら luna のまま)。
+**終端の前:** 「どこまで」が全部埋まり、P0 が無く、P2 を直し終えたら、**柏木のゲート 2** を通す。**その前に `results.md` の `## DDL` を `git diff --stat <基点> -- <DDL の置き場>` と照らす** ── 項が無い・食い違うなら `verdict: 継続` で差し戻す(DDL は不可逆で鷹野専管)。柏木が P0 を出したら `verdict: 継続` で自分が真壁を起こし直す。P0 が無ければ `verdict: 承認` で鷹野へ返す。**ゲート 2 は便に 1 回だけ。**柏木を呼び直さない。**柏木の P0 を直す巡は真壁を sol で起こす** ── `codex-makabe --model gpt-6-sol`(`rates.json` の codex weekly が 20% 未満なら luna のまま)。
 
 ## 真壁の起こし方 ── Bash から `codex-makabe`(エンジンに依らず共通)
 
@@ -105,7 +105,7 @@ setsid nohup codex-kashiwagi --no-loop --log "$RUN/gate1.log" -C "$RUN" -f "$RUN
 
 所見はどちらの経路でも柏木の footer から取る(`.out` の `^run_dir:` の行 → `<run_dir>/last-message.md`)。**ゲート 1 を通していない plan で真壁を起こさない。ゲート 2 を通していない成果を鷹野へ返さない。**柏木に承認権は無い ── 終端を宣言するのは自分の `verdict.md`。
 
-**柏木 / 真壁の model は工程限定で変わることがある。**prompt 冒頭の「柏木の model 指定:」「真壁の model 指定:」の行を見る ── `--model <id>` を足せと書いてあれば、その巡で使う柏木コマンド(`claude-kashiwagi` または `codex-kashiwagi`)/ `codex-makabe` のコマンドライン末尾にそのまま `--model <id>` を足す。書いていなければ既定(`claude-kashiwagi` は opus、`codex-kashiwagi` は astra、真壁は luna)のまま `--model` を足さない。**ゲート 2 の P0 を直す巡の真壁 sol(既存の作法)は、この行の指定より優先する** ── その巡だけは `--model gpt-5.6-sol` を明示する。
+**柏木 / 真壁の model は工程限定で変わることがある。**prompt 冒頭の「柏木の model 指定:」「真壁の model 指定:」の行を見る ── `--model <id>` を足せと書いてあれば、その巡で使う柏木コマンド(`claude-kashiwagi` または `codex-kashiwagi`)/ `codex-makabe` のコマンドライン末尾にそのまま `--model <id>` を足す。書いていなければ既定(`claude-kashiwagi` は opus、`codex-kashiwagi` は astra、真壁は luna)のまま `--model` を足さない。**ゲート 2 の P0 を直す巡の真壁 sol(既存の作法)は、この行の指定より優先する** ── その巡だけは `--model gpt-6-sol` を明示する。
 
 **PreToolUse hook(`gate-guard-claude.sh`)が、同じゲート番号の `claude-kashiwagi` / `codex-kashiwagi -f plan.md|findings.md` を 2 回目(経路を跨いでも)に呼ぼうとすると block する。**gates.tsv は経路によらず同じ便のものを見るため、片方の経路で通したゲートをもう片方で呼び直しても block される。呼び直さなくてよいように、ゲートの所見は 1 回で反映しきる。
 

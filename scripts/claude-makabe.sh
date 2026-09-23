@@ -3,15 +3,16 @@
 # 役員 人見「リセットを待つ択は無い」、docs/delegation.md の枠の規則「codex が減りすぎ → 実装は庵野
 # (この時だけ柏木のゲートを通す)」の実装。庵野 2026-09-22 作成、claude-kashiwagi.sh と同じ型。
 #
-# 契約は codex-agent.sh makabe(gpt-5.6-luna 経路)と同じ入出力を保つ:
+# 契約は codex-agent.sh makabe(gpt-6-luna 経路)と同じ入出力を保つ:
 #   - -f <task.md> でタスク本文、-C で作業ルート(worktree)、--log、--dry-run
 #   - footer は codex 経路と同じ字面で `変更ファイル数:` と `makabe_commit_sha:` を出す
 #     (起動時と終了時の worktree の HEAD を比較するだけ。checkpoint commit も squash 後の 1 本も拾う、H1)
 #   - --model <id> は受けるが記録だけ(sol 指定の巡が来ても、この経路では常に sonnet を使う)
 #
 # 差分(意図的):
-#   - engine は claude -p --model sonnet --effort high --dangerously-skip-permissions(codex の
-#     --dangerously-bypass-approvals-and-sandbox に相当)。
+#   - engine は claude -p --model <MAKABE_CLAUDE_MODEL> --effort <MAKABE_CLAUDE_EFFORT>
+#     --dangerously-skip-permissions(既定値は scripts/models.env、2026-09-24 時点で claude-sonnet-5 / high。
+#     codex の --dangerously-bypass-approvals-and-sandbox に相当)。
 #   - **PreToolUse hook(worktree-guard-claude-makabe.sh)で Write/Edit/NotebookEdit と Bash 経由の
 #     書き込みの両方を作業ルートの外(~/.codex-agents/**・~/canonical/**・~/.claude/**・~/.codex/**・
 #     ~/bin/**)へは block する**(--dangerously-skip-permissions 下では acceptEdits の cwd スコープが
@@ -22,7 +23,8 @@
 #     ── 続きは贄川が新しい指示書(前 run の sha を明記)で起こし直す(codex/makabe.md の「終端の見方」)。
 #
 # env:
-#   MAKABE_MODEL(既定 sonnet、渡されても記録のみで実際は常に sonnet) / MAKABE_EFFORT(既定 high)
+#   MAKABE_MODEL(渡されても記録のみ、実際は常に models.env の MAKABE_CLAUDE_MODEL) /
+#   MAKABE_EFFORT(既定は models.env の MAKABE_CLAUDE_EFFORT)
 #
 # 使い方: claude-makabe.sh [-C dir] -f <task.md> [--log path] [--model id] [--effort level] [--dry-run]
 # -f は複数可(codex-agent.sh と同じ、末尾のファイルを task 本文として読む)。task 引数(-f 以外)も付けられる。
@@ -73,6 +75,8 @@ resolve_self() {
 
 script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
+# shellcheck source=models.env
+source "$CORE/scripts/models.env"
 [ -f "$CORE/roles/makabe.md" ] || die "人物像の正典が見つからない: $CORE/roles/makabe.md"
 [ -f "$CORE/claude/makabe.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/makabe.md"
 
@@ -89,7 +93,7 @@ fi
 root_input="$default_root"
 log_path=""
 model_requested="${MAKABE_MODEL:-}"
-effort="${MAKABE_EFFORT:-high}"
+effort="${MAKABE_EFFORT:-$MAKABE_CLAUDE_EFFORT}"
 task_files=()
 task_args=()
 dry_run=0
@@ -149,10 +153,10 @@ done
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
 root="$(cd "$root_input" && pwd -P)"
 
-# この経路は常に claude sonnet を使う。--model / MAKABE_MODEL で別 id(gpt-5.6-sol 等)が来ても
+# この経路は常に Claude sonnet を使う。--model / MAKABE_MODEL で別 id(gpt-6-sol 等)が来ても
 # 無視して sonnet を使い、要求は記録だけ残す(claude-niekawa.sh の round prompt に既に「claude 経路では
 # 無視して sonnet でよい、記録だけ」と明記されている)。
-model="sonnet"
+model="$MAKABE_CLAUDE_MODEL"
 
 git_repo=0
 git_root=""
@@ -282,8 +286,8 @@ prompt_lines_path="$run_dir/prompt.md"
   printf '真壁として、この経路(claude-makabe、Claude sonnet, effort %s)で起こされた。1 起動 = 1 session、巡ループは無い。\n' "$effort"
   printf 'run_dir: %s\n' "$run_dir"
   printf '作業ルート(-C): %s\n' "$root"
-  if [ -n "$model_requested" ] && [ "$model_requested" != "sonnet" ]; then
-    printf '\n(注記: --model %s が指定されたが、この経路では常に claude sonnet を使う。記録のみ)\n' "$model_requested"
+  if [ -n "$model_requested" ] && [ "$model_requested" != "$MAKABE_CLAUDE_MODEL" ]; then
+    printf '\n(注記: --model %s が指定されたが、この経路では常に %s を使う。記録のみ)\n' "$model_requested" "$MAKABE_CLAUDE_MODEL"
   fi
   printf '\n## 今回のタスク\n\n'
   cat "$task_path"

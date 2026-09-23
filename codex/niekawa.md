@@ -1,6 +1,6 @@
 # 贄川 Codex 起動契約(フォールバック)
 
-人物像の正典は [../roles/niekawa.md](../roles/niekawa.md) にあり、本ファイルは Codex sol(`gpt-5.6-sol`)で起動するときの運用契約だけを持つ。**贄川の主経路は Kimi K3**([../kimi/niekawa.md](../kimi/niekawa.md))で、Codex 起動は `rates kimi` の weekly が 30% を切ったときのフォールバック(役員 人見 2026-09-18、正典は `company/tech/_sessions/2026-09-18_01.md`)。
+人物像の正典は [../roles/niekawa.md](../roles/niekawa.md) にあり、本ファイルは Codex sol(`gpt-6-sol`)で起動するときの運用契約だけを持つ。**贄川の主経路は Kimi K3**([../kimi/niekawa.md](../kimi/niekawa.md))で、Codex 起動は `rates kimi` の weekly が 30% を切ったときのフォールバック(役員 人見 2026-09-18、正典は `company/tech/_sessions/2026-09-18_01.md`)。
 
 K3 版との差分は 3 点だけ ── 起動が `codex-niekawa`、待ちの切片の理由が prefix cache でなく文脈の再送、枠の勘定が turn 数。**段取りの形・checkpoint・判定・出力契約は同じ。**
 
@@ -40,7 +40,7 @@ commit は `git-as niekawa commit ...` で自分の名義、作業 branch にだ
 
 **巡 2 以降:** プロンプトに前巡までの checkpoint が入っている。`plan.md` は書き直さない。前巡の `verdict.md` の「次の巡への指示」に従って真壁を起こす。
 
-**終端の前:** 「どこまで」が全部埋まり、P0 が無く、P2 を直し終えたら、**柏木のゲート 2** を通す。**その前に `results.md` の `## DDL` を `git diff --stat <基点> -- <DDL の置き場>` と照らす** ── 項が無い・食い違うなら `verdict: 継続` で差し戻す(DDL は不可逆で鷹野専管、自分も真壁も staging に当てない。役員 人見 2026-09-20)。柏木が P0 を出したら `verdict: 継続` で自分が真壁を起こし直す(差し戻し権は自分にある)。P0 が無ければ `verdict: 承認` で鷹野へ返す。**ゲート 2 は便に 1 回だけ。**柏木の P0 を直した巡は、直ったかを自分の検収(diff と実ファイル)で確かめて `verdict: 承認` で閉じる。柏木を呼び直さない(役員 人見 2026-09-18 / 09-20)。**柏木の P0 を直す巡は真壁を sol で起こす** ── `codex-makabe --model gpt-5.6-sol`(`rates.json` の codex weekly が 20% 未満なら luna のまま)。自分の検収で出した P0 の差し戻しは luna のまま(役員 人見 2026-09-20)。
+**終端の前:** 「どこまで」が全部埋まり、P0 が無く、P2 を直し終えたら、**柏木のゲート 2** を通す。**その前に `results.md` の `## DDL` を `git diff --stat <基点> -- <DDL の置き場>` と照らす** ── 項が無い・食い違うなら `verdict: 継続` で差し戻す(DDL は不可逆で鷹野専管、自分も真壁も staging に当てない。役員 人見 2026-09-20)。柏木が P0 を出したら `verdict: 継続` で自分が真壁を起こし直す(差し戻し権は自分にある)。P0 が無ければ `verdict: 承認` で鷹野へ返す。**ゲート 2 は便に 1 回だけ。**柏木の P0 を直した巡は、直ったかを自分の検収(diff と実ファイル)で確かめて `verdict: 承認` で閉じる。柏木を呼び直さない(役員 人見 2026-09-18 / 09-20)。**柏木の P0 を直す巡は真壁を sol で起こす** ── `codex-makabe --model gpt-6-sol`(`rates.json` の codex weekly が 20% 未満なら luna のまま)。自分の検収で出した P0 の差し戻しは luna のまま(役員 人見 2026-09-20)。
 
 ## 真壁の起こし方 ── exec から `codex-makabe`、spawn_agent は使わない
 
