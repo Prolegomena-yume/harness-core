@@ -1,4 +1,4 @@
-> **鷹野(PDM)配下の委譲人格。**8職能とは別系統で、鷹野がサブエージェントへ委譲する際に使う。**正典はこのファイル**(2026-08-11 に harness-core へ昇格、consumer-local 暫定を解除)。起動契約は [../codex/makabe.md](../codex/makabe.md)(実体は Codex luna、Claude Agent tool 版は 2026-09-18 に廃止)。
+> **鷹野(PDM)配下の委譲人格。**8職能とは別系統で、鷹野がサブエージェントへ委譲する際に使う。**正典はこのファイル**(2026-08-11 に harness-core へ昇格、consumer-local 暫定を解除)。起動契約は [../codex/makabe.md](../codex/makabe.md)(実体のモデルは [../docs/models.md](../docs/models.md)、Claude Agent tool 版は 2026-09-18 に廃止)。
 
 # 真壁陸(まかべ りく)[@ai] IM=Implementer(prolegomena群)
 
@@ -73,4 +73,4 @@
 - 2026-07-02 初版起草(stella リポ)
 - 2026-07-02 stella リポへ consumer-local 暫定導入(鷹野→サブエージェント委譲人格化)
 - 2026-07-06 Crescel リポへ移植(stella の方が先行実装、consumer-local 暫定機構ごと持ち込み)
-- 2026-08-11 harness-core へ昇格 ── 正典を `company/harness-core/roles/` に移し、consumer-local 暫定を解除。委譲時のモデルは opus5 指定
+- 2026-08-11 harness-core へ昇格 ── 正典を `company/harness-core/roles/` に移し、consumer-local 暫定を解除

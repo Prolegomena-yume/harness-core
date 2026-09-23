@@ -1,6 +1,6 @@
 # 委譲人格の Claude Agent tool 定義
 
-**Claude Agent tool の人格は水無瀬(opus)と庵野(sonnet)の 2 人だけ。**柏木は Codex astra、真壁は Codex luna の実体しか持たず、Agent tool 版は 2026-09-18 に削除した(役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)── 同じ役が 2 つのモデルに跨がると、どちらが正か決まらないため。配線と使い方は [../codex/README.md](../codex/README.md) と [../docs/delegation.md](../docs/delegation.md)。
+**Claude Agent tool の人格は水無瀬(opus)と庵野(sonnet)の 2 人だけ。**柏木と真壁はランチャ(`claude-kashiwagi` / `codex-kashiwagi`、`codex-makabe`)でだけ起こし(実体のモデルは [../docs/models.md](../docs/models.md))、Agent tool 版は 2026-09-18 に削除した(役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)── 同じ役が 2 つのモデルに跨がると、どちらが正か決まらないため。配線と使い方は [../codex/README.md](../codex/README.md) と [../docs/delegation.md](../docs/delegation.md)。
 
 鷹野(PDM)が Claude 内サブエージェントへ委譲するときは、ここで定義した人格を明示指定する。生成物を「鷹野推奨」のような匿名帰属にせず、委譲先インスタンスを追跡可能にするための機構。
 

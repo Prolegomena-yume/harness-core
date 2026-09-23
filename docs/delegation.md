@@ -12,6 +12,8 @@
 | 庵野[EXP] | Claude | `claude-sonnet-5` | 道具作り、Playwright、PoC、検証しながらの実装。鷹野直属 | Agent tool `subagent_type: anno` |
 | 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(枠切れは `--k3`) |
 
+model と effort の値は `scripts/models.env`、モデルの特性と配役の理由、プロンプトの書き方は [models.md](models.md)。
+
 **序列は実装ラインだけに立つ ── 鷹野 > 柏木 > 贄川 > 真壁。**柏木は贄川から起こされるが立場は上で、**承認権は持たない**(納品先は鷹野)。**差し戻し権は贄川**(真壁を起こし直すのは贄川)。**水無瀬・庵野・源内は鷹野直属で横並び**、柏木のゲートを通らない ── 例外は Codex 逼迫時に庵野が真壁を代行する場合だけ。
 
 判断(What)は人見、要件は鷹野、段取り(How)は贄川、手は真壁、目は柏木。**鷹野は段取りを書かず、巡ごとの中継もしない。**
@@ -123,7 +125,7 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 | `findings.md` | 真壁の commit sha、「どこまで」の充足(○ / × / 未)、P0 / P1 / P2 の一覧、自前修正の sha、走らせた検証と結果 |
 | `verdict.md` | 1 行目が `verdict: 継続` / `verdict: 承認` / `verdict: エスカレーション`。エスカレーションは見出し 3 本固定 ── `## 問い`(矛盾の所在、選択肢、贄川の推奨)/ `## 現在地`(どこまで終わりどこで止まったか、sha、真壁の状態)/ `## 裁定別の次の一手` |
 
-**エスカレーションで巡は必ず閉じる。裁定を session 内で待たない。**受信箱(`to-takano`)で鷹野を起こしてよいが、その session は `verdict.md` を書いて終わる。裁定は鷹野が `to-niekawa --kind 裁定` で便の箱(`~/.codex-agents/batches/<便名>/to-niekawa.tsv`、便名は BRIEF の `便:` 行)に書き、`kimi-niekawa -f <同じ BRIEF> --resume-run` で新しい run_dir を起こして別巡とする(同じ run_dir は再利用しない)。**鷹野は贄川の checkpoint(plan / findings / verdict)に書かない、箱に書く** ── checkpoint は贄川の記憶媒体で、他人が書いても差出人も位置も無く贄川には見えない(2b-2 の事故、2026-09-20)。理由:K3 の prefix cache は 14 分で消え、待ってから続けると全文が uncached で枠を食う(役員 人見 2026-09-20)。
+**エスカレーションで巡は必ず閉じる。裁定を session 内で待たない。裁定の要る問いを `verdict: 継続` で持ち越さない** ── 継続はランチャが次巡を起こすだけで `to-takano.tsv` に何も書かず、鷹野は起きない(2026-09-22 の P1 で巡 6〜9 の 4 巡・約 2 時間を空費)。継続は贄川が自分で進められる巡にだけ使う。受信箱(`to-takano`)で鷹野を起こしてよいが、その session は `verdict.md` を書いて終わる。裁定は鷹野が `to-niekawa --kind 裁定` で便の箱(`~/.codex-agents/batches/<便名>/to-niekawa.tsv`、便名は BRIEF の `便:` 行)に書き、`kimi-niekawa -f <同じ BRIEF> --resume-run` で新しい run_dir を起こして別巡とする(同じ run_dir は再利用しない)。**鷹野は贄川の checkpoint(plan / findings / verdict)に書かない、箱に書く** ── checkpoint は贄川の記憶媒体で、他人が書いても差出人も位置も無く贄川には見えない(2b-2 の事故、2026-09-20)。理由:K3 の prefix cache は 14 分で消え、待ってから続けると全文が uncached で枠を食う(役員 人見 2026-09-20)。
 
 ## 待ちは 280 秒の切片(kimi の tool 上限 300 秒の内側)
 
@@ -227,7 +229,7 @@ from-niekawa --wait --cap 1800 --inbox ~/.codex-agents/batches/<便名>/to-takan
 
 1. bypass で起動する(ランチャが付ける)
 2. 仕様をファイルへ落とし `-f` で渡す。**`kimi -p` の argv は 128KB で落ちる**(09-18 実測、exit 126)ので、100KB を超える prompt はファイル経由にする
-3. reasoning effort はランチャの既定 ── 柏木(codex 経路は sol)・贄川・水無瀬は high、真壁(luna)は max(役員 人見 09-13)。`-c model_reasoning_effort=...` を手で足さない
+3. reasoning effort はランチャの既定(値は `scripts/models.env`、真壁(luna)の max は役員 人見 09-13)。`-c model_reasoning_effort=...` を手で足さない
 4. exit code だけで成功とせず、footer・`git diff --stat`・実ファイルを検算する
 5. 同じ persona を同じ秒に 2 本起動しない(run_dir は pid と乱数で一意化済みだが、ログの読み違いを避ける)
 
