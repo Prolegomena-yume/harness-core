@@ -147,6 +147,49 @@ if [ -n "$makabe_session" ]; then
   fi
 fi
 
+echo "== 3. 真壁 hook 単体 ── 出力契約の「確かめていないこと」欄の中にだけ矛盾/確認が必要が出ても block したまま =="
+hook_script="$core_dir/scripts/hooks/commit-stop-claude-makabe.sh"
+hook_repo="$test_root/hook-unit"
+init_repo "$hook_repo"
+hook_run_dir="$test_root/hook-unit-run"
+mkdir -p "$hook_run_dir"
+git -C "$hook_repo" rev-parse --verify HEAD > "$hook_run_dir/pre_head.txt"
+
+# 「行の先頭」が矛盾/確認が必要でない ── 出力契約の「確かめていないこと:」欄の中身として
+# 触れているだけで、契約が言う停止理由(claude/makabe.md「止まり方」の 2 つ目)ではない。
+negative_message='作業完了。
+確かめたこと: 何も変更していないことを git status で確認した
+確かめていないこと: 仕様との矛盾や贄川さんに確認が必要な点の有無は未確認'
+negative_json="$(python3 -c '
+import json, sys
+print(json.dumps({"last_assistant_message": sys.argv[1]}))
+' "$negative_message")"
+negative_exit=0
+printf '%s' "$negative_json" \
+  | CODEX_AGENT_RUN_DIR="$hook_run_dir" CLAUDE_MAKABE_ROOT="$hook_repo" bash "$hook_script" \
+  >/dev/null 2>"$test_root/hook-negative.err" || negative_exit=$?
+if [ "$negative_exit" -eq 2 ]; then
+  pass '真壁 hook: 「確かめていないこと」欄の中にだけ矛盾/確認が必要があっても block する(exit 2)'
+else
+  fail "真壁 hook: 欄の中の語だけで通ってしまった(exit=$negative_exit, stderr: $(cat "$test_root/hook-negative.err"))"
+fi
+
+# 対照 ── 行頭が矛盾/確認が必要なら、契約どおり通す(exit 0)。
+positive_message='矛盾: 指示書の完了条件と BRIEF の想定が食い違う'
+positive_json="$(python3 -c '
+import json, sys
+print(json.dumps({"last_assistant_message": sys.argv[1]}))
+' "$positive_message")"
+positive_exit=0
+printf '%s' "$positive_json" \
+  | CODEX_AGENT_RUN_DIR="$hook_run_dir" CLAUDE_MAKABE_ROOT="$hook_repo" bash "$hook_script" \
+  >/dev/null 2>"$test_root/hook-positive.err" || positive_exit=$?
+if [ "$positive_exit" -eq 0 ]; then
+  pass '真壁 hook: 行頭が矛盾/確認が必要なら通す(exit 0、対照)'
+else
+  fail "真壁 hook: 行頭が矛盾でも block された(exit=$positive_exit, stderr: $(cat "$test_root/hook-positive.err"))"
+fi
+
 echo
 echo "== summary =="
 echo "pass: $pass_count  fail: $fail_count"

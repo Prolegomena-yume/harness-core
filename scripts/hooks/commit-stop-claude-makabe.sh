@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # 真壁(claude-makabe.sh、codex weekly 逼迫時の代替経路)の Stop hook。終端の成果物は
 # codex/makabe.md の契約から拾う ── 「checkpoint commit まで届いた」(HEAD が session 開始時から
-# 動いた)か、契約が既に持っている停止の言い回し(「矛盾を書いて止まる」「確認が必要と書いて停止する」)
-# のどちらか。新しい語彙は作らない。どちらも無いまま turn を終えようとしたら block して続けさせる
+# 動いた)か、契約が既に持っている停止の言い回し(claude/makabe.md「止まり方」の 2 つ目 ──
+# 最終メッセージに「矛盾」か「贄川さんに確認が必要」と、その中身を書く)のどちらか。
+# 新しい語彙は作らない。どちらも無いまま turn を終えようとしたら block して続けさせる
 # (役員 人見 2026-09-24、終端の無い turn を hook で止める、3 点のうち真壁の分)。
+#
+# 停止理由は「行の先頭」で判定する ── contains ではなく startswith。codex/makabe.md の
+# 出力契約が持つ「確かめていないこと: <...>」欄は自由記述で、そこに「矛盾」「確認」の語が
+# 中身として出てくることがある(未確認の前提を書けば当然出うる)。これは停止理由ではないので
+# 誤って通さない(09-24、庵野)。
 #
 # pre_head は claude-makabe.sh が claude 起動の前に $CODEX_AGENT_RUN_DIR/pre_head.txt へ書く
 # (Stop hook は別プロセスなのでランチャの bash 変数を読めない)。無ければ素通し(ランチャ経由でない
@@ -42,11 +48,9 @@ except ValueError:
 print(data.get("last_assistant_message") or "")
 ' 2>/dev/null)"
 
-case "$last_message" in
-  *矛盾*|*確認が必要*)
-    exit 0
-    ;;
-esac
+if printf '%s\n' "$last_message" | grep -Eq '^[[:space:]]*(矛盾|贄川さんに確認が必要)'; then
+  exit 0
+fi
 
 echo "checkpoint commit も、矛盾 / 確認が必要の停止理由も無い。git-as makabe commit で commit するか、矛盾 / 要確認の理由を書いてから終わる(codex/makabe.md の契約)" >&2
 exit 2
