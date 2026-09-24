@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-usage() { echo '使い方: git-as <takano|minase|kashiwagi|makabe|niekawa|anno|gennai|鷹野|水無瀬|柏木|真壁|贄川|庵野|源内> <git 引数...>'; }
+usage() { echo '使い方: git-as <takano|minase|kashiwagi|makabe|niekawa|anno|gennai|omuro|ohashi|azabu|kagami|sakurai|yamashita|asada|鷹野|水無瀬|柏木|真壁|贄川|庵野|源内|御室|大橋|麻布|加賀美|桜井|山下|浅田> <git 引数...>'; }
 if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then usage; exit 0; fi
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 case "$1" in
@@ -11,6 +11,13 @@ case "$1" in
   niekawa|贄川) persona=niekawa; role_name=贄川 ;;
   anno|庵野) persona=anno; role_name=庵野 ;;
   gennai|源内) persona=gennai; role_name=源内 ;;
+  omuro|御室) persona=omuro; role_name=御室 ;;
+  ohashi|大橋) persona=ohashi; role_name=大橋 ;;
+  azabu|麻布) persona=azabu; role_name=麻布 ;;
+  kagami|加賀美) persona=kagami; role_name=加賀美 ;;
+  sakurai|桜井) persona=sakurai; role_name=桜井 ;;
+  yamashita|山下) persona=yamashita; role_name=山下 ;;
+  asada|浅田) persona=asada; role_name=浅田 ;;
   *) echo "エラー: 不正な役: $1" >&2; exit 2 ;;
 esac
 shift
