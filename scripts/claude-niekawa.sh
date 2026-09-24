@@ -18,6 +18,11 @@
 #     Stop/PreToolUse を exit 2(stderr の理由)でだけ block する実測のため、別ファイルを使う。
 #     ~/.claude/settings.json 等の母艦設定は一切触らない)
 #   - 1 巡 = 1 session は `--resume` を渡さないことで担保(kimi の --agent-file 制約と同じ効果を構造で作る)
+#   - `--strict-mcp-config --disable-slash-commands --exclude-dynamic-system-prompt-sections` を足す
+#     (案 B、鷹野の裁定 2026-09-25)。起動時に自動で足される skill・MCP・subagent の一覧(未使用、
+#     約 30KB)を頭から落とし、cwd・memory path・git status を system prompt から最初の message へ
+#     移す(頭の cache の揺れの元を減らす)。CLI 2.1.280 で実在確認済み。--setting-sources は触らない
+#     (repo の CLAUDE.md・--settings の Stop/PreToolUse hook は残る、庵野 dry-run で確認)
 #
 # 使い方は kimi-niekawa.sh --help と同じ(-f / --cd / --log / --rounds / --no-loop / --batch / --inbox /
 # --resume-run / --dry-run)。--effort は low|medium|high|max を検証するが記録のみで claude には models.env の
@@ -582,7 +587,7 @@ while :; do
 
   round_json="$round_dir/last.json"
   set +e
-  setsid bash -c 'cd "$1" && exec claude -p --model "$5" --effort "$6" --dangerously-skip-permissions --output-format json --append-system-prompt "$3" --settings "$4" -- "$2"' \
+  setsid bash -c 'cd "$1" && exec claude -p --model "$5" --effort "$6" --dangerously-skip-permissions --output-format json --strict-mcp-config --disable-slash-commands --exclude-dynamic-system-prompt-sections --append-system-prompt "$3" --settings "$4" -- "$2"' \
     _ "$root" "$prompt_arg" "$system_prompt" "$settings_path" "$NIEKAWA_CLAUDE_MODEL" "$NIEKAWA_CLAUDE_EFFORT" \
     < /dev/null > "$round_json" 2>"$round_dir/stderr.log" &
   current_child_pid=$!

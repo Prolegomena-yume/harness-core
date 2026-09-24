@@ -59,16 +59,18 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 - **同じ木に真壁を 2 本入れない。**並列は worktree で 1 木 1 本。並列の前に 1 本だけ先に走らせる(codex の token refresh の競合を避ける)
 - **同 persona の起動は 2 秒ずらす**(同秒起動で run_dir が衝突する)
 
-**待ちは 280 秒の切片。**Bash tool には timeout 300000 を渡す。280 は契約の数字で、縮めも伸ばしもしない。
+**待ちは「終われば返る」590 秒。**真壁・柏木を待つ Bash は `niekawa-wait-claude` を 1 回呼ぶ(Bash tool の timeout は 600000)。590 は Bash tool の timeout の上限 600 秒から余白 10 秒を引いた数。claude の cache は 1 時間の TTL で、待っても cold にならない。K3 の 280 秒の切片(kimi の tool 上限)とは別の契約(役員 人見 2026-09-25「Claude 経路は 590 でよい」)。
 
 ```bash
-sleep 280; tail -n 5 "$RUN/makabe-a.out"; rg -n '^変更ファイル数:' "$RUN/makabe-a.out" || echo まだ
+niekawa-wait-claude --out "$RUN/makabe-a.out" --after <前回の LINES>
 ```
 
-- 終端の印は `^変更ファイル数:` の行。`^session_id:` は終端の印にしない。pid で待たない(起動直後の pid は一時プロセスを掴む)
+- 真壁・柏木の終端(`.out` の `^変更ファイル数:`)か、鷹野からの新着が出た時点で返る。何も無ければ 590 秒で返る。返るのは短い要約(tail 3 行・footer・新着)と `LINES=`。exit 0 = 終端 / 1 = 新着 / 2 = timeout
+- 次に呼ぶときは `--after` に道具が返した `LINES=` を渡す。便の箱の path は渡さなくてよい(`from-takano` と同じ既定解決)
+- `^session_id:` は終端の印にしない。pid で待たない(起動直後の pid は一時プロセスを掴む)
 - 待ちの間に用の無い exec(`stat`、`date`、`ls`)をしない
-- 切片の tail に `from-takano --after <前回の LINES>` を 1 回足す。`裁定` / `指示` は反映して待ち直す。`停止` は verdict(継続かエスカレーション、指示の内容で決める)を書いて巡を閉じる
-- 切片が 10 本(70 分)を超えても終端が出なければ、`--log` の末尾を読み `verdict: 継続` か `verdict: エスカレーション` で巡を閉じる
+- 新着(`REASON=inbox`)の `裁定` / `指示` は反映して待ち直す。`停止` は verdict(継続かエスカレーション、指示の内容で決める)を書いて巡を閉じる
+- 待ちの合計が 70 分を超えても終端が出なければ、`--log` の末尾を読み `verdict: 継続` か `verdict: エスカレーション` で巡を閉じる
 - 真壁の worktree 外への誤書き込みは毎巡 `git -C <基点> status --short` で確かめる
 
 ## 真壁の終端 ── commit sha で判定し、指示は差し替えない
@@ -98,7 +100,7 @@ setsid nohup codex-kashiwagi --no-loop --log "$RUN/gate1.log" -C "$RUN" -f "$RUN
 ```
 
 - **`claude-kashiwagi` には「所見の写しを `<path>` に置く」を書かない。**ゲート 1 の柏木は何も書けず、ゲート 2 の柏木も作業木の外へは書けない
-- 所見はどちらの経路でも柏木の footer から取る ── `.out` の `^run_dir:` の行 → `<run_dir>/last-message.md`。待ちは真壁と同じ 280 秒の切片
+- 所見はどちらの経路でも柏木の footer から取る ── `.out` の `^run_dir:` の行 → `<run_dir>/last-message.md`。待ちは真壁と同じ `niekawa-wait-claude`(`--out "$RUN/gate1.out"`)
 - **ゲート 1 もゲート 2 も便に 1 回。**P0 が出たら直し、直ったかは自分の検収で閉じる。柏木を呼び直さない。PreToolUse hook(`gate-guard-claude.sh`)は同じゲートの 2 回目を経路を跨いでも block する ── 所見は 1 回で反映しきる
 - 柏木に承認権は無い。柏木の「P0 無し」は終端ではなく、終端を宣言するのは自分の `verdict.md`
 - `KASHIWAGI_ROUTE` の切替は走行中の run に効かない(新しい起動からだけ)
@@ -141,7 +143,7 @@ prompt の「柏木の model 指定:」「真壁の model 指定:」の行を見
 - 進み具合の報告だけで閉じる。「次に X をする」と予告して、その X を始めずに閉じる
 - 自分で決められる問い(手順、作業域、P の札、既裁定の当てはめ)を鷹野に投げて閉じる
 - 区切りがいい、turn が長くなった、という理由で報告に切り替えて閉じる
-- 真壁や柏木が走っている最中に閉じる。待ちは前景の 280 秒の切片で持つ(`run_in_background` の完了通知では起きない)
+- 真壁や柏木が走っている最中に閉じる。待ちは前景の `niekawa-wait-claude` で持つ(`run_in_background` の完了通知では起きない)
 
 **鷹野の裁定が要る問い(要件の矛盾、新しい要件、不可逆)は、待たずに `verdict: エスカレーション` で閉じる。**`継続` で持ち越して `from-takano` を見張らない ── `継続` はランチャが次巡を起こすだけで鷹野を起こさない。裁定は BRIEF に畳まれて `--resume-run` で戻る。`継続` は自分で進められる巡にだけ使う。
 
