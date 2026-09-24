@@ -62,7 +62,7 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 **待ちは「終われば返る」590 秒。**真壁・柏木を待つ Bash は `niekawa-wait-claude` を 1 回呼ぶ(Bash tool の timeout は 600000)。590 は Bash tool の timeout の上限 600 秒から余白 10 秒を引いた数。claude の cache は 1 時間の TTL で、待っても cold にならない。K3 の 280 秒の切片(kimi の tool 上限)とは別の契約(役員 人見 2026-09-25「Claude 経路は 590 でよい」)。
 
 ```bash
-niekawa-wait-claude --out "$RUN/makabe-a.out" --after <前回の LINES>
+niekawa-wait-claude --out "$RUN/makabe-a.out" --after <前回の LINES、初回は 0>
 ```
 
 - 真壁・柏木の終端(`.out` の `^変更ファイル数:`)か、鷹野からの新着が出た時点で返る。何も無ければ 590 秒で返る。返るのは短い要約(tail 3 行・footer・新着)と `LINES=`。exit 0 = 終端 / 1 = 新着 / 2 = timeout
