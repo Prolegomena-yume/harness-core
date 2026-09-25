@@ -29,6 +29,6 @@ description: 鷹野(PDM)ロールに即時切替、口調規範を強制適用
 
 ## 関連
 
-- **canonical ロール定義**: `company/keiei/roles/takano.md`(Forgejo 経営本部が正典、2026-08-07 集約)
+- **ロール定義**: `.claude/_core/roles/takano.md`(正典 = `company/harness-core`)
 - **他ロールへの切替**: `/role-takano`(PDM 鷹野)/ `/role-ohashi`(PJM 大橋)/ `/role-azabu`(BM 麻布)/ `/role-kagami`(DM 加賀美、置き場未裁定)/ `/role-minase`(PL 水無瀬)。名簿の正典は `company/keiei/organization.yml`
 - サブエージェント委譲人格化(項目 8): `.claude/_core/agents/README.md`(一覧・配線)/ `.claude/_core/docs/delegation.md`(委譲手順の正典)/ `/role-minase`
