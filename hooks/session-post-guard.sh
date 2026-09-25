@@ -20,10 +20,9 @@
 # stop_hook_active の特別扱いはしない。一度 session-post を打てば (b) が
 # transcript に残るので、次の Stop では通る ── 無限ループにはならない。
 #
-# 既知の注意(庵野、2026-09-21 実測、claude-code 2.1.246、scripts/hooks/verdict-stop-claude.sh
-# のコメント参照):その時点の Claude Code の Stop は JSON の
-# {"decision":"block",...} を無視し、exit 2 + stderr でだけ block した。
-# 今回は役員裁定の形どおり JSON で返す。実機で本当に block されるかは鷹野の確認が要る。
+# block は exit 2 + stderr で返す。Claude Code の Stop は JSON の {"decision":"block",...}
+# を無視し、exit 2 でだけ block した(庵野 2026-09-21 実測、claude-code 2.1.246、
+# scripts/hooks/verdict-stop-claude.sh のコメント)。
 
 set -u
 
@@ -110,6 +109,6 @@ reason = (
     "打つ: discord/session-post <そのサマリの path>"
     "(company/tech の外なら $HOME/canonical/tech/discord/session-post <path>)"
 )
-print(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
-sys.exit(0)
+print(reason, file=sys.stderr)
+sys.exit(2)
 PY
