@@ -205,7 +205,7 @@ Brief: <BRIEF のパス>
 
 贄川を `run_in_background` で起動し、`from-niekawa --wait --cap 1800` で終端を待つ(`^変更ファイル数:` の footer や `^session_id:` を自分で grep しない ── 待ちの実装は from.sh に寄せる)。巡の進みはランチャの出力の `^巡 [0-9]+ session_id:` の行で見える。**footer の語は `kimi-niekawa` と `codex-agent.sh` で同じ** ── 待ち方を経路で変えないため。
 
-**便のランチャは起動すると自分を systemd --user の独立した service に載せ替える**(`claude-niekawa.sh` / `kimi-niekawa.sh` / `codex-agent.sh`、案 A・役員 人見 裁定 2026-09-25。実装は `scripts/lib/unit-wrap.sh`)。2026-09-25 05:46、便のゲートの python が 16.8GB に膨らんで OOM kill され、`DefaultOOMPolicy=stop` で Claude デスクトップの scope ごと止まり便 2 本と鷹野の窓が道連れで落ちた事故を受ける。呼び手から見た形(起動コマンド・pid・log の行き先・`from-niekawa --wait`)は変えない。退避口は env `NIEKAWA_NO_UNIT=1`。
+**便のランチャは起動すると自分を systemd --user の独立した service に載せ替える**(`claude-niekawa.sh` / `kimi-niekawa.sh` / `codex-agent.sh`、案 A・役員 人見 裁定 2026-09-25。実装は `scripts/lib/unit-wrap.sh`)。2026-09-25 05:46、便のゲートの python が 16.8GB に膨らんで OOM kill され、`DefaultOOMPolicy=stop` で Claude デスクトップの scope ごと止まり便 2 本と鷹野の窓が道連れで落ちた事故を受ける。呼び手から見た形(起動コマンド・pid・log の行き先・`from-niekawa --wait`)は変えない。退避口は env `NIEKAWA_NO_UNIT=1`。**便を止めるときは `systemctl --user stop <unit>`**(unit 名はランチャの log の `[unit-wrap] unit=` 行)── ランチャの pid を kill しても unit は走り続ける。
 
 箱は 2 つとも `~/.codex-agents/batches/<便名>/`(`to-takano.tsv` = 鷹野の箱、`to-niekawa.tsv` = 便の箱)に置く。**便名は BRIEF 本文の `便: <名>` 行に鷹野が書く**(scratchpad には置かない ── 別鷹野が session summary の便名からこの便ディレクトリを辿って再開できるように)。
 
