@@ -1,19 +1,22 @@
 # 委譲人格の Claude Agent tool 定義
 
-**Claude Agent tool の人格は水無瀬(opus)と庵野(sonnet)の 2 人だけ。**柏木と真壁はランチャ(`claude-kashiwagi` / `codex-kashiwagi`、`codex-makabe`)でだけ起こし(実体のモデルは [../docs/models.md](../docs/models.md))、Agent tool 版は 2026-09-18 に削除した(役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)── 同じ役が 2 つのモデルに跨がると、どちらが正か決まらないため。配線と使い方は [../codex/README.md](../codex/README.md) と [../docs/delegation.md](../docs/delegation.md)。
+**Claude Agent tool の人格は、鷹野配下の水無瀬(opus)と庵野(sonnet)、大橋配下の浅田(opus)の 3 人。**柏木と真壁はランチャ(`claude-kashiwagi` / `codex-kashiwagi`、`codex-makabe`)でだけ起こし(実体のモデルは [../docs/models.md](../docs/models.md))、Agent tool 版は 2026-09-18 に削除した(役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)── 同じ役が 2 つのモデルに跨がると、どちらが正か決まらないため。配線と使い方は [../codex/README.md](../codex/README.md) と [../docs/delegation.md](../docs/delegation.md)。
 
-鷹野(PDM)が Claude 内サブエージェントへ委譲するときは、ここで定義した人格を明示指定する。生成物を「鷹野推奨」のような匿名帰属にせず、委譲先インスタンスを追跡可能にするための機構。
+マネージャー(鷹野・大橋)が Claude 内サブエージェントへ委譲するときは、ここで定義した人格を明示指定する。生成物を「鷹野推奨」のような匿名帰属にせず、委譲先インスタンスを追跡可能にするための機構。
 
 | 人格 | 役 | `subagent_type` | model | 用途 | 定義 |
 |---|---|---|---|---|---|
 | 水無瀬澪 | PL=Planner | `minase` | `claude-opus-5-5` | 調査・設計案・影響範囲 | [minase.md](minase.md) |
 | 庵野奏 | EXP=Experimenter | `anno` | `claude-sonnet-5` | 道具作り・Playwright・PoC・検証しながらの実装 | [anno.md](anno.md) |
+| 浅田 | AA=事務の起草補佐 | `asada` | `claude-opus-5-5` | 規約・同意文言・ポリシーの起草、法令と規程の読み | [asada.md](asada.md) |
 
-**2 人とも鷹野直属で横並び**(源内も同列だが Agent tool を持たず `genai` で呼ぶ)。実装ラインの序列は 鷹野 > 柏木 > 贄川 > 真壁 で、この 2 人はその指揮下に入らない。**Claude 側の実装の手は庵野、Claude 側の第二の目は水無瀬。**再帰委譲(Agent tool の入れ子呼び出し)は tools に含めていない。
+**浅田は大橋(PJM)直属で、鷹野のチームの外にいる**(役員 人見 2026-09-25)。技術の調査は水無瀬、事務の起草は浅田と持ち場を分ける。浅田のモデルは仮置きで、配役表([../docs/models.md](../docs/models.md))への記載は鷹野の確認待ち。
 
-## 8職能とは別系統である
+**水無瀬と庵野は鷹野直属で横並び**(源内も同列だが Agent tool を持たず `genai` で呼ぶ)。実装ラインの序列は 鷹野 > 柏木 > 贄川 > 真壁 で、この 2 人はその指揮下に入らない。**Claude 側の実装の手は庵野、Claude 側の第二の目は水無瀬。**再帰委譲(Agent tool の入れ子呼び出し)は tools に含めていない。
 
-8職能([../roles/README.md](../roles/README.md))は会社の組織図で、いずれも人見へ上申する。委譲人格 6 人は**鷹野の作業単位を分割するための人格**であって、組織図には乗らない。人物像そのものは `../roles/*.md` が持ち、本ディレクトリはその**起動定義**(tools / model / 委譲時の振る舞い)だけを持つ。
+## 委譲人格は役員と話さない
+
+役員と話すのはマネージャー3名(大橋・鷹野・麻布)だけで、名簿の正典は `company/keiei` の `organization.yml`。委譲人格は**マネージャーの作業単位を分割するための人格**であって、成果は親のマネージャーへ返る。人物像そのものは `../roles/*.md` が持ち、本ディレクトリはその**起動定義**(tools / model / 委譲時の振る舞い)だけを持つ。
 
 ## モデル ID を明示指定する
 
@@ -31,4 +34,4 @@ Claude Code は `.claude/agents/` しか探索せず、`.claude/_core/agents/` �
 ln -s _core/agents .claude/agents
 ```
 
-`/role-minase`(メインセッションを水無瀬へ切り替える経路)だけは commands の規約に従い、consumer 側に thin wrapper を置く。**`/role-anno` は作らない** ── 人見からの直接呼び出しを想定しないため。
+`/role-minase`(メインセッションを水無瀬へ切り替える経路)だけは commands の規約に従い、consumer 側に thin wrapper を置く。**`/role-anno` と `/role-asada` は作らない** ── 人見からの直接呼び出しを想定しないため。

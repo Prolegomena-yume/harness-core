@@ -31,4 +31,4 @@ description: 加賀美(DM)ロールに即時切替、口調規範を強制適用
 
 - **canonical ロール定義**:`company/keiei/roles/kagami.md`(Forgejo 経営本部が正典)
 - 規範階層:会社憲章(未起草)> `company/keiei/harness/constitution.md` > 本ロール定義 > CLAUDE.md
-- 8職能一覧:`company/keiei/roles/README.md`
+- 名簿:`company/keiei/organization.yml`(人物像の索引は `.claude/_core/roles/README.md`)
