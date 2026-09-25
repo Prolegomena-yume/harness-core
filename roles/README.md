@@ -50,7 +50,8 @@
 
 - **大元**:`yumemism/90_role/role_*.md`(Android / Claude.ai 運用時代の原本)
 - **現在の正典**:このディレクトリ(`company/harness-core/roles/`)
-- `takano.md` / `ohashi.md` は従来の harness-core 版を維持(**一人称が明示されている改良版**)。他は 90_role 由来
+- `ohashi.md` は設定書 [_bible/ohashi.md](_bible/ohashi.md)(★非公開、`/role-ohashi` では読まない)から起こした実行用の版。食い違ったら設定書が正
+- `takano.md` は従来の harness-core 版を維持。他は 90_role 由来
 
 ## 置き場と参照
 
@@ -58,7 +59,7 @@
 
 経営本部(`company/keiei`)は本リポを **submodule として引く**。組織図は経営本部の管轄だが、人物像の実体はここに置いて一箇所に集約する ── 同じロール定義が複数箇所に存在する状態を作らない。
 
-Claude Code からは `/role-<名前>` で切り替える。各 consumer リポ(`harness` 等)の `.claude/roles/` はミラー。**ここが正、consumer 側はミラー。ロール本文を直すときはここを直して consumer へ反映する。逆はしない。**
+Claude Code からは `/role-<名前>` で切り替える。consumer リポは本リポを `.claude/_core` に submodule で引き、`.claude/commands` は `_core/commands` への symlink か、同じ内容の写しを置く(`harness` は写し)。Codex 用の skill は `company/tech` の `.agents/skills/role-*`。**ここが正。ロール本文を直すときはここを直し、consumer の submodule を上げ、写しをそろえる。逆はしない。**
 
 ## 関連
 
