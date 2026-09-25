@@ -111,6 +111,17 @@ CORE="$(dirname "$(dirname "$script_path")")"
 source "$CORE/scripts/models.env"
 # shellcheck source=lib/batch-inbox.sh
 source "$CORE/scripts/lib/batch-inbox.sh"
+# 便を Claude デスクトップの scope から切り離し、systemd --user の service に載せ直す
+# (案 A、役員 人見 裁定 2026-09-25)。wrap したらここで終わる ── 詳細は lib/unit-wrap.sh。
+# lib/unit-wrap.sh 自体が無い CORE(古い pin、水無瀬が並行で書いている最中 等)は
+# 警告無しで unit化せず続行する(他の退避口と同じ扱い ── 無くても起動を止めない)。
+if [ -f "$CORE/scripts/lib/unit-wrap.sh" ]; then
+  # shellcheck source=lib/unit-wrap.sh
+  source "$CORE/scripts/lib/unit-wrap.sh"
+  if niekawa_unit_wrap "niekawa" "$script_path" "$@"; then
+    exit "$NIEKAWA_UNIT_WRAP_EXIT_CODE"
+  fi
+fi
 
 command -v claude >/dev/null 2>&1 || die 'claude が見つからない。PATH を確認してください'
 command -v python3 >/dev/null 2>&1 || die 'JSON 解析に必要な python3 が見つからない'

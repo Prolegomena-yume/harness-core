@@ -104,6 +104,19 @@ source "$CORE/scripts/models.env"
 
 # shellcheck source=lib/batch-inbox.sh
 source "$CORE/scripts/lib/batch-inbox.sh"
+# 便(niekawa)・真壁の単独起動(makabe、贄川を通さない小作業。docs/delegation.md「起動コマンド」)を
+# Claude デスクトップの scope から切り離し、systemd --user の service に載せ直す
+# (案 A、役員 人見 裁定 2026-09-25)。wrap したらここで終わる ── 詳細は lib/unit-wrap.sh。
+# 贄川の便から `codex-makabe` / `codex-kashiwagi` 等を子として呼ぶ経路は、NIEKAWA_UNIT_WRAPPED=1 が
+# 既に env に継承されているため二重ラップしない(同じ unit の子プロセスとして走る)。
+# lib/unit-wrap.sh 自体が無い CORE(古い pin 等)は警告無しで unit化せず続行する。
+if [ -f "$CORE/scripts/lib/unit-wrap.sh" ]; then
+  # shellcheck source=lib/unit-wrap.sh
+  source "$CORE/scripts/lib/unit-wrap.sh"
+  if niekawa_unit_wrap "$persona" "$script_path" "$persona" "$@"; then
+    exit "$NIEKAWA_UNIT_WRAP_EXIT_CODE"
+  fi
+fi
 
 invocation_dir="$(pwd -P)"
 if default_root="$(git -C "$invocation_dir" rev-parse --show-toplevel 2>/dev/null)"; then
