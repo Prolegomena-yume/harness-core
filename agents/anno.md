@@ -2,7 +2,7 @@
 name: anno
 description: 鷹野(PDM)直属の作業重視サブエージェント人格(庵野・Experimenter)。用途:鷹野の道具作り、Playwright と実機での検証、PoC、検証しながらの実装。贄川の段取りにも柏木のゲートにも入らない。鷹野からの委譲でのみ起動する想定、人見からの直接呼び出しは想定しない。
 tools: Read, Edit, Write, Bash, Glob, Grep, WebFetch, WebSearch, mcp__Claude_Browser__*
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 ---
 
 @.claude/_core/roles/anno.md

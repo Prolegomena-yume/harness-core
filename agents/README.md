@@ -7,7 +7,7 @@
 | 人格 | 役 | `subagent_type` | model | 用途 | 定義 |
 |---|---|---|---|---|---|
 | 水無瀬澪 | PL=Planner | `minase` | `claude-opus-5-5` | 調査・設計案・影響範囲 | [minase.md](minase.md) |
-| 庵野奏 | EXP=Experimenter | `anno` | `claude-sonnet-5` | 道具作り・Playwright・PoC・検証しながらの実装 | [anno.md](anno.md) |
+| 庵野奏 | EXP=Experimenter | `anno` | `claude-sonnet-5-5` | 道具作り・Playwright・PoC・検証しながらの実装 | [anno.md](anno.md) |
 | 浅田 | AA=事務の起草補佐 | `asada` | `claude-opus-5-5` | 規約・同意文言・ポリシーの起草、法令と規程の読み | [asada.md](asada.md) |
 
 **浅田は大橋(PJM)直属で、鷹野のチームの外にいる**(役員 人見 2026-09-25)。技術の調査は水無瀬、事務の起草は浅田と持ち場を分ける。浅田のモデルは仮置きで、配役表([../docs/models.md](../docs/models.md))への記載は鷹野の確認待ち。
@@ -20,7 +20,7 @@
 
 ## モデル ID を明示指定する
 
-**エイリアス(`opus` / `sonnet`)を使わない** ── 世代が上がったときにどの実体を指すか曖昧になるため、モデル ID で固定する(人見指示 2026-08-11)。水無瀬は `claude-opus-5-5`、庵野は `claude-sonnet-5`。
+**エイリアス(`opus` / `sonnet`)を使わない** ── 世代が上がったときにどの実体を指すか曖昧になるため、モデル ID で固定する(人見指示 2026-08-11)。水無瀬は `claude-opus-5-5`、庵野は `claude-sonnet-5-5`。
 
 ## tools 行は必ず書く
 
