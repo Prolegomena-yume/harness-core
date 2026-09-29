@@ -7,8 +7,8 @@
 | 鷹野[PDM] | Claude(GUI) | Fable | 人見との要件定義、BRIEF 起草、終端の受領と独立検算、merge / push | ── |
 | 水無瀬[PL] | Claude | `claude-opus-5-5` | 調査、設計案、影響範囲。鷹野直属 | Agent tool `subagent_type: minase` |
 | 贄川[ORC] | Kimi K3 | `kimi-code/k3-256k` | 段取り(plan)、真壁の起動と差し戻し、巡ごとのレビュー、鷹野への納品 | `kimi-niekawa -f <BRIEF>`(枠切れは `codex-niekawa`、sol) |
-| 柏木[CM] | **Claude opus(effort xhigh)= 実行経路 C、既定** / Codex `gpt-6-sol`(`KASHIWAGI_ROUTE=codex`、astra は既定から退役、役員 人見 2026-09-24) | レビュー・監査・助言。ゲート 1(plan 後)とゲート 2(納品前)。ゲート 1 は書き込み無し、ゲート 2 は作業木の中だけ書ける(P2 の自己 commit) | 贄川が `claude-kashiwagi --no-loop`(codex 経路は `codex-kashiwagi --no-loop`)── 役員 人見 2026-09-21 23:55(PoC:Opus 5 / 5、K3 2 / 5、`_sessions/2026-09-21_09`) |
-| 真壁[IM] | Codex | `gpt-6-luna` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から。贄川を通さない直書き便は鷹野が `kimi-makabe -C <worktree> -f <BRIEF>`(K3、`MAKABE_KIMI_MODEL`。役員 人見 2026-09-29) |
+| 柏木[CM] | **Claude opus(effort xhigh)= 実行経路 C、既定** / Codex `gpt-6-sol`(`KASHIWAGI_ROUTE=codex`、astra は既定から退役、役員 人見 2026-09-24) | レビュー・監査・助言。ゲート 1(plan 後)とゲート 2(納品前)。ゲート 1 は書き込み無し、ゲート 2 は作業木の中だけ書ける(P2 の自己 commit) | 贄川が `claude-kashiwagi --no-loop`(codex 経路は `codex-kashiwagi --no-loop`)── 役員 人見 2026-09-21 23:55(PoC:Opus 5 / 5、K3 2 / 5、`_sessions/2026-09-21_09`)。cloud セッションでは鷹野が Agent tool `subagent_type: kashiwagi`(1 便 1 回、読み取り専用、cloud 専用) |
+| 真壁[IM] | Codex | `gpt-6-luna` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から。贄川を通さない直書き便は鷹野が `kimi-makabe -C <worktree> -f <BRIEF>`(K3、`MAKABE_KIMI_MODEL`。役員 人見 2026-09-29)。cloud セッションでは鷹野が Agent tool `subagent_type: makabe`(Sonnet 5.5、cloud 専用、[cloud-session.md](cloud-session.md)。役員 人見 2026-09-30) |
 | 庵野[EXP] | Claude | `claude-sonnet-5-5` | 道具作り、Playwright、PoC、検証しながらの実装。鷹野直属 | Agent tool `subagent_type: anno` |
 | 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(枠切れは `--k3`) |
 
@@ -40,6 +40,17 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 7. **鷹野へ納品** ── 贄川の `verdict: 承認`。鷹野が独立検算(diff、test、実測の再現)をして merge / push
 
 **水無瀬の plan 赤入れは無い**(2026-09-18 に廃止、ゲート 1 が代替)。**柏木は真壁を起こさない**、巡も回さない。
+
+
+## cloud の直書き便 ── 鷹野が 1 セッションの中で真壁・柏木を Agent で起こす
+
+**cloud セッション(`CLAUDE_CODE_REMOTE=true`)では、贄川なしの直書きの形を Claude のサブエージェント 2 人で再現する。**母艦の規則(Claude に真壁・柏木の Agent tool 版を置かない)は崩さず、cloud だけを例外にする(役員 人見 2026-09-30)。起動と PR は [cloud-session.md](cloud-session.md)。
+
+- **起動:** 鷹野が `subagent_type: makabe`(Sonnet 5.5)に BRIEF と作業木のパスを渡す。作業木は鷹野が `git -C ~/yumemism_repo/musearch worktree add` で切る
+- **終端:** ランチャが無いので、真壁は最終応答の末尾に footer(`persona:` / `verdict:` / `変更ファイル数:` / `makabe_commit_sha:`)を自分で書き、鷹野が `git -C <作業木> log` で独立に検算する
+- **ゲートは便に 1 回:** 柏木(Opus、読み取り専用)をプロンプト 1 行目 `便: <id>` で呼ぶ。P2 も所見として返り、直すのは鷹野が起こす新しい真壁。P0 のときも柏木は呼び直さず、新しい真壁を所見のパス付きで 1 回
+- **枠:** サブエージェントも同じアカウントの weekly を食う。`rates` は cloud で動かない見込みなので、起こす前に鷹野が `/usage` を見る(cloud で使えるかは未測)
+- **母艦に残る:** K3・codex の経路、源内、DDL・deploy・DNS・印刷・Discord・メールなど母艦の secrets が要る作業
 
 ## 起動コマンド
 

@@ -2,6 +2,8 @@
 
 **Claude Agent tool の人格は、鷹野配下の水無瀬(opus)と庵野(sonnet)、大橋配下の浅田(opus)の 3 人。**柏木と真壁はランチャ(`claude-kashiwagi` / `codex-kashiwagi`、`codex-makabe`)でだけ起こし(実体のモデルは [../docs/models.md](../docs/models.md))、Agent tool 版は 2026-09-18 に削除した(役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)── 同じ役が 2 つのモデルに跨がると、どちらが正か決まらないため。配線と使い方は [../codex/README.md](../codex/README.md) と [../docs/delegation.md](../docs/delegation.md)。
 
+**例外: cloud セッション(`CLAUDE_CODE_REMOTE=true`)に限り、真壁と柏木を Claude のサブエージェントとして起こす**(役員 人見 2026-09-30「ローカルなら今まで通り、cloud の規則」)。定義は [../cloud/agents/](../cloud/agents/) に置き、本ディレクトリには置かない ── 母艦の探索に入れないため。cloud では SessionStart hook が `~/.claude/agents/` へ symlink を張り、母艦では PreToolUse の `Agent` hook が呼び出しを止める([../docs/cloud-session.md](../docs/cloud-session.md))。
+
 マネージャー(鷹野・大橋)が Claude 内サブエージェントへ委譲するときは、ここで定義した人格を明示指定する。生成物を「鷹野推奨」のような匿名帰属にせず、委譲先インスタンスを追跡可能にするための機構。
 
 | 人格 | 役 | `subagent_type` | model | 用途 | 定義 |
