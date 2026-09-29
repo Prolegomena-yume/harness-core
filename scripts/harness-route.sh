@@ -107,6 +107,7 @@ fi
 
 if [ "$claude_verdict" = 減りすぎ ]; then
   echo "  Claude: 鷹野の窓だけに絞る。庵野を使わず真壁へ。段取りは Codex sol(claude が減りすぎ)"
+  [ "$kimi_verdict" = 減りすぎ ] || echo "  真壁: 直書き便は kimi-makabe(K3)でも回せる(claude が減りすぎ、kimi は減りすぎでない)"
   switched=1
 fi
 

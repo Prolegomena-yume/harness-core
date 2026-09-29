@@ -8,7 +8,7 @@
 | 水無瀬[PL] | Claude | `claude-opus-5-5` | 調査、設計案、影響範囲。鷹野直属 | Agent tool `subagent_type: minase` |
 | 贄川[ORC] | Kimi K3 | `kimi-code/k3-256k` | 段取り(plan)、真壁の起動と差し戻し、巡ごとのレビュー、鷹野への納品 | `kimi-niekawa -f <BRIEF>`(枠切れは `codex-niekawa`、sol) |
 | 柏木[CM] | **Claude opus(effort xhigh)= 実行経路 C、既定** / Codex `gpt-6-sol`(`KASHIWAGI_ROUTE=codex`、astra は既定から退役、役員 人見 2026-09-24) | レビュー・監査・助言。ゲート 1(plan 後)とゲート 2(納品前)。ゲート 1 は書き込み無し、ゲート 2 は作業木の中だけ書ける(P2 の自己 commit) | 贄川が `claude-kashiwagi --no-loop`(codex 経路は `codex-kashiwagi --no-loop`)── 役員 人見 2026-09-21 23:55(PoC:Opus 5 / 5、K3 2 / 5、`_sessions/2026-09-21_09`) |
-| 真壁[IM] | Codex | `gpt-6-luna` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から |
+| 真壁[IM] | Codex | `gpt-6-luna` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から。贄川を通さない直書き便は鷹野が `kimi-makabe -C <worktree> -f <BRIEF>`(K3、`MAKABE_KIMI_MODEL`。役員 人見 2026-09-29) |
 | 庵野[EXP] | Claude | `claude-sonnet-5-5` | 道具作り、Playwright、PoC、検証しながらの実装。鷹野直属 | Agent tool `subagent_type: anno` |
 | 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(枠切れは `--k3`) |
 
@@ -51,6 +51,7 @@ kimi-niekawa --rounds 6 -f docs/BRIEF-15.md      # 巡数上限を変える(既�
 codex-niekawa -f docs/BRIEF-15.md                # kimi が減りすぎのときのフォールバック(sol)
 codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md "この plan を監査する"   # 贄川が呼ぶ
 codex-makabe -f docs/spec.md "仕様どおりに実装する"   # 贄川を通さない小作業だけ
+kimi-makabe -C <worktree> -f docs/BRIEF-15.md    # 直書き便の真壁(K3、贄川なし → 柏木 Opus ゲート 2 を 1 回)。終端は footer の makabe_terminal:、K3 の枠は 2 本まで
 genai draft.md out.md                            # 源内。--k3 で Kimi フォールバック
 harness-route                                    # 今日の配役表(read-only、起動しない)
 ```

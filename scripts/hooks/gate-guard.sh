@@ -23,6 +23,12 @@
 
 set -u
 
+# kimi-makabe の session は作業木の外への書き込みを止める hook へ分岐する(理由は verdict-stop.sh と同じ)。
+# stdin はそのまま渡す。
+if [ -n "${KIMI_MAKABE_ROOT:-}" ]; then
+  exec "$(dirname "${BASH_SOURCE[0]}")/worktree-guard-kimi-makabe.sh"
+fi
+
 stdin_json="$(cat 2>/dev/null || true)"
 
 if [ -z "${NIEKAWA_INBOX:-}" ]; then

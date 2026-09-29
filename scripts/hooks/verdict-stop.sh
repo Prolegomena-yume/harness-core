@@ -27,6 +27,13 @@
 
 set -u
 
+# kimi-makabe(scripts/kimi-makabe.sh、真壁の K3 直書き経路)から起こされた session は別の契約
+# (commit か停止理由)で止める ── config.toml の [[hooks]] は全 kimi 共通で run 単位に足せないため、
+# ここで env KIMI_MAKABE_ROOT を見て分岐する。stdin はそのまま渡す。
+if [ -n "${KIMI_MAKABE_ROOT:-}" ]; then
+  exec "$(dirname "${BASH_SOURCE[0]}")/commit-stop-kimi-makabe.sh"
+fi
+
 # stdin の JSON は読み捨てる(この hook は中身を使わない)。
 cat > /dev/null 2>&1 || true
 

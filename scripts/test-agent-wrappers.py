@@ -312,4 +312,152 @@ print(json.dumps(out))
     assert '(切替なし)' in result_null.stdout
     passed('harness-route shows 不明 for null verdict/pace and does not switch routing on it')
 
+    # ---- kimi-makabe.sh(真壁の K3 直書き経路、fake kimi + 実 git。fake git は PATH に入れない)----
+    kbin = root / 'kbin'
+    kbin.mkdir()
+    (kbin / 'rates').write_text('#!/usr/bin/env bash\necho "{}"\n')
+    (kbin / 'rates').chmod(0o755)
+    kimi_mk_fake = '''#!/usr/bin/env python3
+import json, os, subprocess, sys
+from pathlib import Path
+args = sys.argv[1:]
+mode = os.environ.get('FAKE_MK_MODE', 'commit')
+run_dir = os.environ['CODEX_AGENT_RUN_DIR']
+agent_file = args[args.index('--agent-file') + 1]
+Path(os.environ['FAKE_CAPTURE']).write_text(json.dumps({
+    'argv': args, 'cwd': os.getcwd(), 'agent_file_text': Path(agent_file).read_text(),
+    'makabe_root': os.environ.get('KIMI_MAKABE_ROOT'), 'run_dir': run_dir,
+    'niekawa_inbox': os.environ.get('NIEKAWA_INBOX'),
+    'identity': [os.environ.get(k) for k in (
+        'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL')]}))
+if mode == 'commit':
+    Path('feature.txt').write_text('x\\n')
+    subprocess.run(['git', 'add', 'feature.txt'], check=True)
+    subprocess.run(['git', 'commit', '-q', '-m', 'makabe r1'], check=True)
+elif mode == 'stuck':
+    Path(run_dir, 'stuck.md').write_text('矛盾: fake の停止理由\\n本文\\n')
+print(json.dumps({'role': 'meta', 'type': 'system.version', 'version': 'fake'}))
+print(json.dumps({'role': 'assistant', 'content': '真壁: fake 完了'}))
+print(json.dumps({'role': 'meta', 'type': 'session.resume_hint', 'session_id': 'session_mkfake'}))
+sys.exit(int(os.environ.get('FAKE_MK_STATUS', '0')))
+'''
+    (kbin / 'kimi').write_text(kimi_mk_fake)
+    (kbin / 'kimi').chmod(0o755)
+    real_path = os.environ['PATH']
+    mk_env = env | {'PATH': f'{kbin}:{real_path}'}
+    for _key in ('GIT_AUTHOR_NAME', 'GIT_COMMITTER_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_EMAIL'):
+        mk_env.pop(_key, None)
+
+    def git(repo, *args):
+        return subprocess.run(['git', '-C', str(repo), *args], text=True, capture_output=True, check=True,
+                              env={k: v for k, v in mk_env.items() if not k.startswith('GIT_')} | {
+                                  'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@t',
+                                  'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@t'}).stdout.strip()
+
+    def mk_repo(name, branch='work/x'):
+        repo = root / name
+        repo.mkdir()
+        git(repo, 'init', '-q', '-b', 'main')
+        (repo / 'README.md').write_text('r\\n')
+        git(repo, 'add', 'README.md')
+        git(repo, 'commit', '-q', '-m', 'init')
+        if branch != 'main':
+            git(repo, 'switch', '-q', '-c', branch)
+        return repo
+
+    def run_mk(*args, overrides=None):
+        return subprocess.run([str(CORE / 'scripts' / 'kimi-makabe.sh'), *map(str, args)], text=True,
+                              capture_output=True, timeout=30, input='', env=mk_env | (overrides or {}))
+
+    mk_brief = root / 'mk-brief.md'
+    mk_brief.write_text('便: fake\\n\\n実装する\\n')
+    mk_repo_done = mk_repo('mk-done')
+    pre_sha = git(mk_repo_done, 'rev-parse', 'HEAD')
+    result = run_mk('-C', mk_repo_done, '-f', mk_brief, '--model', 'gpt-6-luna')
+    assert result.returncode == 0, result.stderr
+    data = json.loads(capture.read_text())
+    assert data['argv'][data['argv'].index('-m') + 1] == MODELS['MAKABE_KIMI_MODEL'] == MODELS['KIMI_MODEL']
+    assert data['argv'][data['argv'].index('--output-format') + 1] == 'stream-json'
+    assert data['argv'][0] == '-p' and '実装する' in data['argv'][1] and 'gpt-6-luna' in data['argv'][1]
+    assert data['cwd'] == str(mk_repo_done.resolve()) and data['makabe_root'] == str(mk_repo_done.resolve())
+    assert data['run_dir'] in result.stdout and data['niekawa_inbox'] is None
+    assert data['identity'] == ['真壁', 'makabe@ai.yumemism.dev'] * 2
+    assert 'tools: [Bash, Read, Write, Edit, Glob, Grep]' in data['agent_file_text']
+    assert data['agent_file_text'].count('${base_prompt}') == 1
+    for needle in ('真壁陸', '## commit', '# 真壁 Kimi 起動契約'):
+        assert needle in data['agent_file_text'], needle
+    post_sha = git(mk_repo_done, 'rev-parse', 'HEAD')
+    assert post_sha != pre_sha
+    assert f'makabe_commit_sha: {post_sha}' in result.stdout
+    assert 'makabe_terminal: 完了' in result.stdout and 'makabe_stuck: (無し)' in result.stdout
+    assert '変更ファイル数: 1' in result.stdout and 'engine: kimi' in result.stdout
+    assert 'session_id: session_mkfake' in result.stdout
+    assert git(mk_repo_done, 'log', '-1', '--format=%an <%ae>|%cn <%ce>') == '真壁 <makabe@ai.yumemism.dev>|真壁 <makabe@ai.yumemism.dev>'
+    passed('kimi-makabe: K3 argv, agent-file (tools + role + contracts), env, footer 完了 and 真壁 author/committer')
+
+    mk_repo_stuck = mk_repo('mk-stuck')
+    result = run_mk('-C', mk_repo_stuck, '-f', mk_brief, overrides={'FAKE_MK_MODE': 'stuck'})
+    assert result.returncode == 0, result.stderr
+    assert 'makabe_terminal: 詰まり' in result.stdout and 'makabe_commit_sha: (無し)' in result.stdout
+    assert 'makabe_stuck: 矛盾: fake の停止理由' in result.stdout
+    mk_repo_none = mk_repo('mk-none')
+    result = run_mk('-C', mk_repo_none, '-f', mk_brief, overrides={'FAKE_MK_MODE': 'nothing'})
+    assert result.returncode == 0 and 'makabe_terminal: 未達' in result.stdout
+    mk_repo_fail = mk_repo('mk-fail')
+    result = run_mk('-C', mk_repo_fail, '-f', mk_brief, overrides={'FAKE_MK_MODE': 'commit', 'FAKE_MK_STATUS': '7'})
+    assert result.returncode == 7 and 'makabe_terminal: 未達' in result.stdout, (result.returncode, result.stdout)
+    passed('kimi-makabe: footer 詰まり (stuck.md) / 未達 (no commit, or kimi non-zero keeps the exit status)')
+
+    mk_repo_main = mk_repo('mk-main', branch='main')
+    result = run_mk('-C', mk_repo_main, '-f', mk_brief)
+    assert result.returncode == 2 and 'main の上にある' in result.stderr
+    assert run_mk('-C', mk_repo_done, '-f', mk_brief, '--resume', 'x').returncode == 2
+    assert run_mk('-C', root / 'absent', '-f', mk_brief).returncode == 2
+    assert run_mk('-C', root, '-f', mk_brief).returncode == 2  # git リポジトリ外
+    assert run_mk('--help').returncode == 0
+    result = run_mk('-C', mk_repo_done, '-f', mk_brief, '--dry-run')
+    assert result.returncode == 0 and '--- prompt ---' in result.stdout and '停止理由の置き場' in result.stdout
+    passed('kimi-makabe: refuses main/master, --resume, missing root and non-git dir; --dry-run does not start kimi')
+
+    guard = CORE / 'scripts/hooks/gate-guard.sh'
+    stop = CORE / 'scripts/hooks/verdict-stop.sh'
+    mk_run = root / 'mk-hook-run'
+    mk_run.mkdir()
+    (mk_run / 'pre_head.txt').write_text(git(mk_repo_done, 'rev-parse', 'HEAD~1'))
+    home = Path.home()
+
+    def hook(script, payload, **extra):
+        return subprocess.run([str(script)], input=json.dumps(payload), text=True, capture_output=True, timeout=10,
+                              env=mk_env | {'KIMI_MAKABE_ROOT': str(mk_repo_done), 'CODEX_AGENT_RUN_DIR': str(mk_run)} | extra)
+
+    def pre(tool, **tool_input):
+        return {'tool_name': tool, 'cwd': str(mk_repo_done), 'tool_input': tool_input}
+
+    assert hook(guard, pre('Write', path='a.txt', content='x')).returncode == 0
+    assert hook(guard, pre('Write', path=str(home / 'canonical/tech/x.md'), content='x')).returncode == 2
+    assert hook(guard, pre('Edit', path=str(home / '.kimi-code/config.toml'), old_string='a', new_string='b')).returncode == 2
+    # run_dir は実運用では ~/.codex-agents の下(存在しなくてよい ── guard はパスの文字列だけ見る)
+    fake_run = home / '.codex-agents/runs/makabe-fake'
+    assert hook(guard, pre('Write', path=str(fake_run / 'task.md'), content='x'), CODEX_AGENT_RUN_DIR=str(fake_run)).returncode == 2
+    assert hook(guard, pre('Write', path=str(fake_run / 'stuck.md'), content='x'), CODEX_AGENT_RUN_DIR=str(fake_run)).returncode == 0
+    assert hook(guard, pre('Bash', command=f'printf x > {fake_run}/stuck.md'), CODEX_AGENT_RUN_DIR=str(fake_run)).returncode == 0
+    assert hook(guard, pre('Bash', command=f'echo x > {home}/bin/evil')).returncode == 2
+    assert hook(guard, pre('Bash', command='echo x > build/out.txt 2>&1')).returncode == 0
+    assert hook(guard, pre('Read', path=str(home / '.claude/x'))).returncode == 0
+    # KIMI_MAKABE_ROOT が無い kimi(贄川・人見の対話)は旧 gate-guard の経路(便の箱が無ければ素通し)
+    assert subprocess.run([str(guard)], input=json.dumps(pre('Write', path='/etc/x')), text=True, capture_output=True,
+                          env={k: v for k, v in mk_env.items() if k != 'KIMI_MAKABE_ROOT'}).returncode == 0
+    (mk_run / 'stuck.md').unlink(missing_ok=True)
+    assert hook(stop, {'hook_event_name': 'Stop'}).returncode == 0  # HEAD が pre_head から動いている
+    (mk_run / 'pre_head.txt').write_text(git(mk_repo_done, 'rev-parse', 'HEAD'))
+    blocked = hook(stop, {'hook_event_name': 'Stop'})
+    assert blocked.returncode == 2 and 'stuck.md' in blocked.stderr
+    (mk_run / 'stuck.md').write_text('雑談: x\n')
+    assert hook(stop, {}).returncode == 2
+    for head in ('矛盾: a', '確認が必要: a', '届かない: a'):
+        (mk_run / 'stuck.md').write_text(head + '\n')
+        assert hook(stop, {}).returncode == 0, head
+    passed('kimi-makabe hooks: gate-guard.sh / verdict-stop.sh dispatch on KIMI_MAKABE_ROOT '
+           '(guard blocks writes outside the root except stuck.md; stop needs a commit or a stuck.md reason)')
+
 print(f'1..{count}')
