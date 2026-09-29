@@ -2,12 +2,12 @@
 # cloud 起動処理・guard の test。母艦で走らせて、(A)母艦では何も起きない (D)母艦の SessionStart の出力が
 # 変わらない を確かめ、(B)cloud を sandbox で模して起動処理が通る (C)guard が期待どおり止める を確かめる。
 #   使い方: bash scripts/test-cloud-bootstrap.sh
-#   env: TECH_MAIN(既定 ~/canonical/tech、settings の「前」= その HEAD)  TECH_NEW(既定 TECH_MAIN/.claude/worktrees/cloud-2、「後」)
+#   env: TECH_MAIN(既定 ~/canonical/tech、settings の「前」= その HEAD)  TECH_NEW(既定 TECH_MAIN/.claude/worktrees/cloud-3、「後」)
 # 実ネットワークには出ない(musearch の clone は sandbox の bare repo)。D は session-init.sh を実際に走らせる(Neon を読むので母艦だけ)。
 set -uo pipefail
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TECH_MAIN="${TECH_MAIN:-$HOME/canonical/tech}"
-TECH_NEW="${TECH_NEW:-$TECH_MAIN/.claude/worktrees/cloud-2}"
+TECH_NEW="${TECH_NEW:-$TECH_MAIN/.claude/worktrees/cloud-3}"
 n=0; fail=0
 ok()  { n=$((n+1)); echo "ok $n - $1"; }
 nok() { n=$((n+1)); echo "not ok $n - $1"; fail=1; }
@@ -34,6 +34,7 @@ git clone -q --bare "$sbx/src" "$sbx/musearch.git"
 runB() { env CLAUDE_CODE_REMOTE=true HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
 out="$(runB "file://$sbx/musearch.git")"; rc=$?
 chk "B1 exit 0 / 標準出力は空(session-init の JSON を壊さない)" test "$rc" = 0 -a -z "$out"
+chk "B1b bootstrap-done の印が置かれた(注入 hook が待つ印)" test -e "$H/.cache/harness-cloud/bootstrap-done"
 chk "B2 git-as が PATH 側に張られ、動く" bash -c "'$sbx/bin/git-as' --help >/dev/null"
 chk "B3 ~/canonical/tech が clone を指す" test "$(readlink "$H/canonical/tech")" = "$sbx/projB"
 chk "B4 ~/.claude/agents に makabe / kashiwagi が張られ、読める" test -r "$H/.claude/agents/makabe.md" -a -r "$H/.claude/agents/kashiwagi.md"
@@ -68,15 +69,93 @@ for c in 'rm -rf x' 'echo a > f' 'echo a >> f' 'cat x | tee f' 'sed -i s/a/b/ f'
 for c in 'git diff --stat' 'git -C /x log --oneline -3' 'rg -n foo src' 'sed -n 1,5p f' 'cat f 2>/dev/null' 'ls 2>&1' 'npm test' 'echo "a > b"' 'curl -s https://git.yumemism.com/api/v1/version'; do chk "C12 kashiwagi は読み・検証を止めない: $c" test "$(sg kashiwagi Bash "$c")" = 0; done
 chk "C13 kashiwagi の Edit / Write は止める" test "$(sg kashiwagi Edit /tmp/x)$(sg kashiwagi Write /tmp/x)" = 22
 
-echo "# E. cloud の SessionStart に memory を注入する(hooks/cloud-session-start.sh)"
-mkdir -p "$sbx/tm" "$sbx/km"; echo "- [x](x.md) — TECHIDX" >"$sbx/tm/MEMORY.md"; echo "- [y](y.md) — KEIEIIDX" >"$sbx/km/MEMORY.md"
-ctx() { env CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$core/../.." HOME="$H" CTX_TECH_MEM="$sbx/tm" CTX_KEIEI_MEM="$sbx/km" "$@" bash "$core/hooks/cloud-session-start.sh" 2>/dev/null </dev/null; }
-e1="$(ctx)"
-chk "E1 JSON 1 個で、additionalContext に tech / keiei の索引が見出し付きで入り、session-init の中身も残る" bash -c "echo '$e1' | python3 -c 'import json,sys; d=json.load(sys.stdin); c=d[\"hookSpecificOutput\"][\"additionalContext\"]; assert \"TECHIDX\" in c and \"KEIEIIDX\" in c and \"### tech の memory\" in c and \"### keiei の memory\" in c and \"SessionStart context\" in c'"
-e2="$(ctx CTX_MAX_BYTES=10)"
-chk "E2 上限を超えたら先頭から上限バイトで切り、その旨を書く" bash -c "echo '$e2' | python3 -c 'import json,sys; c=json.load(sys.stdin)[\"hookSpecificOutput\"][\"additionalContext\"]; assert \"を直接読む\" in c and \"KEIEIIDX\" not in c'"
-e3="$(env CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$core/../.." HOME="$H" CTX_TECH_MEM="$sbx/none" CTX_KEIEI_MEM="$sbx/none" bash "$core/hooks/cloud-session-start.sh" 2>/dev/null </dev/null)"
-chk "E3 memory が無ければ session-init の JSON をそのまま返す" bash -c "echo '$e3' | python3 -c 'import json,sys; c=json.load(sys.stdin)[\"hookSpecificOutput\"][\"additionalContext\"]; assert \"### tech の memory\" not in c'"
+echo "# E. cloud の SessionStart に memory を注入する(hooks/cloud-memory-inject.sh、tech-1 / tech-2 / keiei の 3 本)"
+INJ="$core/hooks/cloud-memory-inject.sh"
+cat >"$sbx/jc.py" <<'PYEOF'
+import json, sys
+# 使い方: jc.py <file> → additionalContext の UTF-16 字数を出す。空なら EMPTY。JSON でなければ BAD。
+t = open(sys.argv[1], encoding="utf-8").read()
+if not t.strip(): print("EMPTY"); raise SystemExit
+try: c = json.loads(t)["hookSpecificOutput"]["additionalContext"]
+except Exception: print("BAD"); raise SystemExit
+if len(sys.argv) > 2: open(sys.argv[2], "w", encoding="utf-8").write(c)
+print(len(c.encode("utf-16-le")) // 2)
+PYEOF
+mkdir -p "$sbx/tm" "$sbx/km" "$sbx/state"; echo "- [x](x.md) — TECHIDX" >"$sbx/tm/MEMORY.md"; echo "- [y](y.md) — KEIEIIDX" >"$sbx/km/MEMORY.md"
+touch "$sbx/state/bootstrap-done"
+inj() { local part="$1"; shift; env CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$sbx/projB" HOME="$H" CLOUD_STATE_DIR="$sbx/state" CLOUD_HOOK_T0=1 CTX_TECH_MEM="$sbx/tm" CTX_KEIEI_MEM="$sbx/km" CTX_WAIT_SEC=2 "$@" bash "$INJ" "$part" 2>/dev/null </dev/null; }
+for p in tech-1 tech-2 keiei; do inj $p >"$sbx/e.$p"; done
+chk "E1 小さい索引: tech-1 に TECHIDX が入り、tech-2 は空、keiei に KEIEIIDX(JSON 1 個ずつ)" test "$(python3 "$sbx/jc.py" "$sbx/e.tech-1" | grep -c '^[0-9]')" = 1 -a "$(python3 "$sbx/jc.py" "$sbx/e.tech-2")" = EMPTY -a "$(python3 "$sbx/jc.py" "$sbx/e.keiei" | grep -c '^[0-9]')" = 1 && grep -q TECHIDX "$sbx/e.tech-1" && grep -q KEIEIIDX "$sbx/e.keiei" && ! grep -q KEIEIIDX "$sbx/e.tech-1"
+real="$TECH_MAIN/.claude/memory/MEMORY.md"; realk="$HOME/canonical/keiei/.claude/memory/MEMORY.md"
+if [ -r "$real" ]; then
+  mkdir -p "$sbx/rt" "$sbx/rk"; cp "$real" "$sbx/rt/MEMORY.md"; [ -r "$realk" ] && cp "$realk" "$sbx/rk/MEMORY.md"
+  for p in tech-1 tech-2 keiei; do inj $p CTX_TECH_MEM="$sbx/rt" CTX_KEIEI_MEM="$sbx/rk" >"$sbx/r.$p"; done
+  c1="$(python3 "$sbx/jc.py" "$sbx/r.tech-1" "$sbx/r1.txt")"; c2="$(python3 "$sbx/jc.py" "$sbx/r.tech-2" "$sbx/r2.txt")"; ck="$(python3 "$sbx/jc.py" "$sbx/r.keiei" "$sbx/rk.txt")"
+  chk "E2 実物の索引($(python3 -c 'import sys;print(len(open(sys.argv[1],encoding="utf-8").read()))' "$real") 字): 3 本とも 9,500 字以下(tech-1 $c1 / tech-2 $c2 / keiei $ck)" bash -c "[ '$c1' -le 9500 ] && [ '$c2' -le 9500 ] && [ '$ck' -le 9500 ]"
+  chk "E2b 前半と後半を足すと原本の全行が 1 度ずつ、後半は '## ' 見出しから始まる" python3 - "$real" "$sbx/r1.txt" "$sbx/r2.txt" <<'PYEOF'
+import sys
+orig = open(sys.argv[1], encoding="utf-8").read().splitlines(keepends=True)
+def body(p):
+    t = open(p, encoding="utf-8").read().split("\n\n", 1)[1]   # 見出し + 注記の後の空行から本文
+    return t.splitlines(keepends=True)
+a, b = body(sys.argv[2]), body(sys.argv[3])
+assert a + b == orig, "行が欠けた/重複した"
+assert b and b[0].startswith("## "), "後半が見出しで始まらない"
+PYEOF
+  if [ -r "$realk" ]; then chk "E2c keiei の実物が原本のまま入る" bash -c "grep -qF -- \"\$(sed -n 1p '$sbx/rk/MEMORY.md')\" '$sbx/rk.txt'"; fi
+fi
+# 大きい索引の合成: 見出しなし(行で割る)・3 本目が要る大きさ(警告 + 切る)
+python3 - "$sbx" <<'PYEOF'
+import sys, os
+d = sys.argv[1]
+def mk(name, secs, per, heads=True):
+    os.makedirs(f"{d}/{name}", exist_ok=True)
+    out = ["# MEMORY\n\n"]
+    for s in range(secs):
+        if heads: out.append(f"## セクション{s}\n")
+        for i in range(per): out.append(f"- [項目{s}-{i}](f{s}-{i}.md) — " + "あ" * 60 + "\n")
+    open(f"{d}/{name}/MEMORY.md", "w", encoding="utf-8").write("".join(out))
+mk("bigA", 4, 40)                 # 約 4×40×~80 字 ≒ 12,800 字、見出しあり
+mk("bigB", 1, 200, heads=False)   # 約 16,000 字、見出しなし
+mk("bigC", 6, 60)                 # 約 29,000 字 → 3 本目が要る
+PYEOF
+for nm in bigA bigB bigC; do
+  for p in tech-1 tech-2; do inj $p CTX_TECH_MEM="$sbx/$nm" >"$sbx/$nm.$p"; done
+  eval "$nm"1="$(python3 "$sbx/jc.py" "$sbx/$nm.tech-1" "$sbx/$nm.1.txt")"; eval "$nm"2="$(python3 "$sbx/jc.py" "$sbx/$nm.tech-2" "$sbx/$nm.2.txt")"
+done
+chk "E3 見出しありの大きい索引(bigA): 2 本とも 9,500 字以下、見出しで割れ、警告なし($bigA1 / $bigA2)" bash -c "[ '$bigA1' -le 9500 ] && [ '$bigA2' -le 9500 ] && grep -q '^## セクション' '$sbx/bigA.2.txt' && ! grep -q '整理が要る' '$sbx/bigA.1.txt' && [ \"\$(sed -n '/^## セクション/{p;q}' '$sbx/bigA.2.txt')\" != '' ]"
+chk "E4 見出しなしの大きい索引(bigB): 行で割って 2 本とも 9,500 字以下、行が欠けない($bigB1 / $bigB2)" bash -c "[ '$bigB1' -le 9500 ] && [ '$bigB2' -le 9500 ] && [ \$(( \$(grep -c '^- \[' '$sbx/bigB.1.txt') + \$(grep -c '^- \[' '$sbx/bigB.2.txt') )) = 200 ]"
+chk "E5 3 本目が要る大きさ(bigC): 両方に「索引が大きすぎる、整理が要る」を出し、それでも 9,500 字以下($bigC1 / $bigC2)" bash -c "[ '$bigC1' -le 9500 ] && [ '$bigC2' -le 9500 ] && grep -q '索引が大きすぎる' '$sbx/bigC.1.txt' && grep -q '索引が大きすぎる' '$sbx/bigC.2.txt' && grep -q '行を載せていない' '$sbx/bigC.2.txt'"
+inj keiei CTX_MAX_CHARS=300 >"$sbx/e.k300"; ek="$(python3 "$sbx/jc.py" "$sbx/e.k300")"
+chk "E6 上限(CTX_MAX_CHARS)を下げても出力はそれ以下($ek ≤ 300)" test "$ek" -le 300
+# 待ち
+echo "# E-wait. keiei / bootstrap の完了待ち"
+rm -rf "$sbx/wk" "$sbx/wstate"; mkdir -p "$sbx/wk" "$sbx/wstate"
+t_start=$(date +%s)
+( sleep 1.5; echo "- [w](w.md) — WAITED-KEIEI" >"$sbx/wk/MEMORY.md"; touch "$sbx/wstate/bootstrap-done" ) &
+inj keiei CTX_KEIEI_MEM="$sbx/wk" CLOUD_STATE_DIR="$sbx/wstate" CLOUD_HOOK_T0="$(date +%s)" CTX_WAIT_SEC=10 >"$sbx/w1"; t_el=$(( $(date +%s) - t_start )); wait
+chk "E7 印が後から現れるまで待ち、keiei の中身が入る(待ち ${t_el}s、上限 10s)" bash -c "grep -q WAITED-KEIEI '$sbx/w1' && [ $t_el -ge 1 ] && [ $t_el -lt 8 ]"
+rm -rf "$sbx/wk" "$sbx/wstate"; mkdir -p "$sbx/wk" "$sbx/wstate"; touch -d '2020-01-01' "$sbx/wstate/bootstrap-done"
+t_start=$(date +%s); inj keiei CTX_KEIEI_MEM="$sbx/wk" CLOUD_STATE_DIR="$sbx/wstate" CLOUD_HOOK_T0="$(date +%s)" CTX_WAIT_SEC=2 >"$sbx/w2"; t_el=$(( $(date +%s) - t_start ))
+chk "E8 前回の古い印は今回の完了と読まない: 上限まで待って(${t_el}s)、clone が間に合わなかった旨を出し exit 0" bash -c "[ $t_el -ge 2 ] && [ $t_el -lt 6 ] && grep -q '間に合わなかった' '$sbx/w2' && [ \"\$(python3 '$sbx/jc.py' '$sbx/w2')\" -le 9500 ]"
+rm -rf "$sbx/wk"; mkdir -p "$sbx/wk"; echo "- [w](w.md) — LATE" >"$sbx/wk/MEMORY.md"
+inj tech-1 CTX_TECH_MEM="$sbx/wk" CLOUD_STATE_DIR="$sbx/wstate" CLOUD_HOOK_T0="$(date +%s)" CTX_WAIT_SEC=1 >"$sbx/w3"
+chk "E9 tech 側は待ちきれなくても手元の索引を出し、取り込み未了かもしれない旨を添える" bash -c "grep -q LATE '$sbx/w3' && grep -q '完了を' '$sbx/w3'"
+# settings の command 文字列で、_core が後から現れる(submodule 取得が遅い)cloud を模す
+echo "# E-chain. settings.json の command を実走(_core は 1.5 秒後に現れ、書きかけの版が先にある)"
+rm -rf "$sbx/px" "$sbx/xstate"; mkdir -p "$sbx/px/.claude/_core/hooks" "$sbx/xstate" "$sbx/xh"
+head -c 200 "$INJ" >"$sbx/px/.claude/_core/hooks/cloud-memory-inject.sh"
+( sleep 1.5; cp "$INJ" "$sbx/px/.claude/_core/hooks/cloud-memory-inject.sh.new"; mv "$sbx/px/.claude/_core/hooks/cloud-memory-inject.sh.new" "$sbx/px/.claude/_core/hooks/cloud-memory-inject.sh"; sleep 0.5; touch "$sbx/xstate/bootstrap-done" ) &
+mkdir -p "$sbx/pxmem"; cp "$sbx/bigA/MEMORY.md" "$sbx/pxmem/MEMORY.md"
+t_start=$(date +%s)
+for i in 2 3 4; do
+  cmd="$(jq -r ".hooks.SessionStart[0].hooks[$i].command" "$TECH_NEW/.claude/settings.json")"
+  env CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$sbx/px" HOME="$sbx/xh" CLOUD_STATE_DIR="$sbx/xstate" CTX_TECH_MEM="$sbx/pxmem" CTX_KEIEI_MEM="$sbx/km" bash -c "$cmd" >"$sbx/x.$i" 2>"$sbx/x.$i.err" </dev/null &
+done
+wait; t_el=$(( $(date +%s) - t_start ))
+chk "E10 3 本の command が _core の出現と印を待って、それぞれ JSON 1 個を返す(${t_el}s: tech-1 $(python3 "$sbx/jc.py" "$sbx/x.2") / tech-2 $(python3 "$sbx/jc.py" "$sbx/x.3") / keiei $(python3 "$sbx/jc.py" "$sbx/x.4"))" bash -c "grep -q 'セクション0' '$sbx/x.2' && grep -q 'セクション3' '$sbx/x.3' && grep -q KEIEIIDX '$sbx/x.4' && [ $t_el -ge 2 ]"
+env -u CLAUDE_CODE_REMOTE CLAUDE_PROJECT_DIR="$sbx/none" bash "$INJ" tech-1 >"$sbx/m1" 2>&1; rc=$?
+chk "E11 母艦ではスクリプト自体も何も出さず exit 0" test "$rc" = 0 -a ! -s "$sbx/m1"
 
 echo "# D. 母艦の SessionStart は前後で変わらない(session-init.sh を settings の command 文字列のまま実走)"
 old="$(git -C "$TECH_MAIN" show HEAD:.claude/settings.json | jq -r '.hooks.SessionStart[0].hooks[0].command')"
@@ -90,6 +169,13 @@ chk "D1b Stop に memory-sync が足され、guard の後ろで、常に exit 0"
 chk "D2 exit code が同じ($r1 / $r2)" test "$r1" = "$r2"
 chk "D3 標準出力が同じ(日時の揺れは除く、$(printf %s "$o1" | wc -c) バイト)" test -n "$o1" -a "$(printf %s "$o1" | norm)" = "$(printf %s "$o2" | norm)"
 chk "D4 標準エラーが同じ" test "$(norm <"$sbx/errD.old")" = "$(norm <"$sbx/errD.new")"
+for i in 2 3 4; do
+  cmd="$(jq -r ".hooks.SessionStart[0].hooks[$i].command" "$TECH_NEW/.claude/settings.json")"
+  oi="$(env -u CLAUDE_CODE_REMOTE CLAUDE_PROJECT_DIR="$TECH_MAIN" bash -c "$cmd" 2>"$sbx/errI.$i")"; ri=$?
+  s0=$(date +%s%N); for _ in 1 2 3 4 5; do env -u CLAUDE_CODE_REMOTE CLAUDE_PROJECT_DIR="$TECH_MAIN" bash -c "$cmd" >/dev/null 2>&1; done; e0=$(date +%s%N)
+  chk "D7.$i 母艦で注入 hook[$i] は何も出さず(標準出力・標準エラーとも空)exit 0、所要 $(( (e0-s0)/5000000 )) ms/回" test "$ri" = 0 -a -z "$oi" -a ! -s "$sbx/errI.$i"
+done
+chk "D8 母艦の SessionStart は hook 5 本(init / install / 注入 3 本)で、cloud-session-start.sh はもう呼ばれない" bash -c "test \$(jq '.hooks.SessionStart[0].hooks|length' '$TECH_NEW/.claude/settings.json') = 5 && ! grep -q cloud-session-start '$TECH_NEW/.claude/settings.json'"
 tm() { local s e; s=$(date +%s%N); env -u CLAUDE_CODE_REMOTE CLAUDE_PROJECT_DIR="$TECH_MAIN" bash -c "$1" >/dev/null 2>&1; e=$(date +%s%N); echo $(( (e-s)/1000000 )); }
 so=0; sn=0; for _ in 1 2 3 4; do so=$((so+$(tm "$old"))); sn=$((sn+$(tm "$new"))); done
 echo "# D5 所要(ms、交互 4 回平均): 前 $((so/4)) / 後 $((sn/4))  ※ session-init が Neon を読むので揺れる。差は誤差の範囲かを見る"

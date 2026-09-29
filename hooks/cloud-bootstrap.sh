@@ -13,9 +13,11 @@
 #   4. musearch を Forgejo から clone して ~/yumemism_repo/musearch に置く
 #      (母艦の置き場と同じパス。BRIEF・docs が書く絶対パスがそのまま通り、tech の兄弟という形も同じ)
 #   5. keiei を Forgejo から clone して ~/canonical/keiei に置く(tech の CLAUDE.md が @import する索引の在処。
-#      cloud では @import が展開されないので、cloud-session-start.sh が MEMORY.md を additionalContext に入れる)
+#      cloud では @import が展開されないので、cloud-memory-inject.sh が MEMORY.md を additionalContext に入れる)
 #   6. memory の同期の起点を置く(refs/memory-sync/base = いまの HEAD)→ Forgejo の main の memory を手元に取り込む
 #      (GitHub の写しが古いことがあるため。hooks/memory-sync.sh、Stop hook と同じ処理)
+#   終わり(どの段が落ちても)に ~/.cache/harness-cloud/bootstrap-done を touch する ── 並列に走る
+#   cloud-memory-inject.sh(keiei の索引・取り込み後の tech の索引を注入する hook)が、これを待つ印。
 #
 # test 用の上書き: CLOUD_BIN_DIR CLOUD_MUSEARCH_URL CLOUD_MUSEARCH_DIR CLOUD_KEIEI_URL CLOUD_KEIEI_DIR
 
@@ -26,6 +28,7 @@ core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 proj="${CLAUDE_PROJECT_DIR:-$(cd -P "$core/../.." && pwd)}"
 state="$HOME/.cache/harness-cloud"
 mkdir -p "$state" 2>/dev/null
+trap 'touch "$state/bootstrap-done" 2>/dev/null' EXIT
 log() { echo "[cloud-bootstrap] $*" >&2; echo "$(date -u +%FT%TZ) $*" >>"$state/bootstrap.log" 2>/dev/null; }
 
 # 1. PATH
