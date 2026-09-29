@@ -31,7 +31,7 @@ git -C "$sbx/kei" init -q -b main; mkdir -p "$sbx/kei/.claude/memory"; echo "- [
 "$core/scripts/git-as" anno -C "$sbx/kei" commit -q -m init
 git clone -q "$sbx/src" "$sbx/projB"
 git clone -q --bare "$sbx/src" "$sbx/musearch.git"
-runB() { env CLAUDE_CODE_REMOTE=true HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
+runB() { env CLAUDE_CODE_REMOTE=true HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" CLOUD_YUMEMI_URL="file://$sbx/musearch.git" CLOUD_SETUP_SKIP_TOOLS=1 MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
 out="$(runB "file://$sbx/musearch.git")"; rc=$?
 chk "B1 exit 0 / 標準出力は空(session-init の JSON を壊さない)" test "$rc" = 0 -a -z "$out"
 chk "B1b bootstrap-done の印が置かれた(注入 hook が待つ印)" test -e "$H/.cache/harness-cloud/bootstrap-done"
@@ -41,6 +41,9 @@ chk "B4 ~/.claude/agents に makabe / kashiwagi が張られ、読める" test -
 chk "B5 musearch が ~/yumemism_repo/musearch に clone された" test -d "$H/yumemism_repo/musearch/.git"
 chk "B5b keiei が ~/canonical/keiei に clone され、MEMORY.md がある" test -r "$H/canonical/keiei/.claude/memory/MEMORY.md"
 chk "B5c memory 同期の起点 refs/memory-sync/base が clone に置かれ、同期が走った(前景 stamp)" bash -c "git -C '$sbx/projB' rev-parse -q --verify refs/memory-sync/base >/dev/null && test -e '$H/.cache/harness-memory-sync/last-run'"
+chk "B5d yumemi が ~/yumemism_repo/yumemi に clone された" test -d "$H/yumemism_repo/yumemi/.git"
+chk "B5e ~/.claude/settings.json の autoMode.environment が \$defaults と自社の source control を持つ" \
+  bash -c "jq -e '.autoMode.environment[0] == \"\$defaults\" and any(.autoMode.environment[]; test(\"git.yumemism.com\"))' '$H/.claude/settings.json' >/dev/null"
 sn1="$(cd "$H" && find . -printf '%p %l\n' | grep -v '\.cache' | sort | md5sum)"
 runB "file://$sbx/musearch.git" >/dev/null; rc=$?
 sn2="$(cd "$H" && find . -printf '%p %l\n' | grep -v '\.cache' | sort | md5sum)"
@@ -48,6 +51,14 @@ chk "B6 2 回目は冪等(exit 0、構成が同じ)" test "$rc" = 0 -a "$sn1" = 
 rm -rf "$H/yumemism_repo"; runB "file://$sbx/nonexistent.git" >/dev/null; rc=$?
 chk "B7 clone が落ちても exit 0(cloud の起動を止めない)、記録に FAILED" bash -c "test $rc = 0 && grep -q 'musearch clone FAILED' '$H/.cache/harness-cloud/bootstrap.log'"
 chk "B8 記録・標準エラーに資格情報の形(Basic / Bearer / user:pass@)が出ない" bash -c "! cat '$sbx/errB' '$H/.cache/harness-cloud/bootstrap.log' | grep -Eqi 'basic |bearer |://[^/ ]+:[^/ ]+@'"
+
+S="$sbx/set.json"; echo '{"model":"x","autoMode":{"environment":["Trusted cloud buckets: s3://keep"],"allow":["$defaults"]}}' >"$S"
+env CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS="$S" bash "$core/cloud/setup.sh" 2>/dev/null; h1="$(md5sum <"$S")"
+env CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS="$S" bash "$core/cloud/setup.sh" 2>/dev/null; h2="$(md5sum <"$S")"
+chk "B9 setup.sh は他の key と他の environment 行を残し、2 回目は書き換えない" \
+  bash -c "jq -e '.model == \"x\" and .autoMode.allow == [\"\$defaults\"] and any(.autoMode.environment[]; . == \"Trusted cloud buckets: s3://keep\")' '$S' >/dev/null && test '$h1' = '$h2'"
+out="$(env CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS="$S" bash "$core/cloud/setup.sh" 2>/dev/null)"
+chk "B10 setup.sh は標準出力に何も出さない" test -z "$out"
 
 echo "# C. guard"
 AG="$core/scripts/hooks/cloud-agent-guard.sh"; SG="$core/scripts/hooks/cloud-subagent-guard.sh"

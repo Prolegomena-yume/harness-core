@@ -12,7 +12,16 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - keiei を `~/canonical/keiei` へ浅く clone する(MEMORY.md を文脈に入れるため、下の節)。終わりに `bootstrap-done` の印を置く。memory の同期の起点を置いて 1 回走らせる(下の節)
 - musearch を `~/yumemism_repo/musearch` へ clone する。**母艦の置き場と同じパスにしたのは、BRIEF や docs の絶対パスと「tech の兄弟」という形をそのまま通すため。**clone は hook の中でする ── setup script には API credential が付かず、Forgejo の private が取れない
 
-キャッシュされる setup script には何も置かない(スナップショットで古い中身が固まるため)。
+- yumemi を `~/yumemism_repo/yumemi` へ Forgejo の `satellite/yumemi` から clone する(musearch の兄弟、生成器の在処)。`cloud-bridge` は yumemi に read。**GitHub の写し `canon-ical/yumemi` は手動 push で遅れることがあり(2026-09-30 に 0.11.6 で止まっていた)、使わない**
+- 最後に、完了の印を置いてから [../cloud/setup.sh](../cloud/setup.sh) を走らせる(下の節)
+
+## 道具と分類器の文脈は cloud/setup.sh が入れ、setup script にも同じ本文を貼る
+
+**cloud の既定のイメージには gleam も Erlang も無い。[../cloud/setup.sh](../cloud/setup.sh) が gleam(版を固定、release の sha256 を照合)と Erlang(apt の `erlang-nox`、Ubuntu 24.04 で OTP 25)を入れ、`~/.claude/settings.json` の `autoMode.environment` に自社の source control を書く**(役員 人見 2026-09-30)。冪等で、揃っていれば数十 ms で抜ける。
+
+- **入口は 2 つで中身は同じ。**cloud 環境の setup script に本文をそのまま貼る(スナップショットに道具が載り、次回から入れ直さない)。貼っていない環境・古いスナップショットの環境では、cloud-bootstrap.sh の最後が同じ本文を走らせる(apt が走ると数十秒。完了の印の後なので memory の注入は待たない)
+- **setup script に置くのは clone の中身に依存しないものだけ。**道具と設定の文面は置く。clone の中身のコピーや symlink は置かない(スナップショットで古い中身が固まるため)。setup script はこのファイルを取りに行かない ── setup script には API credential が付かず Forgejo が読めない。本文を変えたら画面の setup script も貼り直す
+- **分類器の文脈は `~/.claude/settings.json` にしか書けない。**auto mode の分類器は project の `.claude/settings.json` の `autoMode` を読まない(公式)。書くのは `$defaults` の後ろに、自社の source control(git.yumemism.com の全リポ、GitHub の Prolegomena-yume・canon-ical)、Hex の `yumemi` が自社のものであること、Forgejo へは AGit だけで押すこと。書く前は yumemi の clone が「信頼できない依存」で止まった。分類器は CLAUDE.md も読むので、tech の CLAUDE.md にも同じ旨を 1 行置く
 
 ## PR は tech と musearch で 2 本、topic は便名
 

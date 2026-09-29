@@ -16,10 +16,15 @@
 #      cloud では @import が展開されないので、cloud-memory-inject.sh が MEMORY.md を additionalContext に入れる)
 #   6. memory の同期の起点を置く(refs/memory-sync/base = いまの HEAD)→ Forgejo の main の memory を手元に取り込む
 #      (GitHub の写しが古いことがあるため。hooks/memory-sync.sh、Stop hook と同じ処理)
-#   終わり(どの段が落ちても)に ~/.cache/harness-cloud/bootstrap-done を touch する ── 並列に走る
+#   7. yumemi を Forgejo(satellite/yumemi)から clone して ~/yumemism_repo/yumemi に置く(musearch の兄弟、生成器の在処。
+#      GitHub の写し canon-ical/yumemi は手動 push で古いことがあるので使わない)
+#   8. cloud/setup.sh(gleam・Erlang・分類器の文脈)。setup script を貼った環境では揃っていて数十 ms で抜ける。
+#      apt が長いので bootstrap-done の印を置いた後に走らせる(注入 hook を待たせない)
+#   6 の後(どの段が落ちても)に ~/.cache/harness-cloud/bootstrap-done を touch する ── 並列に走る
 #   cloud-memory-inject.sh(keiei の索引・取り込み後の tech の索引を注入する hook)が、これを待つ印。
 #
 # test 用の上書き: CLOUD_BIN_DIR CLOUD_MUSEARCH_URL CLOUD_MUSEARCH_DIR CLOUD_KEIEI_URL CLOUD_KEIEI_DIR
+#   CLOUD_YUMEMI_URL CLOUD_YUMEMI_DIR CLOUD_SETUP_SKIP_TOOLS CLOUD_SETUP_SETTINGS(cloud/setup.sh へ)
 
 [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
 
@@ -84,4 +89,19 @@ if git -C "$proj" rev-parse -q --verify HEAD >/dev/null 2>&1; then
   MEMSYNC_REPO="$proj" bash "$core/hooks/memory-sync.sh" </dev/null >/dev/null 2>>"$state/bootstrap.log" \
     && log "memory sync ran (see ~/.cache/harness-memory-sync/sync.log)" || log "memory sync FAILED"
 fi
+
+# 7. yumemi(読むだけ。cloud-bridge は satellite/yumemi に read)
+ydir="${CLOUD_YUMEMI_DIR:-$HOME/yumemism_repo/yumemi}"
+yurl="${CLOUD_YUMEMI_URL:-https://git.yumemism.com/satellite/yumemi.git}"
+if [ -d "$ydir/.git" ]; then
+  log "yumemi exists: $ydir (skip)"
+else
+  mkdir -p "$(dirname "$ydir")"
+  if git clone --quiet "$yurl" "$ydir" 2>>"$state/bootstrap.log"; then log "yumemi cloned: $ydir"
+  else log "yumemi clone FAILED (see bootstrap.log)"; fi
+fi
+touch "$state/bootstrap-done" 2>/dev/null
+
+# 8. 道具と分類器の文脈(印の後。apt が走ると数十秒かかる)
+bash "$core/cloud/setup.sh" </dev/null >/dev/null 2>>"$state/bootstrap.log" && log "cloud setup ran" || log "cloud setup FAILED"
 exit 0
