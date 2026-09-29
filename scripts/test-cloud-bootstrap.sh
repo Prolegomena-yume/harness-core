@@ -2,12 +2,12 @@
 # cloud 起動処理・guard の test。母艦で走らせて、(A)母艦では何も起きない (D)母艦の SessionStart の出力が
 # 変わらない を確かめ、(B)cloud を sandbox で模して起動処理が通る (C)guard が期待どおり止める を確かめる。
 #   使い方: bash scripts/test-cloud-bootstrap.sh
-#   env: TECH_MAIN(既定 ~/canonical/tech、settings の「前」= その HEAD)  TECH_NEW(既定 TECH_MAIN/.claude/worktrees/cloud-1、「後」)
+#   env: TECH_MAIN(既定 ~/canonical/tech、settings の「前」= その HEAD)  TECH_NEW(既定 TECH_MAIN/.claude/worktrees/cloud-2、「後」)
 # 実ネットワークには出ない(musearch の clone は sandbox の bare repo)。D は session-init.sh を実際に走らせる(Neon を読むので母艦だけ)。
 set -uo pipefail
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TECH_MAIN="${TECH_MAIN:-$HOME/canonical/tech}"
-TECH_NEW="${TECH_NEW:-$TECH_MAIN/.claude/worktrees/cloud-1}"
+TECH_NEW="${TECH_NEW:-$TECH_MAIN/.claude/worktrees/cloud-2}"
 n=0; fail=0
 ok()  { n=$((n+1)); echo "ok $n - $1"; }
 nok() { n=$((n+1)); echo "not ok $n - $1"; fail=1; }
@@ -24,16 +24,22 @@ env -u CLAUDE_CODE_REMOTE bash "$core/scripts/cloud-pr.sh" tech x -t t >/dev/nul
 chk "A3 cloud-pr は母艦で exit 2" test "$rc" = 2
 
 echo "# B. cloud を sandbox で模す(HOME=sandbox、musearch は sandbox の bare repo)"
-H="$sbx/homeB"; mkdir -p "$H" "$sbx/projB" "$sbx/src"
-git -C "$sbx/src" init -q -b main && "$core/scripts/git-as" anno -C "$sbx/src" commit -q --allow-empty -m init
+H="$sbx/homeB"; mkdir -p "$H" "$sbx/src" "$sbx/kei"
+git -C "$sbx/src" init -q -b main; mkdir -p "$sbx/src/.claude/memory"; echo "- [t](t.md) — tech memory" >"$sbx/src/.claude/memory/MEMORY.md"; git -C "$sbx/src" add -A
+"$core/scripts/git-as" anno -C "$sbx/src" commit -q -m init
+git -C "$sbx/kei" init -q -b main; mkdir -p "$sbx/kei/.claude/memory"; echo "- [k](k.md) — keiei memory" >"$sbx/kei/.claude/memory/MEMORY.md"; git -C "$sbx/kei" add -A
+"$core/scripts/git-as" anno -C "$sbx/kei" commit -q -m init
+git clone -q "$sbx/src" "$sbx/projB"
 git clone -q --bare "$sbx/src" "$sbx/musearch.git"
-runB() { env CLAUDE_CODE_REMOTE=true HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
+runB() { env CLAUDE_CODE_REMOTE=true HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
 out="$(runB "file://$sbx/musearch.git")"; rc=$?
 chk "B1 exit 0 / 標準出力は空(session-init の JSON を壊さない)" test "$rc" = 0 -a -z "$out"
 chk "B2 git-as が PATH 側に張られ、動く" bash -c "'$sbx/bin/git-as' --help >/dev/null"
 chk "B3 ~/canonical/tech が clone を指す" test "$(readlink "$H/canonical/tech")" = "$sbx/projB"
 chk "B4 ~/.claude/agents に makabe / kashiwagi が張られ、読める" test -r "$H/.claude/agents/makabe.md" -a -r "$H/.claude/agents/kashiwagi.md"
 chk "B5 musearch が ~/yumemism_repo/musearch に clone された" test -d "$H/yumemism_repo/musearch/.git"
+chk "B5b keiei が ~/canonical/keiei に clone され、MEMORY.md がある" test -r "$H/canonical/keiei/.claude/memory/MEMORY.md"
+chk "B5c memory 同期の起点 refs/memory-sync/base が clone に置かれ、同期が走った(前景 stamp)" bash -c "git -C '$sbx/projB' rev-parse -q --verify refs/memory-sync/base >/dev/null && test -e '$H/.cache/harness-memory-sync/last-run'"
 sn1="$(cd "$H" && find . -printf '%p %l\n' | grep -v '\.cache' | sort | md5sum)"
 runB "file://$sbx/musearch.git" >/dev/null; rc=$?
 sn2="$(cd "$H" && find . -printf '%p %l\n' | grep -v '\.cache' | sort | md5sum)"
@@ -62,14 +68,25 @@ for c in 'rm -rf x' 'echo a > f' 'echo a >> f' 'cat x | tee f' 'sed -i s/a/b/ f'
 for c in 'git diff --stat' 'git -C /x log --oneline -3' 'rg -n foo src' 'sed -n 1,5p f' 'cat f 2>/dev/null' 'ls 2>&1' 'npm test' 'echo "a > b"' 'curl -s https://git.yumemism.com/api/v1/version'; do chk "C12 kashiwagi は読み・検証を止めない: $c" test "$(sg kashiwagi Bash "$c")" = 0; done
 chk "C13 kashiwagi の Edit / Write は止める" test "$(sg kashiwagi Edit /tmp/x)$(sg kashiwagi Write /tmp/x)" = 22
 
+echo "# E. cloud の SessionStart に memory を注入する(hooks/cloud-session-start.sh)"
+mkdir -p "$sbx/tm" "$sbx/km"; echo "- [x](x.md) — TECHIDX" >"$sbx/tm/MEMORY.md"; echo "- [y](y.md) — KEIEIIDX" >"$sbx/km/MEMORY.md"
+ctx() { env CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$core/../.." HOME="$H" CTX_TECH_MEM="$sbx/tm" CTX_KEIEI_MEM="$sbx/km" "$@" bash "$core/hooks/cloud-session-start.sh" 2>/dev/null </dev/null; }
+e1="$(ctx)"
+chk "E1 JSON 1 個で、additionalContext に tech / keiei の索引が見出し付きで入り、session-init の中身も残る" bash -c "echo '$e1' | python3 -c 'import json,sys; d=json.load(sys.stdin); c=d[\"hookSpecificOutput\"][\"additionalContext\"]; assert \"TECHIDX\" in c and \"KEIEIIDX\" in c and \"### tech の memory\" in c and \"### keiei の memory\" in c and \"SessionStart context\" in c'"
+e2="$(ctx CTX_MAX_BYTES=10)"
+chk "E2 上限を超えたら先頭から上限バイトで切り、その旨を書く" bash -c "echo '$e2' | python3 -c 'import json,sys; c=json.load(sys.stdin)[\"hookSpecificOutput\"][\"additionalContext\"]; assert \"を直接読む\" in c and \"KEIEIIDX\" not in c'"
+e3="$(env CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$core/../.." HOME="$H" CTX_TECH_MEM="$sbx/none" CTX_KEIEI_MEM="$sbx/none" bash "$core/hooks/cloud-session-start.sh" 2>/dev/null </dev/null)"
+chk "E3 memory が無ければ session-init の JSON をそのまま返す" bash -c "echo '$e3' | python3 -c 'import json,sys; c=json.load(sys.stdin)[\"hookSpecificOutput\"][\"additionalContext\"]; assert \"### tech の memory\" not in c'"
+
 echo "# D. 母艦の SessionStart は前後で変わらない(session-init.sh を settings の command 文字列のまま実走)"
 old="$(git -C "$TECH_MAIN" show HEAD:.claude/settings.json | jq -r '.hooks.SessionStart[0].hooks[0].command')"
 new="$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$TECH_NEW/.claude/settings.json")"
 runD() { env -u CLAUDE_CODE_REMOTE CLAUDE_PROJECT_DIR="$TECH_MAIN" bash -c "$1" 2>"$sbx/errD.$2"; }
 o1="$(runD "$old" old)"; r1=$?; o2="$(runD "$new" new)"; r2=$?
 norm() { sed -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.+Z-]+//g'; }
-same='[.hooks.SessionStart[0].hooks[1], .hooks.Stop, .hooks.PreToolUse[0], .autoMemoryDirectory, .outputStyle]'
+same='[.hooks.SessionStart[0].hooks[1], .hooks.Stop[0].hooks[0], .hooks.PreToolUse[0], .autoMemoryDirectory, .outputStyle]'
 chk "D1 command 文字列以外の SessionStart(session-install)・Stop・commit guard・autoMemoryDirectory・outputStyle が同じ" test "$(git -C "$TECH_MAIN" show HEAD:.claude/settings.json | jq -c "$same")" = "$(jq -c "$same" "$TECH_NEW/.claude/settings.json")"
+chk "D1b Stop に memory-sync が足され、guard の後ろで、常に exit 0" test "$(jq -r '.hooks.Stop[0].hooks[1].command' "$TECH_NEW/.claude/settings.json" | grep -c 'memory-sync.sh.*exit 0')" = 1
 chk "D2 exit code が同じ($r1 / $r2)" test "$r1" = "$r2"
 chk "D3 標準出力が同じ(日時の揺れは除く、$(printf %s "$o1" | wc -c) バイト)" test -n "$o1" -a "$(printf %s "$o1" | norm)" = "$(printf %s "$o2" | norm)"
 chk "D4 標準エラーが同じ" test "$(norm <"$sbx/errD.old")" = "$(norm <"$sbx/errD.new")"

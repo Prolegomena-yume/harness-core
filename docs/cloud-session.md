@@ -9,6 +9,7 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - `git-as` と `cloud-pr` を PATH に置く(`/usr/local/bin`、書けなければ `~/.local/bin`)
 - `~/canonical/tech` を clone への symlink にする ── tech の `autoMemoryDirectory` と commit guard の母艦の絶対パスを、設定を書き換えずに生かすため。clone の名前は起動経路で変わる(CLI は `repo`、GUI はリポ名)ので、`$CLAUDE_PROJECT_DIR` を指す
 - `~/.claude/agents/{makabe,kashiwagi}.md` を [../cloud/agents/](../cloud/agents/) への symlink にする(母艦の `.claude/agents` からは見えない)
+- keiei を `~/canonical/keiei` へ浅く clone する(MEMORY.md を文脈に入れるため、下の節)。memory の同期の起点を置いて 1 回走らせる(下の節)
 - musearch を `~/yumemism_repo/musearch` へ clone する。**母艦の置き場と同じパスにしたのは、BRIEF や docs の絶対パスと「tech の兄弟」という形をそのまま通すため。**clone は hook の中でする ── setup script には API credential が付かず、Forgejo の private が取れない
 
 キャッシュされる setup script には何も置かない(スナップショットで古い中身が固まるため)。
@@ -23,8 +24,27 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - musearch の作業木は `git -C ~/yumemism_repo/musearch worktree add ../musearch-<便> -b <便>`、cloud-pr は `-C` でその木を指す
 - merge は主管が Forgejo の Web でする。cloud の鷹野は merge しない
 
+## memory は Forgejo の main で母艦と cloud を同じにする
+
+**tech の Stop hook が [../hooks/memory-sync.sh](../hooks/memory-sync.sh) を走らせ、`.claude/memory/` の差分だけを Forgejo の main へ直接 push し、Forgejo 側の差分を手元へ取り込む**(役員 人見 2026-09-30)。母艦と cloud は同じ処理で、違いは取り先の URL と作業木のつなぎ方だけ。
+
+- **memory 以外に触れない。**作業木の index・HEAD・他のファイルは触らず、一時 index と plumbing で「Forgejo の main の tree の memory だけを差し替えた commit」を作って push する。tech の main の保護は `unprotected_file_patterns: .claude/memory/**` があり、write 権限のある `cloud-bridge` でも memory だけの commit しか通らない(satellite/cloud-poc に同じ保護を張って実測: memory だけ○、memory と他の混在×、他だけ×)。session の branch の他の変更は載らない
+- **母艦は追加条件つき。**作業木が `main` で、HEAD が今回の commit の祖先で、差分が memory だけのときだけ push し、HEAD と memory の index だけを進める。未 push の commit が有る・main 以外・HEAD が他の path で遅れているときは push せず次回に回す(作業木は壊さない)
+- **遅くしない。**前景は「memory に新しいファイルが有るか・前回の fetch から 10 分たったか」を見るだけ(約 10 ms)。有れば worker を切り離す(母艦)。cloud は VM が消えるので前景で timeout 付き。同時に走るのは flock で 1 本、取れなければ黙って次回。index.lock で落ちたら次回
+- **cloud は起動時にも同じ処理を 1 回走らせる**(cloud-bootstrap.sh)。cloud の clone は GitHub の写しで古いことがあるため、Forgejo の main の memory を先に取り込む。`refs/memory-sync/base` に「前回同期した commit」を持ち、これが 3 者比較の base になる
+
+**衝突はファイル単位の 3 者比較(base / 手元 / Forgejo)で決める。**片側だけが変えたファイルはそのまま採り、両側が違う中身に変えたファイルだけが衝突。`MEMORY.md`(索引)は行の和集合(`git merge-file --union`)、それ以外の topic file は**同期を打った側の後勝ち**。負けた版は Forgejo の履歴に残り、commit message に衝突した path を書く。手元の memory が空なのに base に有るときは、消えたのではなく取り違えを疑って何もしない。
+
+## cloud の最初の文脈には memory を hook が入れる
+
+**cloud では auto memory も CLAUDE.md の `@import` も SessionStart hook より先に解決され、symlink が張られる前なので載らない**(役員 人見の実測 2026-09-30)。setup script で symlink を張る手は採らない ── setup script はスナップショットにキャッシュされ、環境ごとに中身が固まる。代わりに tech の SessionStart は cloud のときだけ [../hooks/cloud-session-start.sh](../hooks/cloud-session-start.sh) を呼び、`session-init.sh` の JSON の `additionalContext` に tech と keiei の `MEMORY.md` を見出し付きで足す(各 25KB を超えたら先頭から 25KB で切る)。
+
+- **同じ command の中で bootstrap の後に走らせる。**同じ matcher の hook は並列に走るので、keiei の clone(cloud-bootstrap.sh の 5 番)の後を保てるのは 1 本の command の中だけ。それで別の hook でなく session-init.sh のラッパにした。母艦の command は今までどおり `session-init.sh` 直で、出力は変わらない
+- keiei は `~/canonical/keiei` に浅く clone する(読むだけ、cloud-bridge は keiei に read)
+- 書き込み先は tech 側(`~/canonical/tech/.claude/memory`、clone への symlink 経由)。keiei の memory は cloud から書かない
+
 ## 真壁・柏木は cloud だけのサブエージェント
 
 定義は [../cloud/agents/](../cloud/agents/)。**母艦では呼べない** ── tech の PreToolUse(matcher `Agent`)の [cloud-agent-guard.sh](../scripts/hooks/cloud-agent-guard.sh) が止める。柏木は 1 行目が `便: <id>` のときだけ通り、同じ便の 2 回目は止める(記録は VM の中で、VM が回収されると消える)。柏木は読み取り専用で、P2 も所見として返す(ゲート 2 の自己 commit は cloud では無い)。guard は字面の検査で、封じ込めではない。
 
-test は `bash scripts/test-cloud-bootstrap.sh`(母艦で走り、母艦の SessionStart が前後で変わらないことも見る)。
+test は `bash scripts/test-cloud-bootstrap.sh` と `bash scripts/test-memory-sync.sh`(母艦で走り、母艦の SessionStart が前後で変わらないことも見る)。

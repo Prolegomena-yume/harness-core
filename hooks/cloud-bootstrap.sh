@@ -12,8 +12,12 @@
 #   3. ~/.claude/agents/{makabe,kashiwagi}.md を cloud/agents/ への symlink に(cloud だけで効く)
 #   4. musearch を Forgejo から clone して ~/yumemism_repo/musearch に置く
 #      (母艦の置き場と同じパス。BRIEF・docs が書く絶対パスがそのまま通り、tech の兄弟という形も同じ)
+#   5. keiei を Forgejo から clone して ~/canonical/keiei に置く(tech の CLAUDE.md が @import する索引の在処。
+#      cloud では @import が展開されないので、cloud-session-start.sh が MEMORY.md を additionalContext に入れる)
+#   6. memory の同期の起点を置く(refs/memory-sync/base = いまの HEAD)→ Forgejo の main の memory を手元に取り込む
+#      (GitHub の写しが古いことがあるため。hooks/memory-sync.sh、Stop hook と同じ処理)
 #
-# test 用の上書き: CLOUD_BIN_DIR CLOUD_MUSEARCH_URL CLOUD_MUSEARCH_DIR
+# test 用の上書き: CLOUD_BIN_DIR CLOUD_MUSEARCH_URL CLOUD_MUSEARCH_DIR CLOUD_KEIEI_URL CLOUD_KEIEI_DIR
 
 [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
 
@@ -58,5 +62,23 @@ else
   else
     log "musearch clone FAILED (see bootstrap.log)"
   fi
+fi
+
+# 5. keiei(読むだけ)
+kdir="${CLOUD_KEIEI_DIR:-$HOME/canonical/keiei}"
+kurl="${CLOUD_KEIEI_URL:-https://git.yumemism.com/company/keiei.git}"
+if [ -d "$kdir/.git" ]; then
+  log "keiei exists: $kdir (skip)"
+else
+  mkdir -p "$(dirname "$kdir")"
+  if git clone --quiet --depth 1 "$kurl" "$kdir" 2>>"$state/bootstrap.log"; then log "keiei cloned: $kdir"
+  else log "keiei clone FAILED (see bootstrap.log)"; fi
+fi
+
+# 6. memory 同期の起点 → Forgejo main の memory を取り込む(memory-sync.sh は cloud のとき前景・timeout 付き)
+if git -C "$proj" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+  git -C "$proj" rev-parse -q --verify refs/memory-sync/base >/dev/null 2>&1 || git -C "$proj" update-ref refs/memory-sync/base HEAD
+  MEMSYNC_REPO="$proj" bash "$core/hooks/memory-sync.sh" </dev/null >/dev/null 2>>"$state/bootstrap.log" \
+    && log "memory sync ran (see ~/.cache/harness-memory-sync/sync.log)" || log "memory sync FAILED"
 fi
 exit 0
