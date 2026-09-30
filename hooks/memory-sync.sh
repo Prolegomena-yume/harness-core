@@ -108,7 +108,7 @@ realign_cloud() { # <N = 今回の Forgejo main>
     G reset -q --hard "$N" 2>>"$state/sync.log" || { log "realign: reset --hard failed (skip)"; return 0; }
   fi
   # Anthropic の検査は origin/<branch>(無ければ origin/HEAD)との差で「push していない commit」を数える。origin は GitHub の写しで、
-  # Forgejo の main への push は push mirror(sync_on_commit)が数秒で同じ commit にする(役員 人見の裁定 2026-10-01)。
+  # Forgejo の main への push は push mirror(sync_on_commit)が数秒で同じ commit にする(直接 push は役員 人見の裁定 A、fetch で待つ形は鷹野の裁定、2026-10-01)。
   # ref を手元で書き換えず、fetch して本物の値が揃うのを待つ
   await_origin "$br"
 }
