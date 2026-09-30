@@ -29,6 +29,7 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 
 - **[../cloud/setup.sh](../cloud/setup.sh) の 4 段目が入れる。**`CLAUDE_CODE_REMOTE=true` のときだけ ── Forgejo の `satellite/yumemism-os` を `~/yumemism_repo/yumemism-os` へ浅く clone(あれば pull)、`cli/` を `npm ci && npm run build`、PATH 上の `ymos` に wrapper を置く(`/usr/local/bin`、書けなければ `~/.local/bin`)。wrapper は `YMOS_CREDENTIAL=proxy` を export して `cli/dist/index.js` を exec するだけで、CLI は認証ヘッダを一切付けない。母艦では何もしない。同じ rev のときは build を飛ばす(`.git/cloud-built-rev`)
 - **入口は bootstrap 経由の 1 つ。**setup script には API credential が付かず Forgejo の private が clone できないので、setup script に本文を貼っても 4 段目は clone が落ちて飛ばされる(害は無い)。clone の中身をスナップショットに固めないので、それでよい。`cloud-bridge` は `satellite/yumemism-os` に read
+- **Node の fetch は `HTTPS_PROXY` を読まず、proxy を通らないのでヘッダが付かず Access が 401 を返す(2026-10-01 実機、ymos はそれを `response.invalid` と読んだ)。**wrapper が `NODE_USE_ENV_PROXY=1` を立てて読ませ、出る `UNDICI-EHPA` の警告だけ `node --disable-warning=UNDICI-EHPA` で消す(`--no-warnings` にはしない、`NODE_OPTIONS` は触らない)。CA は既存の `NODE_EXTRA_CA_CERTS` で足り、`--use-system-ca` は要らない。wrapper は build の印に関わらず毎回書き直す
 - **この CLI は `YMOS_CREDENTIAL=proxy` を解する版(便 ymos-cloud-1、`satellite/yumemism-os` の main)が要る。**main に入る前は wrapper を置いても CLI が `auth.json` を探して落ちる
 - **`discord/discord-as` は `.discord-tokens/<役>` が無く `ymos` があるとき、`ymos discord <役> <動詞> ...` に委ねる**(`company/tech` の `discord.md`)。cloud の VM に bot の token は無い
 - **cloud の VM は使い捨てで、`~/.config/harness/discord/session-posted.tsv`(二重防止)も VM ごとに空から始まる**

@@ -12,8 +12,8 @@
 #   3. ~/.claude/settings.json の autoMode.environment に自社の source control と ymos を書く(分類器は project の
 #      .claude/settings.json の autoMode を読まない、公式)。他の key は触らない
 #   4. ymos(社内 CLI)。Forgejo の satellite/yumemism-os を ~/yumemism_repo/yumemism-os へ浅く clone(あれば pull)、
-#      cli/ を npm ci && npm run build、PATH 上の ymos に YMOS_CREDENTIAL=proxy を export して cli/dist/index.js を
-#      exec する wrapper を置く。認証ヘッダは CLI が付けず、cloud 環境の API credential(dispatch.yumemism.com)を
+#      cli/ を npm ci && npm run build、PATH 上の ymos に YMOS_CREDENTIAL=proxy と NODE_USE_ENV_PROXY=1 を export して cli/dist/index.js を
+#      exec する wrapper(wrapper は build の印に関わらず毎回書き直す) を置く。認証ヘッダは CLI が付けず、cloud 環境の API credential(dispatch.yumemism.com)を
 #      agent proxy が VM の外で付ける(docs/cloud-session.md)。**CLAUDE_CODE_REMOTE=true のときだけ**(母艦では何も
 #      しない)。setup script の入口には API credential が付かず Forgejo が読めないので、そこでは clone が落ちて
 #      飛ばされ、bootstrap 経由の 2 回目で入る(clone の中身をスナップショットに固めないので、それでよい)
@@ -109,7 +109,7 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = true ] && [ "${CLOUD_SETUP_SKIP_YMOS:-}" != 1 ]
         if [ -n "${CLAUDE_ENV_FILE:-}" ] && ! grep -qsF "$bindir" "$CLAUDE_ENV_FILE"; then echo "export PATH=\"$bindir:\$PATH\"" >>"$CLAUDE_ENV_FILE"; fi
       fi
       w="$bindir/.ymos.$$"
-      printf '#!/usr/bin/env bash\n# cloud/setup.sh が置いた wrapper。認証ヘッダは CLI が付けず、cloud 環境の agent proxy が VM の外で付ける。\nexport YMOS_CREDENTIAL=proxy\nexec node %q "$@"\n' "$ydir/cli/dist/index.js" >"$w" \
+      printf '#!/usr/bin/env bash\n# cloud/setup.sh が置いた wrapper。認証ヘッダは CLI が付けず、cloud 環境の agent proxy が VM の外で付ける。\nexport YMOS_CREDENTIAL=proxy\n# Node の fetch は HTTPS_PROXY を読まず proxy を通らない(ヘッダが付かず Access の 401 になる)。NODE_USE_ENV_PROXY=1 で読ませる。\n# 出る UNDICI-EHPA(EnvHttpProxyAgent is experimental)の警告だけ消す。他の警告と NODE_OPTIONS は触らない。\nexport NODE_USE_ENV_PROXY=1\nexec node --disable-warning=UNDICI-EHPA %q "$@"\n' "$ydir/cli/dist/index.js" >"$w" \
         && chmod 0755 "$w" && mv -f "$w" "$bindir/ymos" && log "ymos wrapper -> $bindir/ymos" || { rm -f "$w"; log "ymos wrapper FAILED"; }
     fi
   else log "ymos: cli/ が無い ($ydir)"; fi
