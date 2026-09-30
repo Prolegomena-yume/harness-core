@@ -51,7 +51,7 @@ fi
 exit 0
 EOS
 chmod +x "$sbx/fakenpm/npm"; export FAKE_NPM_LOG="$sbx/npm.log"; : >"$FAKE_NPM_LOG"
-runB() { env CLAUDE_CODE_REMOTE=true PATH="$sbx/fakenpm:$PATH" CLOUD_YMOS_URL="file://$sbx/ymos.git" HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" CLOUD_YUMEMI_URL="file://$sbx/musearch.git" CLOUD_SETUP_SKIP_TOOLS=1 MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
+runB() { env CLAUDE_CODE_REMOTE=true CLAUDE_ENV_FILE="$sbx/envfile" PATH="$sbx/fakenpm:$PATH" CLOUD_YMOS_URL="file://$sbx/ymos.git" HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" CLOUD_YUMEMI_URL="file://$sbx/musearch.git" CLOUD_SETUP_SKIP_TOOLS=1 MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
 out="$(runB "file://$sbx/musearch.git")"; rc=$?
 chk "B1 exit 0 / 標準出力は空(session-init の JSON を壊さない)" test "$rc" = 0 -a -z "$out"
 chk "B1b bootstrap-done の印が置かれた(注入 hook が待つ印)" test -e "$H/.cache/harness-cloud/bootstrap-done"
@@ -74,12 +74,18 @@ chk "B5g3 wrapper 越しに NODE_USE_ENV_PROXY=1 が node の環境に届き、�
   bash -c "printf 'console.log(process.env.NODE_USE_ENV_PROXY)' >'$H/yumemism_repo/yumemism-os/cli/dist/index.js' && test \"\$('$sbx/bin/ymos')\" = 1 && node --disable-warning=UNDICI-EHPA -e 0 2>&1 | wc -c | grep -qx 0"
 chk "B5g4 古い wrapper(NODE_USE_ENV_PROXY 無し)があっても、build の印が一致したままの次回で書き直される" \
   bash -c "printf '#!/bin/sh\\nexit 9\\n' >'$sbx/bin/ymos' && env CLAUDE_CODE_REMOTE=true PATH='$sbx/fakenpm:$PATH' CLOUD_YMOS_URL='file://$sbx/ymos.git' CLOUD_BIN_DIR='$sbx/bin' HOME='$H' CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS='$sbx/h3.json' bash '$core/cloud/setup.sh' >/dev/null 2>&1; grep -q NODE_USE_ENV_PROXY '$sbx/bin/ymos' && test \$(grep -c 'npm ci' '$FAKE_NPM_LOG') = 1"
+chk "B5i tech と musearch の作業木に Forgejo の remote forgejo が足され(cloud-pr と同じ slug)、origin は変わらず、fetch はされていない" \
+  bash -c "test \"\$(git -C '$sbx/projB' remote get-url forgejo)\" = https://git.yumemism.com/company/tech.git && test \"\$(git -C '$H/yumemism_repo/musearch' remote get-url forgejo)\" = https://git.yumemism.com/business/musearch.git && test \"\$(git -C '$sbx/projB' remote get-url origin)\" = '$sbx/src' && test -z \"\$(git -C '$sbx/projB' for-each-ref refs/remotes/forgejo)\""
+chk "B5j CLAUDE_ENV_FILE に TZ が 1 行あり、source すると +0900(日本時間)になる" \
+  bash -c "test \$(grep -c '^export TZ=' '$sbx/envfile') = 1 && test \"\$(. '$sbx/envfile'; date -d @0 +%z)\" = +0900"
 chk "B5h autoMode.environment に ymos の 1 行(dispatch.yumemism.com・proxy)がある" \
   bash -c "jq -e 'any(.autoMode.environment[]; test(\"ymos\") and test(\"dispatch.yumemism.com\") and test(\"proxy\"))' '$H/.claude/settings.json' >/dev/null"
 sn1="$(cd "$H" && find . -printf '%p %l\n' | grep -v -e '\.cache' -e 'FETCH_HEAD' -e 'ORIG_HEAD' | sort | md5sum)"
 runB "file://$sbx/musearch.git" >/dev/null; rc=$?
 sn2="$(cd "$H" && find . -printf '%p %l\n' | grep -v -e '\.cache' -e 'FETCH_HEAD' -e 'ORIG_HEAD' | sort | md5sum)"
 chk "B6 2 回目は冪等(exit 0、構成が同じ)" test "$rc" = 0 -a "$sn1" = "$sn2"
+chk "B6a 2 回目でも forgejo remote は 1 本のまま(URL 不変)、TZ の行も 1 行のまま" \
+  bash -c "test \$(git -C '$sbx/projB' remote | grep -c '^forgejo\$') = 1 && test \$(grep -c '^export TZ=' '$sbx/envfile') = 1"
 chk "B6b 2 回目は同じ rev なので npm ci / build を走らせない(印 .git/cloud-built-rev で抜ける)" test "$(grep -c 'npm ci' "$FAKE_NPM_LOG")" = 1
 "$core/scripts/git-as" anno -C "$sbx/ymos-src" commit -q --allow-empty -m next; git -C "$sbx/ymos-src" push -q "$sbx/ymos.git" main 2>/dev/null
 runB "file://$sbx/musearch.git" >/dev/null
@@ -99,6 +105,24 @@ chk "B9 setup.sh は他の key と他の environment 行を残し、2 回目は�
   bash -c "jq -e '.model == \"x\" and .autoMode.allow == [\"\$defaults\"] and any(.autoMode.environment[]; . == \"Trusted cloud buckets: s3://keep\")' '$S' >/dev/null && test '$h1' = '$h2'"
 out="$(env CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS="$S" bash "$core/cloud/setup.sh" 2>/dev/null)"
 chk "B10 setup.sh は標準出力に何も出さない" test -z "$out"
+
+echo "# B-sp. session-post: cloud の tech(origin は GitHub の写し)でも #session の URL が company/tech になる(偽の discord-as)"
+SPSRC="$TECH_MAIN/discord/session-post"
+if [ -r "$SPSRC" ]; then
+  mkdir -p "$sbx/sp" "$sbx/projB/_sessions"; cp "$SPSRC" "$sbx/sp/session-post"; chmod +x "$sbx/sp/session-post"
+  printf '#!/usr/bin/env bash\ncat >"%s"\necho 111111111111111111\n' "$sbx/sp/stdin" >"$sbx/sp/discord-as"; chmod +x "$sbx/sp/discord-as"
+  printf -- '---\nsession_id: 2026-10-01_01\n起草ロール: 庵野[EXP]\nリポ: company/tech\n決着状態: 完了\n---\n\n本文\n' >"$sbx/projB/_sessions/2026-10-01_01.md"
+  git -C "$sbx/projB" remote set-url origin https://github.com/Prolegomena-yume/tech
+  rm -rf "$sbx/hsp"; mkdir -p "$sbx/hsp"
+  HOME="$sbx/hsp" bash "$sbx/sp/session-post" "$sbx/projB/_sessions/2026-10-01_01.md" >/dev/null 2>&1; rc=$?
+  chk "B11 GitHub の origin + forgejo remote の作業木から、1 行目の次の行の URL が git.yumemism.com/company/tech になる(session-post は変えない)" \
+    test "$rc" = 0 -a "$(sed -n 2p "$sbx/sp/stdin")" = "https://git.yumemism.com/company/tech/src/branch/main/_sessions/2026-10-01_01.md"
+  git -C "$sbx/projB" remote remove forgejo; rm -rf "$sbx/hsp"; mkdir -p "$sbx/hsp"
+  HOME="$sbx/hsp" bash "$sbx/sp/session-post" "$sbx/projB/_sessions/2026-10-01_01.md" >/dev/null 2>&1
+  chk "B11b 対照: forgejo remote が無いと GitHub の path(Prolegomena-yume/tech)に崩れる(実機の崩れの再現)" \
+    test "$(sed -n 2p "$sbx/sp/stdin")" = "https://git.yumemism.com/Prolegomena-yume/tech/src/branch/main/_sessions/2026-10-01_01.md"
+  git -C "$sbx/projB" remote set-url origin "$sbx/src"
+else nok "B11 session-post が $SPSRC に無い"; fi
 
 echo "# C. guard"
 AG="$core/scripts/hooks/cloud-agent-guard.sh"; SG="$core/scripts/hooks/cloud-subagent-guard.sh"
