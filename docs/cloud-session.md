@@ -35,7 +35,7 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 
 **人見の GUI の手順(cloud 環境の設定、1 回だけ)。**値は画面にも会話にも出さない。
 
-1. 母艦で値をクリップボードへ写す: `wl-copy < ~/.config/harness/claude-cloud-ymos.header-value.json`(X11 なら `xclip -selection clipboard < …` でも同じ)。ファイルは開かない・`cat` しない
+1. 母艦で値をクリップボードへ写す: `DISPLAY=:0 xclip -selection clipboard < ~/.config/harness/claude-cloud-ymos.header-value.json`(母艦のデスクトップは X11。`wl-copy` は Wayland の口が無く落ちる)。貼ったら `printf '' | DISPLAY=:0 xclip -selection clipboard` で消す。ファイルは開かない・`cat` しない
 2. cloud 環境の設定画面(tech を起こす環境)で「API credentials」に 1 本足す。**名前**: `ymos-dispatch`(何でもよい。git.yumemism.com 用の既存の 1 本とは別)。**Allowed websites**: `dispatch.yumemism.com`。**Custom headers**: 名前 `Authorization`、**Prefix は空**、値はクリップボードの中身をそのまま貼る(1 行の JSON `{"cf-access-client-id":…,"cf-access-client-secret":…}`)
 3. 保存する。**保存後は編集できず、差し替えは削除して登録し直す**(公式)。値を替えるとき(token の Refresh・失効のあと)はこの手順を繰り返す。環境変数は足さない(`YMOS_CREDENTIAL=proxy` は wrapper が持つ)
 4. 新しいセッションを起こし、cloud の端末で `ymos whoami` が `via: proxy` を返し、`ymos cal` が通ることを確かめる。`session-post` の実投稿はその後(本物の #session に流れる)
