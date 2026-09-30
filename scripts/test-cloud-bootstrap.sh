@@ -68,6 +68,12 @@ chk "B5f ymos が ~/yumemism_repo/yumemism-os に clone され、cli/ が npm ci
   bash -c "test -d '$H/yumemism_repo/yumemism-os/.git' && grep -q 'npm ci' '$FAKE_NPM_LOG' && grep -q 'npm run build' '$FAKE_NPM_LOG' && test -x '$sbx/bin/ymos'"
 chk "B5g ymos wrapper は YMOS_CREDENTIAL=proxy を export して dist/index.js に引数をそのまま渡す" \
   test "$("$sbx/bin/ymos" discord takano post s x)" = '{"cred":"proxy","args":["discord","takano","post","s","x"]}'
+chk "B5g2 wrapper は NODE_USE_ENV_PROXY=1 を立て、UNDICI-EHPA の警告だけを消し(--no-warnings にしない)、NODE_OPTIONS は触らない" \
+  bash -c "grep -q '^export NODE_USE_ENV_PROXY=1\$' '$sbx/bin/ymos' && grep -q -- '--disable-warning=UNDICI-EHPA' '$sbx/bin/ymos' && ! grep -v '^#' '$sbx/bin/ymos' | grep -q -e '--no-warnings' -e NODE_OPTIONS"
+chk "B5g3 wrapper 越しに NODE_USE_ENV_PROXY=1 が node の環境に届き、母艦の node で --disable-warning=UNDICI-EHPA が通る" \
+  bash -c "printf 'console.log(process.env.NODE_USE_ENV_PROXY)' >'$H/yumemism_repo/yumemism-os/cli/dist/index.js' && test \"\$('$sbx/bin/ymos')\" = 1 && node --disable-warning=UNDICI-EHPA -e 0 2>&1 | wc -c | grep -qx 0"
+chk "B5g4 古い wrapper(NODE_USE_ENV_PROXY 無し)があっても、build の印が一致したままの次回で書き直される" \
+  bash -c "printf '#!/bin/sh\\nexit 9\\n' >'$sbx/bin/ymos' && env CLAUDE_CODE_REMOTE=true PATH='$sbx/fakenpm:$PATH' CLOUD_YMOS_URL='file://$sbx/ymos.git' CLOUD_BIN_DIR='$sbx/bin' HOME='$H' CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS='$sbx/h3.json' bash '$core/cloud/setup.sh' >/dev/null 2>&1; grep -q NODE_USE_ENV_PROXY '$sbx/bin/ymos' && test \$(grep -c 'npm ci' '$FAKE_NPM_LOG') = 1"
 chk "B5h autoMode.environment に ymos の 1 行(dispatch.yumemism.com・proxy)がある" \
   bash -c "jq -e 'any(.autoMode.environment[]; test(\"ymos\") and test(\"dispatch.yumemism.com\") and test(\"proxy\"))' '$H/.claude/settings.json' >/dev/null"
 sn1="$(cd "$H" && find . -printf '%p %l\n' | grep -v -e '\.cache' -e 'FETCH_HEAD' -e 'ORIG_HEAD' | sort | md5sum)"
