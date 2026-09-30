@@ -113,7 +113,7 @@ fi
 # 6. memory 同期の起点 → Forgejo main の memory を取り込む(memory-sync.sh は cloud のとき前景・timeout 付き)
 if git -C "$proj" rev-parse -q --verify HEAD >/dev/null 2>&1; then
   git -C "$proj" rev-parse -q --verify refs/memory-sync/base >/dev/null 2>&1 || git -C "$proj" update-ref refs/memory-sync/base HEAD
-  MEMSYNC_REPO="$proj" bash "$core/hooks/memory-sync.sh" </dev/null >/dev/null 2>>"$state/bootstrap.log" \
+  MEMSYNC_NO_REALIGN=1 MEMSYNC_REPO="$proj" bash "$core/hooks/memory-sync.sh" </dev/null >/dev/null 2>>"$state/bootstrap.log" \
     && log "memory sync ran (see ~/.cache/harness-memory-sync/sync.log)" || log "memory sync FAILED"
 fi
 

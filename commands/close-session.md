@@ -16,5 +16,13 @@ description: セッションを締める。同義語で自然発火(締めて/�
 
 1. **サマリ 1 本を書く。**今のリポの `_sessions/` 直下に `YYYY-MM-DD_NN.md`。日付ディレクトリは作らない。NN はそのリポ・その日の既存ファイルの続き番号(無ければ `01`)。会社の現在値を動かす決定を含む回は `company/keiei` の `_sessions/` にも decision 行を立てる(正典が指示する場合のみ)
 2. **memory を更新する。**Claude Code の auto memory の規則どおり、索引(`MEMORY.md`)は 1 行 1 ポインタで足す。新しい学び・裁定・落とし穴があれば `memory/<slug>.md` を添えて索引から繋ぐ。無ければ索引更新だけで良い。置き場は各リポの `.claude/memory/`(`autoMemoryDirectory`)で、worktree のセッションでも main checkout(`~/canonical/<repo>/.claude/memory/`)に落ちる
-3. **`git-as <自ロール>` で commit。**サマリと、この回に書き換わった `.claude/memory/` を commit に含める ── memory は main checkout 側にあるので、worktree の回はそちらで別に commit する。author/committer は役名(例 `git-as 鷹野 commit ...`)。**push は鷹野の職務** ── このコマンドを鷹野のセッションで実行しているときだけ push まで行う。他ロールのセッションで実行している場合は commit で止め、push が要ることを鷹野へ申し送る
+3. **(母艦)`git-as <自ロール>` で commit。**サマリと、この回に書き換わった `.claude/memory/` を commit に含める ── memory は main checkout 側にあるので、worktree の回はそちらで別に commit する。author/committer は役名(例 `git-as 鷹野 commit ...`)。**push は鷹野の職務** ── このコマンドを鷹野のセッションで実行しているときだけ push まで行う。他ロールのセッションで実行している場合は commit で止め、push が要ることを鷹野へ申し送る
 4. **commit した直後に `discord/session-post <サマリの path>` を走らせる。**push の有無には依存しない ── 他ロールの回で push が無くても走らせる。#session への投稿はこの道具が持つ(設計は `company/tech` の `discord.md`)。**失敗しても締めは止めない。**失敗した場合はその旨を報告に書く
+
+## cloud の締めは別の形
+
+**`CLAUDE_CODE_REMOTE=true` のときは、上の手順 1・3・4 を次のとおり読み替える**(役員 人見 2026-10-01「サマリも memory と同じく Forgejo の tech main に直接 push する、PR にしない」。形は `docs/cloud-session.md`「cloud の締め」):
+
+- **手順 1 の NN は、決める前に Forgejo の main を見て続き番号にする。**cloud の clone は古く、並行セッションと同じ名前になりうる。`git fetch forgejo main && git ls-tree --name-only FETCH_HEAD _sessions/ | tail -3`
+- **手順 3 は commit せず、`_sessions/` のサマリと memory をそのまま作業木に置く。**commit すると session の branch の PR に載る。代わりに `bash ~/canonical/tech/.claude/_core/hooks/memory-sync.sh </dev/null` を走らせる(前景、数秒)。サマリと memory が Forgejo の tech の main に直接載り、作業木は「commit していない変更も push していない commit も無い」形に揃う。**Stop の hook は並列に走り、Anthropic の Stop の git 検査と順序が付かないので、締めの中で先にこれを済ませる**(Stop で初めて走らせると、その回の検査は「未 commit」で止まる)。結果は `tail -3 ~/.cache/harness-memory-sync/sync.log` で見る: `pushed ...` が出ていれば載った、`conflict: _sessions/...` なら同じ名前を先に上げられている(NN を付け直してもう一度)、`realign: ... (skip)` は session の branch に本物の作業が残っていて揃えなかった(警告はそのまま残る、正しい)、`did not reach HEAD` は GitHub の写しへの mirror が 20 秒で間に合わなかった(この回の警告は出てよい、次の Stop で通る)
+- **手順 4 の `session-post` は、この push が済んだ後に走らせる**(1 行目の URL が Forgejo の main の `_sessions/` を指すため、載る前は 404)

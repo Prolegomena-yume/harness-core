@@ -57,7 +57,7 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 
 ## memory は Forgejo の main で母艦と cloud を同じにする
 
-**tech の Stop hook が [../hooks/memory-sync.sh](../hooks/memory-sync.sh) を走らせ、`.claude/memory/` の差分だけを Forgejo の main へ直接 push し、Forgejo 側の差分を手元へ取り込む**(役員 人見 2026-09-30)。母艦と cloud は同じ処理で、違いは取り先の URL と作業木のつなぎ方だけ。
+**tech の Stop hook が [../hooks/memory-sync.sh](../hooks/memory-sync.sh) を走らせ、`.claude/memory/` の差分(cloud はそれに `_sessions/` のサマリ、次の節)だけを Forgejo の main へ直接 push し、Forgejo 側の差分を手元へ取り込む**(役員 人見 2026-09-30)。母艦と cloud は同じ処理で、違いは取り先の URL と作業木のつなぎ方だけ。
 
 - **memory 以外に触れない。**作業木の index・HEAD・他のファイルは触らず、一時 index と plumbing で「Forgejo の main の tree の memory だけを差し替えた commit」を作って push する。tech の main の保護は `unprotected_file_patterns: .claude/memory/**` があり、write 権限のある `cloud-bridge` でも memory だけの commit しか通らない(satellite/cloud-poc に同じ保護を張って実測: memory だけ○、memory と他の混在×、他だけ×)。session の branch の他の変更は載らない
 - **母艦は追加条件つき。**作業木が `main` で、HEAD が今回の commit の祖先で、差分が memory だけのときだけ push し、HEAD と memory の index だけを進める。未 push の commit が有る・main 以外・HEAD が他の path で遅れているときは push せず次回に回す(作業木は壊さない)
@@ -65,6 +65,17 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - **cloud は起動時にも同じ処理を 1 回走らせる**(cloud-bootstrap.sh)。cloud の clone は GitHub の写しで古いことがあるため、Forgejo の main の memory を先に取り込む。`refs/memory-sync/base` に「前回同期した commit」を持ち、これが 3 者比較の base になる
 
 **衝突はファイル単位の 3 者比較(base / 手元 / Forgejo)で決める。**片側だけが変えたファイルはそのまま採り、両側が違う中身に変えたファイルだけが衝突。`MEMORY.md`(索引)は行の和集合(`git merge-file --union`)、それ以外の topic file は**同期を打った側の後勝ち**。負けた版は Forgejo の履歴に残り、commit message に衝突した path を書く。手元の memory が空なのに base に有るときは、消えたのではなく取り違えを疑って何もしない。
+
+## cloud の締めはサマリも Forgejo の main へ直接上げ、作業木を Anthropic の Stop 検査に通る形に揃える
+
+**cloud の `_sessions/` のサマリは memory と同じ `memory-sync.sh` が Forgejo の tech の main へ直接 push し、PR にしない**(役員 人見 2026-10-01「A で」)。tech の main の `unprotected_file_patterns` は `.claude/memory/**;_sessions/**` で、`cloud-bridge` でサマリだけ・サマリ+memory は通り、サマリ+他の path は弾かれることを cloud-poc で実測済み(鷹野)。母艦の対象は今までどおり memory だけ(サマリは鷹野が push する)。
+
+- **足すだけで、上書きしない。**手元に無いサマリの削除は流さない。同じ名前(連番 NN)を別の中身で並行セッションが先に上げていたら、Forgejo の版も手元の版も上書きせず、`~/.cache/harness-memory-sync/sync.log` に `conflict: _sessions/...` を残す(close-session は NN を決める前に Forgejo の main を見る)。混在の commit は作らない(対象の path しか載せない)
+- **Anthropic の Stop の git 検査が何を見ているか(分かった範囲)。**VM の `~/.claude/stop-hook-git-check.sh` は Claude Code on the web が session ごとに入れる。本文は文書に無く、`anthropics/claude-code` の issue #86379・#86018・#96137・#96145 が引く形では、(a) `git diff` / `git diff --cached` が差分を持つか、ファイルが untracked なら「commit して push せよ」で exit 2、(b) `origin/<branch>`(無ければ `origin/HEAD`)より HEAD が進んでいる commit があれば「unpushed」で exit 2。**origin は GitHub の写しで、うちの push(Forgejo)を知らない**ので、サマリも memory も push 済みなのに毎回止まる。VM の実物は未読(issue の引用からの推測)
+- **Stop の hook は並列に走る**(公式「All matching hooks run in parallel」)。うちの memory-sync と Anthropic の検査に順序は付かず、Stop で初めて push すると、その回の検査は push 前の作業木を見る。**なので close-session の中で `memory-sync.sh` を前景で先に走らせる**(commands/close-session.md)。memory だけを書いた普通の turn の Stop では 1 回止まりうる(push 済みになった次の Stop から通る)
+- **push が通った後、`memory-sync.sh` の `realign_cloud` が作業木を揃え、origin が追いつくのを待つ。**手元の差分が全部「対象の path(`.claude/memory/**`・`_sessions/**`)で、中身が今回 Forgejo の main に載せたものと同じ」のときだけ、session の branch を Forgejo の main へ `reset --hard` する(branch 名は保つ)。**session の branch に本物の作業(対象外の path の変更・untracked・push していない commit)が 1 本でも残っていれば何もせず、警告も残す**(本物の未保存を隠さない)。submodule `.claude/_core` の指す commit が HEAD と main で違うときも揃えない。起動時の取り込み(cloud-bootstrap、`MEMSYNC_NO_REALIGN=1`)と、差分も push も無い Stop では動かさない
+- **origin の追跡 ref は書き換えない**(鷹野の裁定 2026-10-01、検査が見る「origin にあるか」を偽にしないため)。GitHub の写し(`Prolegomena-yume/tech`)は Forgejo の push mirror(sync_on_commit)で、Forgejo の main に push すれば数秒で GitHub の main も同じ commit になる。揃えた後に `git fetch origin` を 2 秒おきに最長 20 秒(`MEMSYNC_ORIGIN_WAIT` / `MEMSYNC_ORIGIN_INTERVAL`)繰り返し、origin の追跡先(`origin/<branch>`、無ければ `origin/HEAD`、それも無ければ `origin/main`)が HEAD を含んだら終える。**間に合わなければ何もせず `sync.log` に `did not reach HEAD` を残す**(その回の検査は警告が出てよい。次に worker が走る Stop で、HEAD が Forgejo の main のままなら同じ待ちをもう一度する)。**`origin/<branch>` が GitHub に在って HEAD を含まないとき(古い commit を指す)は、書き換えず待たず `sync.log` に残す**(扱いは実物を見てから裁く)
+- **母艦は pull するまで memory も上げない。**cloud が上げたサマリが main に入ると、HEAD..main に memory 以外の path が入り、母艦の既存の条件(差分が memory だけ)で止まる。鷹野の「セッション開始時 pull」で解ける
 
 ## cloud の最初の文脈には memory を 3 本の hook が入れる
 

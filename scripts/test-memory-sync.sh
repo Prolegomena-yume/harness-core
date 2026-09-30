@@ -11,7 +11,7 @@ chk() { local d="$1"; shift; if "$@"; then ok "$d"; else nok "$d"; fi; }
 sbx="$(mktemp -d)"; trap 'rm -rf "$sbx"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 
-# 「Forgejo」: seed 後に main へ memory 以外を含む push を弾く pre-receive(tech の unprotected_file_patterns の模し)を張る
+# 「Forgejo」: seed 後に main へ memory・_sessions 以外を含む push を弾く pre-receive(tech の unprotected_file_patterns `.claude/memory/**;_sessions/**` の模し)を張る
 git init -q --bare -b main "$sbx/forgejo.git"
 seed="$sbx/seed"; git init -q -b main "$seed"
 mkdir -p "$seed/.claude/memory"; echo "- [a](a.md) — first" >"$seed/.claude/memory/MEMORY.md"; echo "A0" >"$seed/.claude/memory/a.md"; echo code >"$seed/code.txt"
@@ -28,7 +28,7 @@ z=0000000000000000000000000000000000000000
 while read old new ref; do
   [ "$new" = $z ] && continue
   files=$(git diff --name-only "$old" "$new")
-  bad=$(printf '%s\n' "$files" | grep -v '^.claude/memory/' | head -1)
+  bad=$(printf '%s\n' "$files" | grep -v -e '^.claude/memory/' -e '^_sessions/' | head -1)
   [ -n "$bad" ] && { echo "protected: $bad" >&2; exit 1; }
 done
 exit 0
@@ -101,6 +101,106 @@ sleep 1; hs >/dev/null; chk "P7 次回の Stop で追いつく" test "$(rmem h.m
 # fetch 失敗(URL が壊れている)
 out="$(env -u CLAUDE_CODE_REMOTE MEMSYNC_REMOTE_MODE=host MEMSYNC_REPO="$host" MEMSYNC_URL="$sbx/none.git" MEMSYNC_STATE="$sbx/st-host" MEMSYNC_FOREGROUND=1 MEMSYNC_FETCH_EVERY=0 bash "$HOOK" </dev/null; echo $?)"
 chk "P8 Forgejo に届かなくても exit 0・標準出力なし" test "$out" = 0
+
+echo "# cloud のサマリ(_sessions)を Forgejo の main へ直接上げ、作業木を揃えて push mirror の追いつきを待ち、Anthropic の Stop 検査に通す(ref は書き換えない)"
+# Anthropic が VM に入れる ~/.claude/stop-hook-git-check.sh の模し(公式の文書は無く、anthropics/claude-code の issue #86379 #86018 #96145 #96137 が
+# 引用する形): tracked の差分(git diff / --cached)・untracked・origin/<branch>(無ければ origin/HEAD)より前に有る commit を見て exit 2
+cat >"$sbx/stopcheck.sh" <<'SC'
+#!/usr/bin/env bash
+cd "$1" || exit 9
+git diff --quiet && git diff --cached --quiet || { echo "uncommitted" >&2; exit 2; }
+[ -z "$(git ls-files --others --exclude-standard)" ] || { echo "untracked" >&2; exit 2; }
+br="$(git branch --show-current)"; if git rev-parse "origin/$br" >/dev/null 2>&1; then up="origin/$br"; else up=origin/HEAD; fi
+[ "$(git rev-list --count "$up..HEAD" 2>/dev/null)" = 0 ] || { echo "unpushed vs $up" >&2; exit 2; }
+exit 0
+SC
+stopcheck() { bash "$sbx/stopcheck.sh" "$1" 2>/dev/null; echo $?; }
+# 「GitHub の写し」= 今の Forgejo の main で止まった bare repo。cloud の clone はここから取り、session の branch を切る
+git clone -q --bare "$sbx/forgejo.git" "$sbx/github.git"
+# 他のセッションが Forgejo の main を先へ進めておく(サマリ old.md と memory の更新。写しは知らない)
+oth="$sbx/oth"; git clone -q "$sbx/forgejo.git" "$oth"; mkdir -p "$oth/_sessions"; echo OLD >"$oth/_sessions/old.md"; echo "M1" >"$oth/.claude/memory/m1.md"
+git -C "$oth" add -A; "$GAS" anno -C "$oth" commit -q -m "other session"; git -C "$oth" push -q "$sbx/forgejo.git" main
+cl() { rm -rf "$sbx/cl2"; git clone -q "$sbx/github.git" "$sbx/cl2"; mkdir -p "$sbx/cl2/_sessions"; git -C "$sbx/cl2" checkout -q -b claude/x; git -C "$sbx/cl2" update-ref refs/memory-sync/base HEAD; git -C "$sbx/cl2" remote add forgejo "$sbx/forgejo.git"; rm -rf "$sbx/st-cl2"; }
+# Forgejo→GitHub の push mirror(sync_on_commit)を手で模す: sync が Forgejo に push した少し後に、Forgejo の main を GitHub の写しへ押す
+mirror() { ( sleep "${1:-2.5}"; git -C "$sbx/forgejo.git" push -q "$sbx/github.git" main:main 2>/dev/null ) & }
+c2() { sleep 1; [ "${NOMIRROR:-}" = 1 ] || mirror; env CLAUDE_CODE_REMOTE=true MEMSYNC_ORIGIN_WAIT="${ORIGIN_WAIT:-8}" MEMSYNC_ORIGIN_INTERVAL=1 MEMSYNC_REPO="$sbx/cl2" MEMSYNC_URL="$sbx/forgejo.git" MEMSYNC_STATE="$sbx/st-cl2" MEMSYNC_FETCH_EVERY=0 bash "$HOOK" </dev/null >/dev/null 2>&1; echo $?; wait; }
+fmain() { git -C "$sbx/forgejo.git" rev-parse main; }
+fshow() { git -C "$sbx/forgejo.git" show "main:$1" 2>/dev/null; }
+L2="$sbx/cl2"; ss="2026-10-01_01.md"
+
+# R1: サマリは commit せず、memory も書き換わった(close-session の cloud の形)
+cl; printf 'SUMMARY1\n' >"$L2/_sessions/$ss"; echo "N0" >"$L2/.claude/memory/n.md"; echo "- [n](n.md) — new" >>"$L2/.claude/memory/MEMORY.md"
+r0="$(fmain)"; chk "R0 対照: 揃える前は Anthropic の検査が止める(untracked / 変更 / branch が origin/HEAD より進んでいる)" test "$(stopcheck "$L2")" = 2
+out="$(c2)"
+chk "R1 サマリ(untracked)と memory が Forgejo の main に直接載り、載ったのはその path だけ(サマリ・n.md・MEMORY.md)" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$sbx/forgejo.git' show main:_sessions/$ss)\" = SUMMARY1 ] && [ \"\$(git -C '$sbx/forgejo.git' show main:.claude/memory/n.md)\" = N0 ] && [ \"\$(git -C '$sbx/forgejo.git' diff --name-only $r0 main | sort | tr '\n' ' ')\" = '.claude/memory/MEMORY.md .claude/memory/n.md _sessions/$ss ' ]"
+chk "R2 作業木は commit していない変更も無く、origin(GitHub の写し)が fetch で本物の値に追いついて、検査が静かに通る(exit 0)。origin/<branch> は作らない" bash -c "[ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 0 ] && [ \"\$(git -C '$L2' rev-parse origin/main)\" = \"\$(git -C '$L2' rev-parse HEAD)\" ] && ! git -C '$L2' rev-parse -q --verify refs/remotes/origin/claude/x >/dev/null && grep -q 'origin caught up' '$sbx/st-cl2/sync.log'"
+chk "R3 session の branch 名は保ち、HEAD は Forgejo の main、他セッションの old.md・m1.md も手元に来た" bash -c "[ \"\$(git -C '$L2' branch --show-current)\" = claude/x ] && [ \"\$(git -C '$L2' rev-parse HEAD)\" = \"\$(git -C '$sbx/forgejo.git' rev-parse main)\" ] && [ -f '$L2/_sessions/old.md' ] && [ -f '$L2/.claude/memory/m1.md' ]"
+# R4: 続けて 2 本目のサマリ(揃えた後でも、また上がって、また揃う)
+printf 'SUMMARY2\n' >"$L2/_sessions/2026-10-01_02.md"; out="$(c2)"
+chk "R4 揃えた後の 2 本目も上がり、また検査が通る" test "$out" = 0 -a "$(fshow _sessions/2026-10-01_02.md)" = SUMMARY2 -a "$(stopcheck "$L2")" = 0
+
+# R4b: push mirror が間に合わない回 ── 作業木は揃えるが origin の ref には触らず、記録だけ残し、警告は出てよい。mirror が済んだ次の Stop で通る
+ss="2026-10-01_04.md"; cl; printf 'S4b\n' >"$L2/_sessions/$ss"; om="$(git -C "$L2" rev-parse origin/main)"
+out="$(NOMIRROR=1 ORIGIN_WAIT=2 c2)"
+chk "R4b mirror が間に合わなければ、origin/main は書き換えず(fetch で得た本物の値のまま)、検査は止まり(次の Stop に回る)、記録に did not reach を残す" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$L2' rev-parse HEAD)\" = \"\$(git -C '$sbx/forgejo.git' rev-parse main)\" ] && [ \"\$(git -C '$L2' rev-parse origin/main)\" != \"\$(git -C '$L2' rev-parse HEAD)\" ] && ! git -C '$L2' rev-parse -q --verify refs/remotes/origin/claude/x >/dev/null && grep -q 'did not reach HEAD' '$sbx/st-cl2/sync.log' && [ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 2 ]"
+git -C "$sbx/forgejo.git" push -q "$sbx/github.git" main:main; echo "x" >>"$L2/.claude/memory/n.md"; git -C "$L2" checkout -q -- .claude/memory/n.md; touch "$L2/.claude/memory/n.md"
+out="$(NOMIRROR=1 ORIGIN_WAIT=2 c2)"
+chk "R4c mirror が済んだ後の次の Stop で fetch し直し、検査が通る(2 度目の待ち)" test "$out" = 0 -a "$(stopcheck "$L2")" = 0
+
+# R5: サマリを git-as で commit してあった(他ロールの形)+ memory は未 commit
+ss="2026-10-01_05.md"; cl; printf 'SUMMARY1c\n' >"$L2/_sessions/$ss"; git -C "$L2" add "_sessions/$ss"; "$GAS" anno -C "$L2" commit -q -m "summary"; echo "N1" >"$L2/.claude/memory/n1.md"
+r0="$(fmain)"; out="$(c2)"
+chk "R5 commit 済みのサマリも上がり(Forgejo の差分はサマリと n1.md だけ)、ローカルの commit は Forgejo の main に揃って検査が通る" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$sbx/forgejo.git' show main:_sessions/$ss)\" = SUMMARY1c ] && [ \"\$(git -C '$sbx/forgejo.git' diff --name-only $r0 main | sort | tr '\n' ' ')\" = '.claude/memory/n1.md _sessions/$ss ' ] && [ \"\$(git -C '$L2' rev-parse HEAD)\" = \"\$(git -C '$sbx/forgejo.git' rev-parse main)\" ] && [ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 0 ]"
+
+# R6: session の branch に本物の作業(tech の変更)が残っている ── 上げるのはサマリだけ、作業木は消さず、検査は止め続ける
+ss="2026-10-01_06.md"; cl; printf 'SUMMARY1w\n' >"$L2/_sessions/$ss"; echo "real work" >>"$L2/code.txt"; echo "untracked real" >"$L2/newfile.txt"
+r0="$(fmain)"; h0="$(git -C "$L2" rev-parse HEAD)"; out="$(c2)"
+chk "R6 uncommitted の本物の作業(code.txt の変更・newfile.txt)があっても、Forgejo に載るのはサマリだけ" bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$sbx/forgejo.git' diff --name-only $r0 main | tr '\n' ' ')\" = '_sessions/$ss ' ] && [ \"\$(git -C '$sbx/forgejo.git' show main:code.txt)\" = code ]"
+chk "R7 作業木は動かさず(HEAD 不変、code.txt の変更・newfile.txt が残り、サマリも手元に残る)、検査は止め続ける(本物の未保存を隠さない)" \
+  bash -c "[ \"\$(git -C '$L2' rev-parse HEAD)\" = $h0 ] && grep -q 'real work' '$L2/code.txt' && [ -f '$L2/newfile.txt' ] && [ -f '$L2/_sessions/$ss' ] && [ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 2 ] && ! git -C '$L2' rev-parse -q --verify refs/remotes/origin/claude/x >/dev/null"
+ss="2026-10-01_08.md"; cl; printf 'SUMMARY1r\n' >"$L2/_sessions/$ss"; echo "real commit" >>"$L2/code.txt"; git -C "$L2" add code.txt; "$GAS" anno -C "$L2" commit -q -m "real work"
+h0="$(git -C "$L2" rev-parse HEAD)"; out="$(c2)"
+chk "R8 push していない本物の commit があれば、サマリは上がるが、branch も commit も消さない(検査は止め続ける)" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$sbx/forgejo.git' show main:_sessions/$ss)\" = SUMMARY1r ] && [ \"\$(git -C '$L2' rev-parse HEAD)\" = $h0 ] && [ \"\$(git -C '$L2' log -1 --format=%s)\" = 'real work' ] && [ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 2 ]"
+
+# R8b: session の branch が GitHub に在り、古い commit を指している ── 書き換えず、待たず、記録だけ残す(扱いは実物を見てから裁く)
+ss="2026-10-01_07.md"; git -C "$sbx/github.git" branch -q claude/x "$(git -C "$sbx/github.git" rev-parse main)"; cl; printf 'S7\n' >"$L2/_sessions/$ss"
+ob="$(git -C "$L2" rev-parse origin/claude/x)"; out="$(ORIGIN_WAIT=8 c2)"
+chk "R8b origin/<branch> が古い commit を指して HEAD と食い違うとき、ref は書き換えず、待たず、記録に残す(検査は止まる)" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$L2' rev-parse origin/claude/x)\" = $ob ] && grep -q 'origin/claude/x exists on origin but does not contain HEAD' '$sbx/st-cl2/sync.log' && [ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 2 ]"
+git -C "$sbx/github.git" branch -q -D claude/x
+
+# R9: 連番の衝突(並行セッションが同じ名前で別のサマリを先に上げた)── どちらも上書きしない
+cl; printf 'MINE\n' >"$L2/_sessions/2026-10-01_09.md"
+oth2="$sbx/oth2"; rm -rf "$oth2"; git clone -q "$sbx/forgejo.git" "$oth2"; printf 'THEIRS\n' >"$oth2/_sessions/2026-10-01_09.md"; git -C "$oth2" add -A; "$GAS" anno -C "$oth2" commit -q -m "theirs"; git -C "$oth2" push -q "$sbx/forgejo.git" main
+out="$(c2)"
+chk "R9 同じ名前を別の中身で先に上げられていたら、Forgejo の版も手元の版も上書きせず、記録に conflict を残し、検査は止め続ける" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$sbx/forgejo.git' show main:_sessions/2026-10-01_09.md)\" = THEIRS ] && [ \"\$(cat '$L2/_sessions/2026-10-01_09.md')\" = MINE ] && grep -q 'conflict: _sessions/2026-10-01_09.md' '$sbx/st-cl2/sync.log' && [ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 2 ]"
+# R10: 手元に無い(消した)サマリの削除は Forgejo へ流さない
+cl; rm -f "$L2/_sessions/old.md"; printf 'S10\n' >"$L2/_sessions/2026-10-01_10.md"; out="$(c2)"
+chk "R10 手元で消した _sessions のファイルは Forgejo から消えない(足すだけ)" test "$out" = 0 -a "$(fshow _sessions/old.md)" = OLD -a "$(fshow _sessions/2026-10-01_10.md)" = S10
+# R11: 母艦は _sessions を対象にしない(母艦の分岐は変えない)。cloud が上げたサマリが main に入ると、母艦は pull するまで memory も
+# 上げない(HEAD..main に memory 以外の path が入るため。母艦の既存の条件のまま)。pull(ff)した後は今までどおり memory だけ上げる
+echo "HM0" >"$H/hm0.md"; sleep 1; out="$(hs)"
+chk "R11a 母艦は cloud のサマリが入った main に追いつく前は push しない(既存の条件: HEAD..main に memory 以外の path)" test "$out" = 0 -a -z "$(rmem hm0.md)"
+git -C "$host" fetch -q origin && git -C "$host" merge -q --ff-only origin/main 2>/dev/null
+mkdir -p "$host/_sessions"; printf 'HOSTSUM\n' >"$host/_sessions/h.md"; echo "HM" >"$H/hm.md"; sleep 1; out="$(hs)"
+chk "R11 pull した母艦の Stop は memory だけ上げ(hm0.md・hm.md)、_sessions のサマリは上げない(鷹野が push する)" test "$out" = 0 -a "$(rmem hm.md)" = HM -a "$(rmem hm0.md)" = HM0 -a -z "$(fshow _sessions/h.md)"
+# R12: サマリの push が届かなければ作業木は揃えない(何も失わない)
+cl; printf 'S12\n' >"$L2/_sessions/2026-10-01_12.md"; h0="$(git -C "$L2" rev-parse HEAD)"; sleep 1
+env CLAUDE_CODE_REMOTE=true MEMSYNC_REPO="$L2" MEMSYNC_URL="$sbx/none.git" MEMSYNC_STATE="$sbx/st-cl2" MEMSYNC_FETCH_EVERY=0 bash "$HOOK" </dev/null >/dev/null 2>&1
+chk "R12 Forgejo に届かなければ揃えず、サマリは手元に残る(exit 0)" bash -c "[ \"\$(git -C '$L2' rev-parse HEAD)\" = $h0 ] && [ -f '$L2/_sessions/2026-10-01_12.md' ] && [ \"\$(bash $sbx/stopcheck.sh $L2 >/dev/null 2>&1; echo \$?)\" = 2 ]"
+
+# R13: 起動時の取り込み(MEMSYNC_NO_REALIGN=1)は branch・作業木を動かさない / R14: 差分が何も無い Stop も branch を動かさない
+cl; h0="$(git -C "$L2" rev-parse HEAD)"; echo "N13" >"$L2/.claude/memory/n13.md"; sleep 1
+env CLAUDE_CODE_REMOTE=true MEMSYNC_NO_REALIGN=1 MEMSYNC_REPO="$L2" MEMSYNC_URL="$sbx/forgejo.git" MEMSYNC_STATE="$sbx/st-cl2" MEMSYNC_FETCH_EVERY=0 bash "$HOOK" </dev/null >/dev/null 2>&1
+chk "R13 MEMSYNC_NO_REALIGN=1 では memory は上がるが HEAD も origin/<branch> も動かさない" test "$(rmem n13.md)" = N13 -a "$(git -C "$L2" rev-parse HEAD)" = "$h0" && ! git -C "$L2" rev-parse -q --verify refs/remotes/origin/claude/x >/dev/null
+cl; git -C "$L2" fetch -q "$sbx/forgejo.git" main && git -C "$L2" reset -q --hard FETCH_HEAD && git -C "$L2" update-ref refs/memory-sync/base HEAD   # 写しが追いついていて、差分が何も無い cloud
+h0="$(git -C "$L2" rev-parse HEAD)"; out="$(c2)"
+chk "R14 差分も push も無い Stop は branch を動かさない(HEAD 不変、origin/<branch> を作らない)" test "$out" = 0 -a "$(git -C "$L2" rev-parse HEAD)" = "$h0" && ! git -C "$L2" rev-parse -q --verify refs/remotes/origin/claude/x >/dev/null
 
 echo "# 速度"
 ms() { local s e; s=$(date +%s%N); "$@" >/dev/null; e=$(date +%s%N); echo $(( (e-s)/1000000 )); }
