@@ -17,11 +17,30 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 
 ## 道具と分類器の文脈は cloud/setup.sh が入れ、setup script にも同じ本文を貼る
 
-**cloud の既定のイメージには gleam も Erlang も無い。[../cloud/setup.sh](../cloud/setup.sh) が gleam(版を固定、release の sha256 を照合)と Erlang(apt の `erlang-nox`、Ubuntu 24.04 で OTP 25)を入れ、`~/.claude/settings.json` の `autoMode.environment` に自社の source control を書く**(役員 人見 2026-09-30)。冪等で、揃っていれば数十 ms で抜ける。
+**cloud の既定のイメージには gleam も Erlang も無い。[../cloud/setup.sh](../cloud/setup.sh) が gleam(版を固定、release の sha256 を照合)と Erlang(apt の `erlang-nox`、Ubuntu 24.04 で OTP 25)を入れ、`~/.claude/settings.json` の `autoMode.environment` に自社の source control と `ymos` を書く**(役員 人見 2026-09-30)。冪等で、揃っていれば数十 ms で抜ける。
 
 - **入口は 2 つで中身は同じ。**cloud 環境の setup script に本文をそのまま貼る(スナップショットに道具が載り、次回から入れ直さない)。貼っていない環境・古いスナップショットの環境では、cloud-bootstrap.sh の最後が同じ本文を走らせる(apt が走ると数十秒。完了の印の後なので memory の注入は待たない)
 - **setup script に置くのは clone の中身に依存しないものだけ。**道具と設定の文面は置く。clone の中身のコピーや symlink は置かない(スナップショットで古い中身が固まるため)。setup script はこのファイルを取りに行かない ── setup script には API credential が付かず Forgejo が読めない。本文を変えたら画面の setup script も貼り直す
 - **分類器の文脈は `~/.claude/settings.json` にしか書けない。**auto mode の分類器は project の `.claude/settings.json` の `autoMode` を読まない(公式)。書くのは `$defaults` の後ろに、自社の source control(git.yumemism.com の全リポ、GitHub の Prolegomena-yume・canon-ical)、Hex の `yumemi` が自社のものであること、Forgejo へは AGit だけで押すこと。書く前は yumemi の clone が「信頼できない依存」で止まった。分類器は CLAUDE.md も読むので、tech の CLAUDE.md にも同じ旨を 1 行置く
+
+## ymos は cloud/setup.sh が入れ、認証は API credential で agent proxy が VM の外で付ける
+
+**cloud でも `ymos cal` / `ymos discord` / `ymos kb` ほか口を叩く動詞が使え、close-session の `discord/session-post` も `#session` に流れる。秘密は VM に入らない**(役員 人見 2026-10-01。設計は `company/tech` の `_drafts/claude-remote/02-ymos-cloud.v0.md`)。cloud 環境の API credential に service token を置き、agent proxy が `dispatch.yumemism.com` 行きの要求にだけ付ける。値は Claude にもコマンドにも環境変数にも出ない。
+
+- **[../cloud/setup.sh](../cloud/setup.sh) の 4 段目が入れる。**`CLAUDE_CODE_REMOTE=true` のときだけ ── Forgejo の `satellite/yumemism-os` を `~/yumemism_repo/yumemism-os` へ浅く clone(あれば pull)、`cli/` を `npm ci && npm run build`、PATH 上の `ymos` に wrapper を置く(`/usr/local/bin`、書けなければ `~/.local/bin`)。wrapper は `YMOS_CREDENTIAL=proxy` を export して `cli/dist/index.js` を exec するだけで、CLI は認証ヘッダを一切付けない。母艦では何もしない。同じ rev のときは build を飛ばす(`.git/cloud-built-rev`)
+- **入口は bootstrap 経由の 1 つ。**setup script には API credential が付かず Forgejo の private が clone できないので、setup script に本文を貼っても 4 段目は clone が落ちて飛ばされる(害は無い)。clone の中身をスナップショットに固めないので、それでよい。`cloud-bridge` は `satellite/yumemism-os` に read
+- **この CLI は `YMOS_CREDENTIAL=proxy` を解する版(便 ymos-cloud-1、`satellite/yumemism-os` の main)が要る。**main に入る前は wrapper を置いても CLI が `auth.json` を探して落ちる
+- **`discord/discord-as` は `.discord-tokens/<役>` が無く `ymos` があるとき、`ymos discord <役> <動詞> ...` に委ねる**(`company/tech` の `discord.md`)。cloud の VM に bot の token は無い
+- **cloud の VM は使い捨てで、`~/.config/harness/discord/session-posted.tsv`(二重防止)も VM ごとに空から始まる**
+
+**人見の GUI の手順(cloud 環境の設定、1 回だけ)。**値は画面にも会話にも出さない。
+
+1. 母艦で値をクリップボードへ写す: `wl-copy < ~/.config/harness/claude-cloud-ymos.header-value.json`(X11 なら `xclip -selection clipboard < …` でも同じ)。ファイルは開かない・`cat` しない
+2. cloud 環境の設定画面(tech を起こす環境)で「API credentials」に 1 本足す。**名前**: `ymos-dispatch`(何でもよい。git.yumemism.com 用の既存の 1 本とは別)。**Allowed websites**: `dispatch.yumemism.com`。**Custom headers**: 名前 `Authorization`、**Prefix は空**、値はクリップボードの中身をそのまま貼る(1 行の JSON `{"cf-access-client-id":…,"cf-access-client-secret":…}`)
+3. 保存する。**保存後は編集できず、差し替えは削除して登録し直す**(公式)。値を替えるとき(token の Refresh・失効のあと)はこの手順を繰り返す。環境変数は足さない(`YMOS_CREDENTIAL=proxy` は wrapper が持つ)
+4. 新しいセッションを起こし、cloud の端末で `ymos whoami` が `via: proxy` を返し、`ymos cal` が通ることを確かめる。`session-post` の実投稿はその後(本物の #session に流れる)
+
+**Authorization は git.yumemism.com 用の credential とはホストが違うので重ならない。**同じホストに 2 本足すと片方しか送られない(公式)。
 
 ## PR は tech と musearch で 2 本、topic は便名
 
@@ -61,4 +80,4 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 
 定義は [../cloud/agents/](../cloud/agents/)。**母艦では呼べない** ── tech の PreToolUse(matcher `Agent`)の [cloud-agent-guard.sh](../scripts/hooks/cloud-agent-guard.sh) が止める。柏木は 1 行目が `便: <id>` のときだけ通り、同じ便の 2 回目は止める(記録は VM の中で、VM が回収されると消える)。柏木は読み取り専用で、P2 も所見として返す(ゲート 2 の自己 commit は cloud では無い)。guard は字面の検査で、封じ込めではない。
 
-test は `bash scripts/test-cloud-bootstrap.sh`(母艦の SessionStart が前後で変わらないこと、注入 3 本の字数が上限以下であること、`_core` と bootstrap の完了を待つことを見る)と `bash scripts/test-memory-sync.sh`。どちらも母艦で走る。
+test は `bash scripts/test-cloud-bootstrap.sh`(母艦の SessionStart が前後で変わらないこと、注入 3 本の字数が上限以下であること、`_core` と bootstrap の完了を待つことを見る。ymos は sandbox の bare repo と偽の npm で、clone・build・wrapper・冪等・母艦で何もしないことを見る)と `bash scripts/test-memory-sync.sh`。どちらも母艦で走る。

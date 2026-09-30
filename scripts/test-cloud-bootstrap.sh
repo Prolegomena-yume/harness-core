@@ -3,7 +3,7 @@
 # 変わらない を確かめ、(B)cloud を sandbox で模して起動処理が通る (C)guard が期待どおり止める を確かめる。
 #   使い方: bash scripts/test-cloud-bootstrap.sh
 #   env: TECH_MAIN(既定 ~/canonical/tech、settings の「前」= その HEAD)  TECH_NEW(既定 TECH_MAIN/.claude/worktrees/cloud-3、「後」)
-# 実ネットワークには出ない(musearch の clone は sandbox の bare repo)。D は session-init.sh を実際に走らせる(Neon を読むので母艦だけ)。
+# 実ネットワークには出ない(musearch・yumemi・ymos の clone は sandbox の bare repo、npm は偽物)。D は session-init.sh を実際に走らせる(Neon を読むので母艦だけ)。
 set -uo pipefail
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TECH_MAIN="${TECH_MAIN:-$HOME/canonical/tech}"
@@ -23,6 +23,10 @@ chk "A2 HOME に何も作らない" test -z "$(find "$sbx/homeA" -mindepth 1 | h
 env -u CLAUDE_CODE_REMOTE bash "$core/scripts/cloud-pr.sh" tech x -t t >/dev/null 2>&1; rc=$?
 chk "A3 cloud-pr は母艦で exit 2" test "$rc" = 2
 
+mkdir -p "$sbx/binA"
+env -u CLAUDE_CODE_REMOTE HOME="$sbx/homeA" CLOUD_BIN_DIR="$sbx/binA" CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS="$sbx/homeA-settings.json" CLOUD_YMOS_URL="file:///nonexistent" bash "$core/cloud/setup.sh" >/dev/null 2>&1
+chk "A4 母艦(CLAUDE_CODE_REMOTE 未設定)で setup.sh を走らせても ymos の clone も wrapper も作らない(~/yumemism_repo・bin が空)" test ! -e "$sbx/homeA/yumemism_repo" -a -z "$(ls -A "$sbx/binA")"
+
 echo "# B. cloud を sandbox で模す(HOME=sandbox、musearch は sandbox の bare repo)"
 H="$sbx/homeB"; mkdir -p "$H" "$sbx/src" "$sbx/kei"
 git -C "$sbx/src" init -q -b main; mkdir -p "$sbx/src/.claude/memory"; echo "- [t](t.md) — tech memory" >"$sbx/src/.claude/memory/MEMORY.md"; git -C "$sbx/src" add -A
@@ -31,7 +35,23 @@ git -C "$sbx/kei" init -q -b main; mkdir -p "$sbx/kei/.claude/memory"; echo "- [
 "$core/scripts/git-as" anno -C "$sbx/kei" commit -q -m init
 git clone -q "$sbx/src" "$sbx/projB"
 git clone -q --bare "$sbx/src" "$sbx/musearch.git"
-runB() { env CLAUDE_CODE_REMOTE=true HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" CLOUD_YUMEMI_URL="file://$sbx/musearch.git" CLOUD_SETUP_SKIP_TOOLS=1 MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
+# ymos: sandbox の bare repo(cli/ に package.json と lock)と偽の npm(ci は記録、run build は dist/index.js を作る)
+mkdir -p "$sbx/ymos-src/cli" "$sbx/fakenpm"
+git -C "$sbx/ymos-src" init -q -b main
+echo '{"name":"ymos-cli","scripts":{"build":"x"}}' >"$sbx/ymos-src/cli/package.json"; echo '{"lockfileVersion":3}' >"$sbx/ymos-src/cli/package-lock.json"
+git -C "$sbx/ymos-src" add -A; "$core/scripts/git-as" anno -C "$sbx/ymos-src" commit -q -m init
+git clone -q --bare "$sbx/ymos-src" "$sbx/ymos.git"
+cat >"$sbx/fakenpm/npm" <<'EOS'
+#!/usr/bin/env bash
+echo "npm $* (cwd=$PWD)" >>"$FAKE_NPM_LOG"
+[ "${FAKE_NPM_FAIL:-}" = 1 ] && exit 1
+if [ "$1" = run ] && [ "$2" = build ]; then
+  mkdir -p dist; echo 'console.log(JSON.stringify({cred: process.env.YMOS_CREDENTIAL, args: process.argv.slice(2)}))' >dist/index.js
+fi
+exit 0
+EOS
+chmod +x "$sbx/fakenpm/npm"; export FAKE_NPM_LOG="$sbx/npm.log"; : >"$FAKE_NPM_LOG"
+runB() { env CLAUDE_CODE_REMOTE=true PATH="$sbx/fakenpm:$PATH" CLOUD_YMOS_URL="file://$sbx/ymos.git" HOME="$H" CLAUDE_PROJECT_DIR="$sbx/projB" CLOUD_BIN_DIR="$sbx/bin" CLOUD_MUSEARCH_URL="$1" CLOUD_KEIEI_URL="$sbx/kei" CLOUD_YUMEMI_URL="file://$sbx/musearch.git" CLOUD_SETUP_SKIP_TOOLS=1 MEMSYNC_URL="$sbx/src" bash "$core/hooks/cloud-bootstrap.sh" 2>"$sbx/errB"; }
 out="$(runB "file://$sbx/musearch.git")"; rc=$?
 chk "B1 exit 0 / 標準出力は空(session-init の JSON を壊さない)" test "$rc" = 0 -a -z "$out"
 chk "B1b bootstrap-done の印が置かれた(注入 hook が待つ印)" test -e "$H/.cache/harness-cloud/bootstrap-done"
@@ -44,10 +64,24 @@ chk "B5c memory 同期の起点 refs/memory-sync/base が clone に置かれ、�
 chk "B5d yumemi が ~/yumemism_repo/yumemi に clone された" test -d "$H/yumemism_repo/yumemi/.git"
 chk "B5e ~/.claude/settings.json の autoMode.environment が \$defaults と自社の source control を持つ" \
   bash -c "jq -e '.autoMode.environment[0] == \"\$defaults\" and any(.autoMode.environment[]; test(\"git.yumemism.com\"))' '$H/.claude/settings.json' >/dev/null"
-sn1="$(cd "$H" && find . -printf '%p %l\n' | grep -v '\.cache' | sort | md5sum)"
+chk "B5f ymos が ~/yumemism_repo/yumemism-os に clone され、cli/ が npm ci → build され、PATH 側に wrapper がある" \
+  bash -c "test -d '$H/yumemism_repo/yumemism-os/.git' && grep -q 'npm ci' '$FAKE_NPM_LOG' && grep -q 'npm run build' '$FAKE_NPM_LOG' && test -x '$sbx/bin/ymos'"
+chk "B5g ymos wrapper は YMOS_CREDENTIAL=proxy を export して dist/index.js に引数をそのまま渡す" \
+  test "$("$sbx/bin/ymos" discord takano post s x)" = '{"cred":"proxy","args":["discord","takano","post","s","x"]}'
+chk "B5h autoMode.environment に ymos の 1 行(dispatch.yumemism.com・proxy)がある" \
+  bash -c "jq -e 'any(.autoMode.environment[]; test(\"ymos\") and test(\"dispatch.yumemism.com\") and test(\"proxy\"))' '$H/.claude/settings.json' >/dev/null"
+sn1="$(cd "$H" && find . -printf '%p %l\n' | grep -v -e '\.cache' -e 'FETCH_HEAD' -e 'ORIG_HEAD' | sort | md5sum)"
 runB "file://$sbx/musearch.git" >/dev/null; rc=$?
-sn2="$(cd "$H" && find . -printf '%p %l\n' | grep -v '\.cache' | sort | md5sum)"
+sn2="$(cd "$H" && find . -printf '%p %l\n' | grep -v -e '\.cache' -e 'FETCH_HEAD' -e 'ORIG_HEAD' | sort | md5sum)"
 chk "B6 2 回目は冪等(exit 0、構成が同じ)" test "$rc" = 0 -a "$sn1" = "$sn2"
+chk "B6b 2 回目は同じ rev なので npm ci / build を走らせない(印 .git/cloud-built-rev で抜ける)" test "$(grep -c 'npm ci' "$FAKE_NPM_LOG")" = 1
+"$core/scripts/git-as" anno -C "$sbx/ymos-src" commit -q --allow-empty -m next; git -C "$sbx/ymos-src" push -q "$sbx/ymos.git" main 2>/dev/null
+runB "file://$sbx/musearch.git" >/dev/null
+chk "B6c 取り先が進んだら pull して build し直す(npm ci 2 回目、印が新しい rev)" test "$(grep -c 'npm ci' "$FAKE_NPM_LOG")" = 2 -a "$(cat "$H/yumemism_repo/yumemism-os/.git/cloud-built-rev")" = "$(git -C "$sbx/ymos.git" rev-parse main)"
+rm -rf "$H/yumemism_repo" "$sbx/bin/ymos"; FAKE_NPM_FAIL=1 runB "file://$sbx/musearch.git" >/dev/null; rc=$?
+chk "B6d npm が落ちても bootstrap は exit 0、wrapper は作らず、記録に ymos build FAILED" bash -c "test $rc = 0 && test ! -e '$sbx/bin/ymos' && grep -q 'ymos build FAILED' '$H/.cache/harness-cloud/bootstrap.log'"
+rm -rf "$H/yumemism_repo"; env CLAUDE_CODE_REMOTE=true PATH="$sbx/fakenpm:$PATH" CLOUD_YMOS_URL="file://$sbx/nonexistent.git" CLOUD_BIN_DIR="$sbx/bin" HOME="$H" CLOUD_SETUP_SKIP_TOOLS=1 CLOUD_SETUP_SETTINGS="$sbx/h2.json" bash "$core/cloud/setup.sh" >/dev/null 2>"$sbx/y.err"; rc=$?
+chk "B6e ymos の clone が落ちても setup.sh は exit 0、wrapper は作らない(setup script の入口 = API credential が無い形)" bash -c "test $rc = 0 && test ! -e '$sbx/bin/ymos' && grep -q 'ymos clone FAILED' '$sbx/y.err'"
 rm -rf "$H/yumemism_repo"; runB "file://$sbx/nonexistent.git" >/dev/null; rc=$?
 chk "B7 clone が落ちても exit 0(cloud の起動を止めない)、記録に FAILED" bash -c "test $rc = 0 && grep -q 'musearch clone FAILED' '$H/.cache/harness-cloud/bootstrap.log'"
 chk "B8 記録・標準エラーに資格情報の形(Basic / Bearer / user:pass@)が出ない" bash -c "! cat '$sbx/errB' '$H/.cache/harness-cloud/bootstrap.log' | grep -Eqi 'basic |bearer |://[^/ ]+:[^/ ]+@'"
