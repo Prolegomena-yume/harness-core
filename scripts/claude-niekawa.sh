@@ -149,7 +149,7 @@ budget_min="${NIEKAWA_BUDGET_MIN:-}"
 kashiwagi_model="${KASHIWAGI_MODEL:-}"
 makabe_model="${MAKABE_MODEL:-}"
 # 柏木の実行経路(役員 人見 2026-09-21 23:55、実行経路 C の新設)。既定 opus = claude-kashiwagi.sh(Opus,
-# effort xhigh)。codex = 従来の codex-kashiwagi(既定 gpt-6-sol、astra は既定から退役。--kashiwagi-model の指定先も可)。
+# effort xhigh)。codex = 従来の codex-kashiwagi(既定 CODEX_SOL_MODEL、astra は既定から退役。--kashiwagi-model の指定先も可)。
 # 走行中の run には効かない(env は起動時に固定、新しい起動からだけ適用される)。
 kashiwagi_route="${KASHIWAGI_ROUTE:-opus}"
 case "$kashiwagi_route" in

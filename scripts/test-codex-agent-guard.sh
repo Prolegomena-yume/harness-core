@@ -829,21 +829,21 @@ assert_no_arg argv-minase 'features.multi_agent_v2.default_wait_timeout_ms=12000
 pass 'wait timeout override is kashiwagi-only'
 
 # ---- persona 別の既定 model(発注書 14)
-assert_arg_sequence argv-kashiwagi '-m' 'gpt-6-sol'
+assert_arg_sequence argv-kashiwagi '-m' 'gpt-6.1-sol'
 assert_arg_sequence argv-makabe '-m' 'gpt-6-luna'
 assert_no_arg argv-minase '-m'
-pass 'kashiwagi defaults to gpt-6-sol (astra retired from the default, 役員 人見 2026-09-24), makabe to gpt-6-luna, minase has no default model'
+pass 'kashiwagi defaults to gpt-6.1-sol (astra retired from the default, 役員 人見 2026-09-24), makabe to gpt-6-luna, minase has no default model'
 
 repo="$test_root/niekawa"
 init_repo "$repo"
 run_launcher argv-niekawa niekawa "$repo" none
 assert_status argv-niekawa 0
-assert_arg_sequence argv-niekawa '-m' 'gpt-6-sol'
+assert_arg_sequence argv-niekawa '-m' 'gpt-6.1-sol'
 assert_arg_sequence argv-niekawa '-c' 'model_reasoning_effort="high"'
 assert_no_arg argv-niekawa 'features.multi_agent_v2.default_wait_timeout_ms=1200000'
 [ "$(cat "$test_root/capture-argv-niekawa/identity.txt")" = "$(printf '%s\n' 贄川 niekawa@ai.yumemism.dev 贄川 niekawa@ai.yumemism.dev)" ] \
   || fail 'niekawa: git identity mismatch'
-pass 'niekawa defaults to gpt-6-sol, high effort, no wait-timeout override, and 贄川 git identity'
+pass 'niekawa defaults to gpt-6.1-sol, high effort, no wait-timeout override, and 贄川 git identity'
 
 run_launcher override-model niekawa "$repo" none --model gpt-custom
 assert_arg_sequence override-model '-m' 'gpt-custom'
