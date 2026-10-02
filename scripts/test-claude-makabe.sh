@@ -138,6 +138,128 @@ chk "6a 一部だけ commit で exit 0" exit_is "$d" 0
 chk "6b prev.txt(pre 汚れ→commit)・new.txt(HEAD 差分)・late.txt(post 側だけ)。leftover.txt は pre・post とも同じで差なし" \
   same_set "$d" prev.txt new.txt late.txt
 
+# ================================================================================================
+# 案 A / 案 C(役員 人見 2026-10-03 の裁定): main/master の ref 変化は、launcher が真壁に与える committer 名義
+# (launcher の GIT_COMMITTER_EMAIL)の reflog エントリがあるときだけ逸脱(exit 3)。別名義(別窓の鷹野・人見)の
+# 移動は警告 1 行で exit 0。reflog が無い・pre が見つからないときは従来どおり「変化 = 逸脱」。
+# 作業木の HEAD が main / master のとき起動を断る(kimi-makabe.sh と同じ)。
+# ================================================================================================
+other_env='GIT_COMMITTER_NAME=other GIT_COMMITTER_EMAIL=other@example.test GIT_AUTHOR_NAME=other GIT_AUTHOR_EMAIL=other@example.test'
+warned() { grep -q "警告.*$2" "$1/launcher.err"; }
+no_violation() { ! grep -q '権限逸脱' "$1/launcher.out"; }
+has_violation() { grep -q '権限逸脱' "$1/launcher.out" && grep -q "ref 変化を検出: $2" "$1/launcher.out"; }
+has_footer() { grep -q '^変更ファイル数: ' "$1/launcher.out" && grep -q '^makabe_commit_sha: ' "$1/launcher.out"; }
+warn_lines_is() { [ "$(grep -c '警告.*refs/heads' "$1/launcher.err")" = "$2" ]; }
+
+# ---- 7. 別名義が main に commit(別窓の鷹野の merge に当たる)→ exit 0 + 警告、footer は通常どおり ----
+d="$(new_case a-foreign-main)"
+cat >"$d/scenario.sh" <<S
+echo hello >hello.txt
+git add -A
+$GAS anno commit -q -m "run commit"
+env $other_env git -C "$d/base" commit -q --allow-empty -m "other window"
+S
+run_case "$d"
+chk "7a 別名義の main の commit は exit 0" exit_is "$d" 0
+chk "7b 警告 1 行(refs/heads/main)が stderr に出る" warned "$d" 'refs/heads/main'
+chk "7c 権限逸脱を出さない" no_violation "$d"
+chk "7d footer(変更ファイル数・makabe_commit_sha)が出る" has_footer "$d"
+chk "7e 警告は 1 行だけ" warn_lines_is "$d" 1
+
+# ---- 8. 真壁名義が main を動かす → exit 3 ----
+d="$(new_case a-makabe-main)"
+cat >"$d/scenario.sh" <<S
+git -C "$d/base" commit -q --allow-empty -m "makabe moves main"
+S
+run_case "$d"
+chk "8a 真壁名義の main の移動は exit 3" exit_is "$d" 3
+chk "8b 権限逸脱: ref 変化を検出: refs/heads/main" has_violation "$d" refs/heads/main
+chk "8c footer は出る" has_footer "$d"
+
+# ---- 9. reflog が積まれない repo(core.logAllRefUpdates=false)→ 従来どおり「変化 = 逸脱」(別名義でも exit 3) ----
+d="$(new_case a-no-reflog)"
+git -C "$d/base" config core.logAllRefUpdates false
+rm -f "$d/base/.git/logs/refs/heads/main"   # 既にある reflog には false でも追記されるので、無い状態にして始める
+cat >"$d/scenario.sh" <<S
+env $other_env git -C "$d/base" commit -q --allow-empty -m "other window"
+S
+run_case "$d"
+chk "9a reflog が積まれない repo は従来どおり exit 3" exit_is "$d" 3
+chk "9b 権限逸脱の表示" has_violation "$d" refs/heads/main
+
+# ---- 10. reflog が run の間に消える(期限切れの代わり)→ pre が見つからず従来どおり exit 3 ----
+d="$(new_case a-reflog-gone)"
+cat >"$d/scenario.sh" <<S
+rm -f "$d/base/.git/logs/refs/heads/main"
+env $other_env git -C "$d/base" commit -q --allow-empty -m "other window"
+S
+run_case "$d"
+chk "10a reflog が切り詰められたら従来どおり exit 3" exit_is "$d" 3
+chk "10b 権限逸脱の表示" has_violation "$d" refs/heads/main
+
+# ---- 11. 別窓の commit と真壁の移動が同じ run で混ざる → 真壁分が reflog にあるので exit 3 ----
+d="$(new_case a-mixed)"
+cat >"$d/scenario.sh" <<S
+env $other_env git -C "$d/base" commit -q --allow-empty -m "other window 1"
+git -C "$d/base" commit -q --allow-empty -m "makabe moves main"
+env $other_env git -C "$d/base" commit -q --allow-empty -m "other window 2"
+S
+run_case "$d"
+chk "11a 混ざっても真壁分があれば exit 3" exit_is "$d" 3
+chk "11b 権限逸脱の表示" has_violation "$d" refs/heads/main
+
+# ---- 12. master も同じ: 別名義の master 移動は exit 0 + 警告、真壁名義は exit 3 ----
+d="$(new_case a-foreign-master)"
+git -C "$d/base" branch master
+"$GAS" anno -C "$d/base" commit -q --allow-empty -m ahead
+cat >"$d/scenario.sh" <<S
+env $other_env git -C "$d/base" update-ref refs/heads/master "\$(git -C "$d/base" rev-parse main)"
+S
+run_case "$d"
+chk "12a 別名義の master の移動は exit 0" exit_is "$d" 0
+chk "12b 警告(refs/heads/master)" warned "$d" 'refs/heads/master'
+d="$(new_case a-makabe-master)"
+git -C "$d/base" branch master
+"$GAS" anno -C "$d/base" commit -q --allow-empty -m ahead
+cat >"$d/scenario.sh" <<S
+git -C "$d/base" update-ref refs/heads/master "\$(git -C "$d/base" rev-parse main)"
+S
+run_case "$d"
+chk "12c 真壁名義の master の移動は exit 3" exit_is "$d" 3
+chk "12d 権限逸脱: refs/heads/master" has_violation "$d" refs/heads/master
+
+# ---- 13. 何も動かない run は警告も逸脱も無し ----
+d="$(new_case a-quiet)"
+: >"$d/scenario.sh"
+run_case "$d"
+chk "13a exit 0" exit_is "$d" 0
+chk "13b 警告なし" warn_lines_is "$d" 0
+
+# ---- 14(案 C). 作業木の HEAD が main / master のとき起動を断る(--dry-run でも)。detached・作業 branch は通る ----
+mkrepo() { git init -q -b "$2" "$sbx/$1" && ( cd "$sbx/$1" && echo r >r && git add -A && "$GAS" anno commit -q -m init ); }
+launch() { # <dir> [args...] ── stdout/err を $sbx/c.out / c.err、exit を $sbx/c.exit に
+  local dir="$1"; shift
+  ( cd "$sbx/ext-c" && env CODEX_AGENT_STATE_DIR="$sbx/c-state" FAKE_CLAUDE_SCENARIO=/dev/null \
+      bash "$LAUNCHER" -C "$dir" -f "$sbx/ext-c/BRIEF.md" "$@" >"$sbx/c.out" 2>"$sbx/c.err"; echo $? >"$sbx/c.exit" )
+}
+exit_c_is() { [ "$(cat "$sbx/c.exit")" = "$1" ]; }
+mkdir -p "$sbx/ext-c" "$sbx/c-state"; echo BRIEF >"$sbx/ext-c/BRIEF.md"
+mkrepo c-main main; mkrepo c-master master
+launch "$sbx/c-main"
+chk "14a HEAD が main の作業木は exit 2" exit_c_is 2
+chk "14b 文言は kimi-makabe と同じ(作業ルートが main の上にある)" grep -q '作業ルートが main の上にある' "$sbx/c.err"
+chk "14c 断った run は claude を起動していない(last.json が無い)" test -z "$(ls "$sbx"/c-state/runs/*/last.json 2>/dev/null)"
+launch "$sbx/c-main" --dry-run
+chk "14d --dry-run でも断る(exit 2)" exit_c_is 2
+launch "$sbx/c-master" --dry-run
+chk "14e HEAD が master も断る" exit_c_is 2
+git -C "$sbx/c-main" switch -q -c work/y
+launch "$sbx/c-main" --dry-run
+chk "14f 作業 branch は --dry-run が通る" exit_c_is 0
+git -C "$sbx/c-main" checkout -q --detach
+launch "$sbx/c-main" --dry-run
+chk "14g detached HEAD は kimi-makabe と同じく通る" exit_c_is 0
+
 echo "---"; echo "$n tests, fail=$fail"
 if [ "$fail" -eq 0 ]; then echo "ALL OK"; else
   echo "FAILED"; for f in "$sbx"/*/set.diff; do [ -s "$f" ] && { echo "== $f"; cat "$f"; }; done; exit 1

@@ -109,6 +109,8 @@ CORE="$(dirname "$(dirname "$script_path")")"
 
 # shellcheck source=models.env
 source "$CORE/scripts/models.env"
+# shellcheck source=lib/git-run-diff.sh
+source "$CORE/scripts/lib/git-run-diff.sh"
 # shellcheck source=lib/batch-inbox.sh
 source "$CORE/scripts/lib/batch-inbox.sh"
 # 便を Claude デスクトップの scope から切り離し、systemd --user の service に載せ直す
@@ -509,10 +511,6 @@ read_verdict() {
   esac
 }
 
-git_status_paths() {
-  git -C "$1" status --porcelain=v1 --untracked-files=all 2>/dev/null | cut -c4- | LC_ALL=C sort -u
-}
-
 if [ "$dry_run" -eq 1 ]; then
   dry_round_dir="$rounds_dir/r1"
   mkdir -p "$dry_round_dir"
@@ -537,9 +535,11 @@ else
   echo "警告: 便名が無いため runs.tsv に記録しない" >&2
 fi
 
-pre_status=""
+# status は path だけの NUL 区切り record(lib/git-run-diff.sh)で比べる ── 改行区切りの comm -3 は、起動時に汚れた
+# 作業木を run の中で全部 commit して clean に戻すと post 側の空行が tab だけの行になり、件数が 1 ずれる(2026-10-03)。
+# 改名は新旧の path を 1 本ずつ数える(旧版は `old -> new` の 1 本、日本語名は引用符付きの別物だった)。
 if [ "$git_repo" -eq 1 ]; then
-  pre_status="$(git_status_paths "$root")"
+  git_status_records "$root" paths > "$run_dir/pre_status.z"
 fi
 
 echo "[niekawa/claude] Claude 起動 root=$root log=$log_path"
@@ -700,8 +700,8 @@ printf '%s\n' "$session_id" > "$run_dir/session_id"
 
 changed_count=0
 if [ "$git_repo" -eq 1 ]; then
-  post_status="$(git_status_paths "$root")"
-  changed_count="$(comm -3 <(printf '%s\n' "$pre_status") <(printf '%s\n' "$post_status") | sed '/^$/d' | wc -l | tr -d ' ')"
+  git_status_records "$root" paths > "$run_dir/post_status.z"
+  changed_count="$(git_status_diff_count "$run_dir/pre_status.z" "$run_dir/post_status.z")"
 fi
 
 if [ "$claude_status" -eq 0 ] && [ "$verdict_status" -ne 5 ] && { [ "$verdict" = "承認" ] || [ "$verdict" = "エスカレーション" ]; }; then
