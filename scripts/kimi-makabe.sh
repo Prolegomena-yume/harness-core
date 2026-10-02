@@ -21,7 +21,8 @@
 #     詰まり($run_dir/stuck.md がある ── 矛盾・要確認・外部要因で完了条件に届かない)/ 未達(どちらも無い ──
 #     kimi の異常終了、5 時間枠切れ、SIGTERM)。claude 版は詰まりを最終メッセージの行頭で見るが、kimi の Stop hook の
 #     stdin には最終メッセージが無いので、stuck.md(run_dir の中、hook がこの 1 ファイルだけ書き込みを許す)に置く。
-#   - main / master の上では起動しない(claude 版は事後に権限逸脱で見るだけ)。
+#   - main / master の上では起動しない(claude 版も同じ門を持つ、役員 人見 2026-10-03)。事後には ref 変化も見る
+#     (別窓の操作は reflog の名義で見分けて警告だけ、真壁名義の移動は権限逸脱 exit 3)。
 #   - commit は `git-as makabe commit ...`(GIT_AUTHOR/COMMITTER を真壁に固定、claude 版と同じ)。
 #   - 巡ループ・ゲート番号を持たない。--resume は受けない ── 続きは新しい指示書(前 run の sha を明記)で起こし直す。
 #   - unit-wrap(systemd --user の独立 service 化)はしない(claude-makabe.sh と同じ)。
@@ -90,6 +91,8 @@ script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 # shellcheck source=models.env
 source "$CORE/scripts/models.env"
+# shellcheck source=lib/git-run-diff.sh
+source "$CORE/scripts/lib/git-run-diff.sh"
 [ -f "$CORE/roles/makabe.md" ] || die "人物像の正典が見つからない: $CORE/roles/makabe.md"
 [ -f "$CORE/kimi/makabe.md" ] || die "Kimi 起動契約が見つからない: $CORE/kimi/makabe.md"
 [ -x "$CORE/scripts/hooks/worktree-guard-kimi-makabe.sh" ] || die "hook が見つからないか実行できない: $CORE/scripts/hooks/worktree-guard-kimi-makabe.sh"
@@ -321,12 +324,17 @@ if [ "$dry_run" -eq 1 ]; then
   exit 0
 fi
 
-pre_status="$(git -C "$root" status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort -u)"
+# status は NUL 区切りの record(lib/git-run-diff.sh の git_status_records)にして run_dir のファイルへ置く ── bash 変数は
+# NUL を持てず、改行区切りだと引用符付きパス・改名・空の status(clean)で path を切り損ねる(claude-makabe.sh の 2026-10-03 の事故と同じ)。
+git_status_records "$root" > "$run_dir/pre_status.z"
 pre_head="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
 # Stop hook(commit-stop-kimi-makabe.sh)は別プロセスなのでこの bash 変数を読めない。ファイルへ写しておく。
 printf '%s' "$pre_head" > "$run_dir/pre_head.txt"
 pre_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
 pre_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
+# 事後ガードが「run の間に積まれた reflog」を切り出すための件数(reflog は worktree 間で共有される)。
+pre_main_log_n="$(git_ref_log_count "$git_root" refs/heads/main)"
+pre_master_log_n="$(git_ref_log_count "$git_root" refs/heads/master)"
 
 echo "[makabe/kimi] Kimi 起動 root=$root log=$log_path model=$model effort=$effort run_dir=$run_dir"
 
@@ -386,32 +394,33 @@ fi
 
 # 変更ファイル数 ── 作業木の status 差分(comm -3)と、HEAD が動いた場合の commit 済み差分の両方を見る
 # (claude-makabe.sh と同じ理屈。checkpoint commit / squash で worktree が clean に戻ると status 差分だけでは拾えない)。
-post_status="$(git -C "$root" status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort -u)"
+git_status_records "$root" > "$run_dir/post_status.z"
 post_head="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
 
 declare -A changed_seen=()
 changed_files=()
-while IFS= read -r line; do
-  [ -n "$line" ] || continue
-  path="${line:3}"
+add_changed() {
+  local path="$1"
+  [ -n "$path" ] || return 0
   if [ -z "${changed_seen[$path]+present}" ]; then
     changed_seen["$path"]=1
     changed_files+=("$path")
   fi
-done < <(comm -3 <(printf '%s\n' "$pre_status") <(printf '%s\n' "$post_status") | sed '/^$/d')
+}
+# comm -z -3 は 2 本目だけの record の頭に tab を付けるので剥がしてから 3 文字(XY と空白)を落とす。空の path は数えない。
+while IFS= read -r -d '' rec; do
+  rec="${rec#$'\t'}"
+  add_changed "${rec:3}"
+done < <(LC_ALL=C comm -z -3 "$run_dir/pre_status.z" "$run_dir/post_status.z")
 
 if [ -n "$post_head" ] && [ "$post_head" != "$pre_head" ]; then
   before_head="$pre_head"
   if [ -z "$before_head" ]; then
     before_head="$(git -C "$git_root" hash-object -t tree /dev/null)"
   fi
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    if [ -z "${changed_seen[$path]+present}" ]; then
-      changed_seen["$path"]=1
-      changed_files+=("$path")
-    fi
-  done < <(git -C "$git_root" diff --name-only --no-renames "$before_head" "$post_head" 2>/dev/null || true)
+  while IFS= read -r -d '' path; do
+    add_changed "$path"
+  done < <(git -C "$git_root" diff --name-only -z --no-renames "$before_head" "$post_head" 2>/dev/null || true)
 fi
 
 if [ "${#changed_files[@]}" -gt 0 ]; then
@@ -420,16 +429,24 @@ else
   : > "$run_dir/changed-files.txt"
 fi
 
-# 事後ガード ── main/master の HEAD 移動(push 相当)だけを見る。作業ルートの外への書き込みは
+# 事後ガード ── main/master の ref 移動(push 相当)だけを見る。作業ルートの外への書き込みは
 # worktree-guard-kimi-makabe.sh が実行前に block している(こちらは事後の確認)。
+# 値の変化だけで逸脱にすると別窓(鷹野・人見)の main への commit・merge・pull を真壁の逸脱と誤記録する
+# (claude-makabe.sh と同じ、役員 人見 2026-10-03 の裁定 案 A)ため、run の間に積まれた reflog のうち、この launcher が
+# 真壁に与えた committer 名義(上の GIT_COMMITTER_EMAIL)のエントリがあるときだけ逸脱にする。別名義だけなら警告 1 行で続行。
+# reflog が無い・起動時の値が見つからないときは従来どおり「変化 = 逸脱」。
 post_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
 post_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
 violations=()
-if [ "$pre_main_head" != "$post_main_head" ]; then
-  violations+=("ref 変化を検出: refs/heads/main")
+if guard_msg="$(git_ref_guard "$git_root" refs/heads/main "$pre_main_head" "$pre_main_log_n" "$post_main_head" "$GIT_COMMITTER_EMAIL")"; then
+  :
+else
+  violations+=("$guard_msg")
 fi
-if [ "$pre_master_head" != "$post_master_head" ]; then
-  violations+=("ref 変化を検出: refs/heads/master")
+if guard_msg="$(git_ref_guard "$git_root" refs/heads/master "$pre_master_head" "$pre_master_log_n" "$post_master_head" "$GIT_COMMITTER_EMAIL")"; then
+  :
+else
+  violations+=("$guard_msg")
 fi
 
 # 終端の判定(stuck.md があれば詰まり、無く HEAD が動いていれば完了、どちらも無ければ未達)。

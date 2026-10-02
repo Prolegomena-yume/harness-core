@@ -94,6 +94,8 @@ script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 # shellcheck source=models.env
 source "$CORE/scripts/models.env"
+# shellcheck source=lib/git-run-diff.sh
+source "$CORE/scripts/lib/git-run-diff.sh"
 [ -f "$CORE/roles/kashiwagi.md" ] || die "人物像の正典が見つからない: $CORE/roles/kashiwagi.md"
 [ -f "$CORE/claude/kashiwagi.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/kashiwagi.md"
 
@@ -356,11 +358,12 @@ if [ "$dry_run" -eq 1 ]; then
   exit 0
 fi
 
-pre_status=""
 pre_main_head=""
 pre_master_head=""
 if [ "$git_repo" -eq 1 ]; then
-  pre_status="$(git -C "$root" status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort -u)"
+  # status は NUL 区切りの record(lib/git-run-diff.sh)で比べる ── 改行区切りの comm -3 は、起動時に汚れた作業木を
+  # run の中で全部 commit して clean に戻すと post 側の空行が tab だけの行になり、件数が 1 ずれる(2026-10-03)。
+  git_status_records "$root" > "$run_dir/pre_status.z"
   pre_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
   pre_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
 fi
@@ -455,8 +458,8 @@ fi
 changed_count=0
 violations=()
 if [ "$git_repo" -eq 1 ]; then
-  post_status="$(git -C "$root" status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort -u)"
-  changed_count="$(comm -3 <(printf '%s\n' "$pre_status") <(printf '%s\n' "$post_status") | sed '/^$/d' | wc -l | tr -d ' ')"
+  git_status_records "$root" > "$run_dir/post_status.z"
+  changed_count="$(git_status_diff_count "$run_dir/pre_status.z" "$run_dir/post_status.z")"
   post_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
   post_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
   if [ "$pre_main_head" != "$post_main_head" ]; then
