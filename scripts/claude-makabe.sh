@@ -57,6 +57,28 @@ die() {
   exit 2
 }
 
+# 作業木の status を `XY<空白>path` の NUL 区切り record に直して C ロケールで sort -u して stdout へ出す。
+# - `--porcelain=v1 -z`: パスは引用符なし・エスケープなしの生のまま(日本語・空白名がずれない)。
+# - 改名・複製(R / C)は `XY new\0old\0` の 2 つ組で来る。old 側にも同じ XY を付けて 1 本の record にする
+#   (diff 側は --no-renames で新旧両方を挙げるので、数え方をそろえる)。
+# - 空の status は record 0 本(旧版の `printf '%s\n' ""` が作っていた空行を作らない)。
+status_records() {
+  local entry xy skip=0 skip_xy=""
+  while IFS= read -r -d '' entry; do
+    if [ "$skip" -eq 1 ]; then
+      skip=0
+      [ -z "$entry" ] || printf '%s\0' "$skip_xy $entry"
+      continue
+    fi
+    [ "${#entry}" -gt 3 ] || continue
+    printf '%s\0' "$entry"
+    xy="${entry:0:2}"
+    case "$xy" in
+      R?|C?|?R|?C) skip=1; skip_xy="$xy" ;;
+    esac
+  done < <(git -C "$root" status --porcelain=v1 -z --untracked-files=all 2>/dev/null) | LC_ALL=C sort -z -u
+}
+
 resolve_self() {
   local source_path="${BASH_SOURCE[0]}"
   local source_dir link_target
@@ -310,7 +332,9 @@ if [ "$dry_run" -eq 1 ]; then
   exit 0
 fi
 
-pre_status="$(git -C "$root" status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort -u)"
+# status は NUL 区切りの record(後述 status_records)にして run_dir のファイルへ置く ── bash 変数は NUL を持てず、
+# 改行区切りだと引用符付きパス・改名・空の status(clean)で path を切り損ねる(2026-10-03 の exit 1 の原因)。
+status_records > "$run_dir/pre_status.z"
 pre_head="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
 # Stop hook(commit-stop-claude-makabe.sh)は別プロセスなのでこの bash 変数を読めない。
 # ファイルへ写しておく(役員 人見 2026-09-24)。
@@ -395,32 +419,34 @@ printf '%s\n' "$session_id" > "$run_dir/session_id"
 # 変更ファイル数 ── 作業木の status 差分(comm -3)と、HEAD が動いた場合の commit 済み差分の両方を見る
 # (checkpoint commit / squash で worktree が clean に戻ると status 差分だけでは拾えないため、H1 の形に
 # 合わせて codex-agent.sh と同じ理屈を単一リポジトリ向けに簡略化して持つ)。
-post_status="$(git -C "$root" status --porcelain=v1 --untracked-files=all 2>/dev/null | LC_ALL=C sort -u)"
+# status は NUL 区切りの record(`XY<空白>path`)で比べる。comm -z -3 は 2 本目だけの record の頭に tab を
+# 付けるので剥がしてから 3 文字(XY と空白)を落とす。空の path は数えない(bash の連想配列は空キーで落ちる)。
+status_records > "$run_dir/post_status.z"
 post_head="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
 
 declare -A changed_seen=()
 changed_files=()
-while IFS= read -r line; do
-  [ -n "$line" ] || continue
-  path="${line:3}"
+add_changed() {
+  local path="$1"
+  [ -n "$path" ] || return 0
   if [ -z "${changed_seen[$path]+present}" ]; then
     changed_seen["$path"]=1
     changed_files+=("$path")
   fi
-done < <(comm -3 <(printf '%s\n' "$pre_status") <(printf '%s\n' "$post_status") | sed '/^$/d')
+}
+while IFS= read -r -d '' rec; do
+  rec="${rec#$'\t'}"
+  add_changed "${rec:3}"
+done < <(LC_ALL=C comm -z -3 "$run_dir/pre_status.z" "$run_dir/post_status.z")
 
 if [ -n "$post_head" ] && [ "$post_head" != "$pre_head" ]; then
   before_head="$pre_head"
   if [ -z "$before_head" ]; then
     before_head="$(git -C "$git_root" hash-object -t tree /dev/null)"
   fi
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    if [ -z "${changed_seen[$path]+present}" ]; then
-      changed_seen["$path"]=1
-      changed_files+=("$path")
-    fi
-  done < <(git -C "$git_root" diff --name-only --no-renames "$before_head" "$post_head" 2>/dev/null || true)
+  while IFS= read -r -d '' path; do
+    add_changed "$path"
+  done < <(git -C "$git_root" diff --name-only -z --no-renames "$before_head" "$post_head" 2>/dev/null || true)
 fi
 
 if [ "${#changed_files[@]}" -gt 0 ]; then
