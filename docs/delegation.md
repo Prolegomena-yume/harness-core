@@ -101,6 +101,8 @@ harness-route                                    # 今日の配役表(read-only�
 
 **同じリポの他 worktree が動かしている作業 branch は「他 ref の移動」に数えない。**`git worktree list` で他 worktree の branch を除外してから判定する(BRIEF-inbox-limits、2026-09-21 ── 並列真壁が別 worktree で自分の branch に commit すると、もう一方の真壁の事後ガードが「権限逸脱: ref 変化」と誤記録した事故の再発防止)。`main` / `master` / remote-tracking の移動は worktree 経由でも引き続き逸脱。
 
+**claude-makabe・kimi-makabe の `main` / `master` の移動は reflog の名義で見分ける。**worktree は refs を共有し、別窓(鷹野・人見)の `main` への commit・merge・pull でも値が動くため、run の間に積まれた reflog に真壁名義(launcher の `GIT_COMMITTER_EMAIL`)の更新があるときだけ逸脱にし、別名義だけなら警告で通す。reflog で見分けられなければ従来どおり逸脱。claude-makabe は `main` / `master` の上では起動しない(役員 人見 2026-10-03 の裁定 案 A+C、判定は `scripts/lib/git-run-diff.sh`)。
+
 ## 真壁はトップレベル session ── codex 組み込みの子にしない
 
 **贄川は真壁を `codex-makabe` で起こす。**Kimi に codex 組み込みの子を起こす手段は無く、sol の贄川も形を揃えて使わない。真壁はトップレベルの codex session になるので、**外から `--resume <session_id>` が効く**(子の thread は外から resume できなかった、09-13 の制約が消えた)。
