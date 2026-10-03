@@ -278,12 +278,18 @@ def fetch_neon():
     url_file = cfg["neon_url_file"]
     if not url_file:
         return ""
+    # 役員機など Neon の鍵を持たない機体は、urlFile 不在/psql 不在を失敗ではなく
+    # 想定内の状態として扱う(索引そのものは `ymos kb search` で通る)。
+    no_key_msg = (
+        "\n### 索引検索\n"
+        "- この機体に Neon の鍵なし(想定内)。検索は `ymos kb search \"<query>\" -n N`\n"
+    )
     heading = "\n### Neon recent documents (harness_index_db, JST)"
     url_path = os.path.expanduser(url_file)
     if not os.path.isfile(url_path):
-        return f"{heading}\n- fetch failed: urlFile not found: {url_file}\n"
+        return no_key_msg
     if shutil.which("psql") is None:
-        return f"{heading}\n- fetch failed: psql not found on PATH\n"
+        return no_key_msg
     try:
         with open(url_path, encoding="utf-8", errors="replace") as f:
             url = f.readline().strip()
@@ -325,7 +331,7 @@ def fetch_neon():
             lines.append(f"- {updated} {path_value} ── {title}")
     if len(lines) == 2:
         lines.append("- (documents none)")
-    lines.append('- semantic 検索: bash scripts/search-docs.sh "<query>" [N]')
+    lines.append('- semantic 検索: ymos kb search "<query>" [-n N]')
     return "\n".join(lines) + "\n"
 
 ctx += fetch_neon()

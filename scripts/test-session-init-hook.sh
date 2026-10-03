@@ -51,6 +51,8 @@ if printf '%s' "$ctx" | grep -Eq '### Neon recent documents \(harness_index_db, 
   ok "Neon heading marks JST"
 elif printf '%s' "$ctx" | grep -q 'fetch failed'; then
   ok "Neon fetch unavailable in this environment (skip JST check)"
+elif printf '%s' "$ctx" | grep -q 'Neon の鍵なし(想定内)'; then
+  ok "no Neon key on this machine, ymos kb search guided (skip JST check)"
 else
   not_ok "Neon section present but missing JST marker"
 fi

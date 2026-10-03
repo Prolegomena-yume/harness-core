@@ -261,7 +261,7 @@ SessionStart hook の Neon 参照は `neon.urlFile` と `neon.limit` の2値だ�
 | `neon.urlFile` | 接続 URL を1行目に書いた file への path。`~` 展開あり。接続情報を `.harness.json` へ直書きせず、リポジトリ外または gitignored file に配置 |
 | `neon.limit` | `documents.updated_at` 降順で出す件数。1以上の integer、未指定時 10 |
 
-この tech consumer の設定例は `~/.ssh/neon-harness-index-url.txt` / `10`。file は利用者だけが読める権限で作成し、PostgreSQL 接続 URL を1行で保存する。SessionStart 実行環境には `psql` が必要。`urlFile` 未指定時は Neon 節を出力せず、file 不在・空・接続失敗時は context 内へ失敗理由を出して hook 自体は継続。
+この tech consumer の設定例は `~/.ssh/neon-harness-index-url.txt` / `10`。file は利用者だけが読める権限で作成し、PostgreSQL 接続 URL を1行で保存する。SessionStart 実行環境には `psql` が必要。`urlFile` 未指定時は Neon 節を出力せず、file 不在・psql 不在の機体(鍵を持たない役員機など)は想定内として `ymos kb search` を案内するだけに留め、file が存在するのに空・読めない・接続失敗の場合だけ context 内へ失敗理由を出して hook 自体は継続。
 
 ## 7.1 cloud セッションのブランチは終わったら回収する
 
@@ -340,8 +340,8 @@ bash .claude/_core/hooks/session-init.sh
 |---|---|
 | SessionStart hook 出力 `session-init.sh: no usable python on PATH` | python3 not in PATH。`apt install python3` or `brew install python3` |
 | `.harness.json missing` warning が出る | consumer リポ root に `.harness.json` が無い、または `CLAUDE_PROJECT_DIR` 未 set。`cd <repo-root>` で再実行 |
-| Neon 参照 `urlFile not found` / `urlFile is empty` | `neon.urlFile` の path 誤り、file 不在、または1行目が空。接続 URL file を修正 |
-| Neon 参照 `psql not found on PATH` | PostgreSQL client 未導入。`apt install postgresql-client` or `brew install libpq` |
+| SessionStart に `索引検索` 節(鍵なし案内)が出る | この機体に Neon の鍵(`urlFile`)または `psql` が無い。想定内、`ymos kb search` を使う。鍵を配る機体なら file を配置 |
+| Neon 参照 `urlFile is empty` | `neon.urlFile` の file は存在するが1行目が空。接続 URL file を修正 |
 | Neon 参照 `fetch failed` | 接続 URL、network、DB 権限、`harness_index_db` の状態を確認 |
 | `npm ci` fail(cloud) | network 問題 or `package-lock.json` 整合性問題、`rm -rf node_modules .claude/.npm-install-hash && npm ci` で recovery |
 | Codex auth bootstrap fail | `CODEX_AUTH_JSON` env が空、または invalid JSON。compact 化 + 再投入 |
