@@ -113,6 +113,9 @@ branch_push_cloud() {
 #   2. merge・rebase・cherry-pick・revert・bisect の途中、unmerged の index なら何もしない(他の窓の作業の途中)。
 #   3. HEAD..N で足される path と同名の「無視される追跡外ファイル」があれば何もしない(read-tree -u は .gitignore 済みの追跡外は
 #      黙って上書きするので、実測のうえここで止める)。
+#      足される path は `diff --no-renames --diff-filter=A`(rename の移動先も含める。既定の rename 検出だと R100 は A に出ず、鍵のような
+#      .gitignore 済みの追跡外を上書きした = 2026-10-07 鷹野の実測)。submodule(gitlink)は read-tree が index の pointer だけ N にし、
+#      手元で stage 済みの別の pointer は read-tree が拒む(実測)ので事前検査は要らない。作業木の submodule は動かさない。
 #   4. memory の index だけ先に N に揃える(2) で作業木の memory は N の中身に降りているので、揃えないと read-tree が「memory が dirty」と拒む)。
 #   5. `git read-tree -m -u HEAD N`。HEAD..N で変わる path に手元の変更(作業木・index)がある、足される path に追跡外のファイルがある、
 #      index.lock が握られている、のどれかなら何も書かずに失敗する(部分的に書かないことを実測) ── memory の index を HEAD に戻して
@@ -141,7 +144,7 @@ advance_host() {
     if [ -e "$repo/$p" ] || [ -L "$repo/$p" ]; then
       [ -z "$(G ls-files -- "$p" 2>/dev/null)" ] && added+=("$p")
     fi
-  done < <(G diff -z --name-only --diff-filter=A "$H0" "$N" 2>/dev/null)
+  done < <(G diff -z --name-only --no-renames --diff-filter=A "$H0" "$N" 2>/dev/null)   # --no-renames: rename は既定で A に出ない(R100)。移動先も「足される path」
   if [ "${#added[@]}" -gt 0 ]; then
     log "host HEAD not advanced: untracked file(s) in the way of Forgejo's new path(s): ${added[*]:0:5} (next time)"; return 0
   fi
@@ -153,7 +156,16 @@ advance_host() {
     return 0
   fi
   if G update-ref -m memory-sync refs/heads/main "$N" "$H0" 2>/dev/null; then
-    log "host HEAD -> $N (worktree and index too)"; return 0
+    log "host HEAD -> $N (worktree and index too)"
+    # submodule(gitlink)の pointer が進んだ path: read-tree は index の gitlink だけ N にし、submodule の作業木は動かさない(git pull と同じ。
+    # ネットワークに出ない)。 ` M <path>` が出るので、git submodule update が要る旨を残す
+    local sm=() m1 m2 s1 s2 st
+    while IFS= read -r -d '' m1; do
+      IFS=' ' read -r m1 m2 s1 s2 st <<<"${m1#:}"; IFS= read -r -d '' p
+      if [ "$m1" = 160000 ] || [ "$m2" = 160000 ]; then sm+=("$p"); fi
+    done < <(G diff --raw -z --no-renames "$H0" "$N" 2>/dev/null)
+    [ "${#sm[@]}" -gt 0 ] && log "host: submodule の pointer が進んだ: ${sm[*]} ── git submodule update が要る(advance_host は submodule を checkout しない)"
+    return 0
   fi
   # update-ref が失敗: index と作業木だけ N になっている。いまの HEAD の木(+ memory は N の中身)へ戻す
   cur="$(G rev-parse -q --verify 'HEAD^{commit}')" || cur="$H0"

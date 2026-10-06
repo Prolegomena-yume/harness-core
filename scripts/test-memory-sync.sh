@@ -268,6 +268,46 @@ w_mk; git -C "$WO" pull -q --ff-only origin main; echo "ign" >"$WO/ign.txt"; git
 echo "my secret" >"$W/ign.txt"; h0="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"
 chk "W4d .gitignore された同名の追跡外ファイルも上書きせず、HEAD は進まない" bash -c "[ '$out' = 0 ] && [ \"\$(cat '$W/ign.txt')\" = 'my secret' ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && grep -q 'ign.txt' '$sbx/st-w/sync.log'"
 
+# W4r: 他の窓が old.txt を ign.txt へ rename(R100)し、移動先の名前が母艦では .gitignore 済みの追跡外ファイル(鍵のような)→ 上書きせず、HEAD も進まない
+# (git diff は rename を既定で検出し --diff-filter=A に出ないので、事前検査は --no-renames で見る。tech の .hex-token がこの形)
+w_mk; git -C "$WO" pull -q --ff-only origin main; git -C "$WO" mv old.txt ign.txt; "$GAS" anno -C "$WO" commit -q -m "rename old.txt to ign.txt"; git -C "$WO" push -q origin main
+chk "W4r0 対照: 他の窓の commit は old.txt → ign.txt の rename(100%)" test "$(git -C "$WO" diff -M --name-status HEAD~1 HEAD | cut -c1-4)" = R100
+echo "MINE" >"$W/ign.txt"; h0="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"
+chk "W4r rename の移動先が .gitignore 済みの追跡外ファイルなら、上書きせず(中身 MINE が残る)、HEAD も進まず、記録に残る" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(cat '$W/ign.txt')\" = MINE ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && [ -e '$W/old.txt' ] && grep -q 'ign.txt' '$sbx/st-w/sync.log'"
+rm -f "$W/ign.txt"; out="$(whs)"
+chk "W4r2 どかした次の Stop で rename が降りて揃う(old.txt が消え ign.txt が現れる)" bash -c "[ '$out' = 0 ] && [ ! -e '$W/old.txt' ] && [ \"\$(cat '$W/ign.txt')\" = old ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ]"
+
+# W11: submodule(gitlink)。tech の .claude/_core がこの形。他の窓が pointer を進める commit は頻繁に来る
+sg() { git -c protocol.file.allow=always "$@"; }
+sm_mk() {
+  w_mk; local sb="$sbx/w/sub" i; rm -rf "$sb"; git init -q -b main "$sb"
+  for i in 1 2 3; do echo "s$i" >"$sb/f.txt"; git -C "$sb" add -A; "$GAS" anno -C "$sb" commit -q -m "s$i"; eval "SM$i=$(git -C "$sb" rev-parse HEAD)"; done
+  sg -C "$WO" pull -q --ff-only origin main; sg -C "$WO" submodule add -q "$sb" .claude/_core 2>/dev/null; git -C "$WO/.claude/_core" checkout -q "$SM1"
+  git -C "$WO" add -A; "$GAS" anno -C "$WO" commit -q -m "add submodule at s1"; git -C "$WO" push -q origin main
+  sg -C "$W" pull -q --ff-only origin main; sg -C "$W" submodule update -q --init 2>/dev/null
+  # 他の窓: submodule の pointer を s2 へ + code.txt も変える
+  git -C "$WO/.claude/_core" checkout -q "$SM2"; echo code2 >"$WO/code.txt"; git -C "$WO" add -A; "$GAS" anno -C "$WO" commit -q -m "bump submodule to s2"; git -C "$WO" push -q origin main
+  SMW="$W/.claude/_core"
+}
+sm_mk; h0="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"
+chk "W11a 母艦の submodule が H0 の pointer のまま clean: HEAD・index の gitlink が N(s2)になり、code.txt も降り、submodule の作業木は古い s1 のまま(checkout しない)で、git status は ' M .claude/_core' だけ" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ] && [ \"\$(git -C '$W' ls-files -s .claude/_core | cut -d' ' -f2)\" = $SM2 ] && [ \"\$(git -C '$SMW' rev-parse HEAD)\" = $SM1 ] && [ \"\$(cat '$W/code.txt')\" = code2 ] && [ \"\$(git -C '$W' status --porcelain)\" = ' M .claude/_core' ]"
+chk "W11a2 記録に「submodule の pointer が進んだ ... git submodule update が要る」が 1 行残る" bash -c "[ \"\$(grep -c 'submodule の pointer が進んだ: .claude/_core' '$sbx/st-w/sync.log')\" = 1 ] && grep 'submodule の pointer' '$sbx/st-w/sync.log' | grep -q 'git submodule update'"
+sg -C "$W" submodule update -q 2>/dev/null
+chk "W11a3 git submodule update をすれば git status が空になる" bash -c "[ -z \"\$(git -C '$W' status --porcelain)\" ] && [ \"\$(git -C '$SMW' rev-parse HEAD)\" = $SM2 ]"
+# W11b: 母艦が submodule を手元で進めている(pointer は stage していない)→ read-tree は通る。手元の submodule は巻き戻さず、stage に取り消しの差分も出ない
+sm_mk; git -C "$SMW" checkout -q "$SM3"; out="$(whs)"
+chk "W11b 手元で submodule を s3 に進めただけ(未 stage): HEAD は進み、submodule は s3 のまま、stage の差分は無く' M .claude/_core' が出る" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ] && [ \"\$(git -C '$SMW' rev-parse HEAD)\" = $SM3 ] && [ -z \"\$(git -C '$W' diff --cached --name-only)\" ] && [ \"\$(git -C '$W' status --porcelain)\" = ' M .claude/_core' ] && [ \"\$(git -C '$W' ls-files -s .claude/_core | cut -d' ' -f2)\" = $SM2 ]"
+# W11c: pointer を stage 済み(index の gitlink が H0 とも N とも違う)→ read-tree が拒む。HEAD は進まず、stage は残る
+sm_mk; git -C "$SMW" checkout -q "$SM3"; git -C "$W" add .claude/_core; h0="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"
+chk "W11c pointer を stage 済み(s3)なら read-tree が拒み、HEAD は進まず、stage は残り、code.txt も降ろさず、記録に refused を残す" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && [ \"\$(git -C '$W' ls-files -s .claude/_core | cut -d' ' -f2)\" = $SM3 ] && [ \"\$(cat '$W/code.txt')\" = code ] && grep -q 'read-tree refused' '$sbx/st-w/sync.log' && grep -q '_core' '$sbx/st-w/sync.log'"
+# W11d: submodule の中身を編集中 → 中身は触らない
+sm_mk; echo wip >>"$SMW/f.txt"; out="$(whs)"
+chk "W11d submodule の中を編集中でも HEAD は進み、その編集は残る" bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ] && grep -q wip '$SMW/f.txt'"
+
 # W5: 手元の memory 変更と、他の窓の memory 以外の push が同時 → push しない(今の挙動)。作業木・index は壊れず、pull(ff)した次の Stop で memory が上がる
 w_mk; echo "AL" >"$WH/a.md"; echo "BL" >"$WH/b.md"; h0="$(git -C "$W" rev-parse HEAD)"; f0="$(git -C "$WF" rev-parse main)"; w_other; f1="$(w_fmain)"; out="$(whs)"
 chk "W5 手元の memory 変更と他の窓の memory 以外の push が同時なら、Forgejo へ push せず(main 不変)、HEAD も動かず、作業木・index は memory の変更だけが残る" \
