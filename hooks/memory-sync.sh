@@ -3,7 +3,7 @@
 # 必ず exit 0・標準出力は空(Stop を止めない)。記録は ~/.cache/harness-memory-sync/sync.log。
 #
 # 前提と形(役員 人見 2026-09-30、BRIEF cloud-2。設計は docs/cloud-session.md の「memory の同期」):
-#   - 触るのは .claude/memory/ だけ。作業木の index も HEAD も他のファイルも触らない ── 一時 index と
+#   - Forgejo へ載せるのは .claude/memory/ だけ。作業木の index も HEAD も他のファイルも書き換えずに ── 一時 index と
 #     git の plumbing(hash-object / commit-tree)で「Forgejo の main の tree の memory だけを差し替えた commit」を
 #     作り、main に直接 push する。tech の main は `unprotected_file_patterns: .claude/memory/**` があるので、
 #     memory だけの commit なら保護を通る(memory 以外を含む commit は保護が弾く)。
@@ -24,8 +24,13 @@
 #     (branch_push_cloud): 差分・未追跡・未 push の commit が全部対象の path のときだけ、session の branch に git-as 鷹野で commit し、
 #     `git push origin HEAD:<branch>`(force しない)。対象外が 1 つでもあれば何もせず、警告も残す。検査は消さない・上書きしない
 #
-# 母艦の追加条件: 作業木(既定 ~/canonical/tech)が main で、HEAD が今回の commit の祖先で、差分が memory だけ。
-#   満たさなければ push しない(作業木を壊さない)。満たすときだけ HEAD と index の memory を commit に進める。
+# 母艦の追加条件: 作業木(既定 ~/canonical/tech)が main であること。memory を Forgejo へ push するのは、HEAD が今回の commit の
+#   祖先で、HEAD..commit が memory だけのときだけ(満たさなければ push しない。作業木を壊さない)。
+#   push の有無と別に、Stop のたびに HEAD を Forgejo の main(今回の commit)へ **作業木ごと** fast-forward する(advance_host):
+#   他の窓が Forgejo の main に push した memory 以外の変更(コード・_sessions・_evidence)も作業木・index・HEAD に降りる。
+#   HEAD が祖先でない(母艦に push 前の commit がある)/ merge・rebase・cherry-pick・revert の途中 / HEAD..N で変わる path に
+#   手元の未 commit の変更や追跡外のファイルがある、のどれかなら HEAD も index も作業木も(memory の降ろしを除いて)動かさず、
+#   log に残して次の Stop でまた試す。HEAD..N で変わらない path の手元の変更(他の窓の書きかけ)はそのまま残る。
 #
 # env: MEMSYNC_NO_BRANCH=1(cloud-bootstrap の起動時の取り込みが付ける。session の branch に commit・push しない)
 # env(test 用の上書き): MEMSYNC_REPO MEMSYNC_URL MEMSYNC_STATE MEMSYNC_REMOTE_MODE(host|cloud)
@@ -100,6 +105,70 @@ branch_push_cloud() {
   fi
 }
 
+
+# 母艦: HEAD を Forgejo の main(N)へ、作業木と index ごと fast-forward する(git merge --ff-only と同じ規則)。
+# 以前は memory の index だけ N に揃えて HEAD を N に飛ばしていたため、他の窓が push した memory 以外の変更は作業木にも index にも
+# 降りず stage に「取り消す差分」として残り、母艦に push 前の commit があれば main がそれを捨てて飛んだ(2026-10-07 鷹野が実機で発見)。
+#   1. HEAD == N なら何もしない。HEAD が N の祖先でなければ(push 前の commit・分岐)何もしない。
+#   2. merge・rebase・cherry-pick・revert・bisect の途中、unmerged の index なら何もしない(他の窓の作業の途中)。
+#   3. HEAD..N で足される path と同名の「無視される追跡外ファイル」があれば何もしない(read-tree -u は .gitignore 済みの追跡外は
+#      黙って上書きするので、実測のうえここで止める)。
+#   4. memory の index だけ先に N に揃える(2) で作業木の memory は N の中身に降りているので、揃えないと read-tree が「memory が dirty」と拒む)。
+#   5. `git read-tree -m -u HEAD N`。HEAD..N で変わる path に手元の変更(作業木・index)がある、足される path に追跡外のファイルがある、
+#      index.lock が握られている、のどれかなら何も書かずに失敗する(部分的に書かないことを実測) ── memory の index を HEAD に戻して
+#      記録し、HEAD は進めない。次の Stop でまた試す。HEAD..N で変わらない path の手元の変更は残る。
+#   6. `update-ref refs/heads/main N <旧 HEAD>`(旧 HEAD を添えた compare-and-swap)。これが失敗した(その間に HEAD が動いた・ref lock)と、
+#      index と作業木だけが N で HEAD が残る ── 今回の不具合と同じ形 ── になるので取り返す: **いまの HEAD の木**に、memory だけ N のものを
+#      足した木を一時 index で作り、`read-tree -m -u N <その木>` で index と作業木を戻す(memory は 2) が降ろした N の中身を保つ。
+#      N と変わらない path は動かず、他の窓が commit で取り込んでいた分も(いまの HEAD の木に含まれるので)そのまま通る。戻せなければ
+#      「手で直すこと」を記録に残す(最後の砦。通常は起きない)。memory の index は HEAD に戻す。
+#   順序の理由: HEAD を先に動かして read-tree が失敗すると、中途半端な状態が長く残る。read-tree は失敗しても何も書かないので先に打ち、
+#   HEAD の更新(compare-and-swap)を最後に置く。窓は read-tree の終わりから update-ref までの数ミリ秒で、そこに入った場合だけ 6. の取り返しに回る。
+advance_host() {
+  local N="$1" H0 gd f p err T idx cur added=() mid=0
+  H0="$(G rev-parse -q --verify 'HEAD^{commit}')" || { log "host: no HEAD (skip)"; return 0; }
+  [ "$N" = "$H0" ] && return 0
+  G merge-base --is-ancestor "$H0" "$N" 2>/dev/null || { log "host HEAD not advanced: not a fast-forward (unpushed or diverged commits on main; HEAD ${H0:0:8} N ${N:0:8})"; return 0; }
+  gd="$(G rev-parse --absolute-git-dir 2>/dev/null)"
+  for f in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD REBASE_HEAD rebase-merge rebase-apply sequencer BISECT_LOG; do
+    [ -e "$gd/$f" ] && mid=1
+  done
+  [ "$mid" = 0 ] && [ -n "$(G ls-files -u 2>/dev/null | head -1)" ] && mid=1
+  [ "$mid" = 1 ] && { log "host HEAD not advanced: merge/rebase/cherry-pick/revert in progress (next time)"; return 0; }
+  # 足される path と同名の追跡外(無視されるものも)が居れば止める。memory は 2) が書いたものなので対象外
+  while IFS= read -r -d '' p; do
+    case "$p" in "$MP"/*) continue ;; esac
+    if [ -e "$repo/$p" ] || [ -L "$repo/$p" ]; then
+      [ -z "$(G ls-files -- "$p" 2>/dev/null)" ] && added+=("$p")
+    fi
+  done < <(G diff -z --name-only --diff-filter=A "$H0" "$N" 2>/dev/null)
+  if [ "${#added[@]}" -gt 0 ]; then
+    log "host HEAD not advanced: untracked file(s) in the way of Forgejo's new path(s): ${added[*]:0:5} (next time)"; return 0
+  fi
+  G update-index -q --refresh >/dev/null 2>&1 || true   # 念のため(stat だけ変わった file で read-tree が誤って拒まないように。外しても test は通る ── 後の reset が index を更新するため、と推測)
+  G reset -q "$N" -- "$MP" 2>/dev/null || { log "host index locked: HEAD not advanced (next time)"; return 0; }
+  if ! err="$(G read-tree -m -u "$H0" "$N" 2>&1)"; then
+    G reset -q "$H0" -- "$MP" 2>/dev/null
+    log "host HEAD not advanced: read-tree refused (local changes or untracked files on paths Forgejo changed; next time): $(printf '%s' "$err" | grep -v '^$' | head -3 | tr '\n' ' ')"
+    return 0
+  fi
+  if G update-ref -m memory-sync refs/heads/main "$N" "$H0" 2>/dev/null; then
+    log "host HEAD -> $N (worktree and index too)"; return 0
+  fi
+  # update-ref が失敗: index と作業木だけ N になっている。いまの HEAD の木(+ memory は N の中身)へ戻す
+  cur="$(G rev-parse -q --verify 'HEAD^{commit}')" || cur="$H0"
+  idx="$(mktemp -u "$state/idx.XXXXXX")"
+  T="$(GIT_INDEX_FILE="$idx" G read-tree "$cur" 2>/dev/null \
+       && { GIT_INDEX_FILE="$idx" G rm -r -q -f --cached --ignore-unmatch -- "$MP" >/dev/null 2>&1
+            G rev-parse -q --verify "$N:$MP" >/dev/null 2>&1 && GIT_INDEX_FILE="$idx" G read-tree --prefix="$MP/" "$N:$MP" 2>/dev/null; true; } \
+       && GIT_INDEX_FILE="$idx" G write-tree 2>/dev/null)"; rm -f "$idx"
+  if [ -n "$T" ] && G read-tree -m -u "$N" "$T" 2>/dev/null; then
+    G reset -q "$cur" -- "$MP" 2>/dev/null
+    log "host HEAD not advanced (HEAD moved meanwhile or ref locked); index and worktree put back to HEAD ${cur:0:8} (next time)"
+  else
+    log "host ERROR: update-ref failed and put-back failed; index/worktree are at ${N:0:8} but HEAD is ${cur:0:8}: run 'git read-tree -m -u $N HEAD' by hand"
+  fi
+}
 
 worker() {
   exec 9>"$state/lock"; flock -n 9 || { log "skip: another sync running"; return 0; }
@@ -198,13 +267,8 @@ worker() {
   done
   G update-ref refs/memory-sync/base "$N"
 
-  # 3) 母艦: HEAD と index の memory を N に進める(memory 以外の index 項目は触らない)
-  if [ "$mode" = host ] && [ "$N" != "$(G rev-parse HEAD)" ]; then
-    if G reset -q "$N" -- "$MP" 2>/dev/null; then
-      G update-ref -m "memory-sync" refs/heads/main "$N" "$(G rev-parse HEAD)" 2>/dev/null \
-        && log "host HEAD -> $N" || log "host HEAD not advanced (moved meanwhile)"
-    else log "host index locked: HEAD not advanced (next time)"; fi
-  fi
+  # 3) 母艦: HEAD を N へ fast-forward(作業木・index ごと。memory 以外の path も)
+  [ "$mode" = host ] && advance_host "$N"
   # Stop の worker だけ(起動時の取り込みでは branch に触らない。降りた memory は次の Stop で拾う)
   [ "$mode" = cloud ] && [ "${MEMSYNC_NO_BRANCH:-}" != 1 ] && branch_push_cloud
   log "done in $(( $(date +%s) - t0 ))s local:${#changed_local[@]} remote:${#changed_remote[@]}"

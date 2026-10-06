@@ -209,6 +209,117 @@ chk "R16 差分も未 push も無ければ commit も push もしない" test "$
 cl; git -C "$L2" checkout -q -B main; echo "N16" >"$L2/.claude/memory/n16.md"; gm="$(git -C "$sbx/github.git" rev-parse main)"; out="$(c2)"
 chk "R16b branch が main のときは origin へ push しない(写しの main を進めない)" test "$out" = 0 -a "$(git -C "$sbx/github.git" rev-parse main)" = "$gm" -a "$(fshow .claude/memory/n16.md)" = N16
 
+echo "# 母艦: 他の窓が Forgejo の main に push した memory 以外の変更を、作業木・index・HEAD ごと降ろす(advance_host)"
+# 別の sandbox(Forgejo は pre-receive 無し: 他の窓の push は memory 以外も通る)。host2 = 母艦、oth2 = 他の窓
+w_mk() {
+  rm -rf "$sbx/w" "$sbx/st-w"; mkdir -p "$sbx/w"
+  git init -q --bare -b main "$sbx/w/f.git"
+  local sd="$sbx/w/seed"; git init -q -b main "$sd"; mkdir -p "$sd/.claude/memory" "$sd/_sessions"
+  echo "- [a](a.md) — first" >"$sd/.claude/memory/MEMORY.md"; echo A0 >"$sd/.claude/memory/a.md"; echo code >"$sd/code.txt"; echo other >"$sd/other.txt"
+  echo old >"$sd/old.txt"; echo ev0 >"$sd/_sessions/s0.md"; printf 'ign.txt\n' >"$sd/.gitignore"
+  git -C "$sd" add -A; "$GAS" anno -C "$sd" commit -q -m init; git -C "$sd" push -q "$sbx/w/f.git" main
+  git clone -q "$sbx/w/f.git" "$sbx/w/host"; git clone -q "$sbx/w/f.git" "$sbx/w/oth"
+  W="$sbx/w/host"; WF="$sbx/w/f.git"; WO="$sbx/w/oth"; WH="$W/.claude/memory"
+}
+whs() { sleep 1; env -u CLAUDE_CODE_REMOTE MEMSYNC_REMOTE_MODE=host MEMSYNC_REPO="$W" MEMSYNC_STATE="$sbx/st-w" MEMSYNC_FOREGROUND=1 MEMSYNC_FETCH_EVERY=0 bash "$HOOK" </dev/null >/dev/null 2>&1; echo $?; }
+wlog() { cat "$sbx/st-w/sync.log" 2>/dev/null; }
+w_other() {   # 他の窓が memory 以外(code.txt 変更・docs/new.md 新規・old.txt 削除)を commit して Forgejo の main に push
+  git -C "$WO" pull -q --ff-only origin main 2>/dev/null; echo "code2" >"$WO/code.txt"; mkdir -p "$WO/docs"; echo NEW >"$WO/docs/new.md"; git -C "$WO" rm -q old.txt
+  git -C "$WO" add -A; "$GAS" anno -C "$WO" commit -q -m "other window"; git -C "$WO" push -q origin main
+}
+w_aligned() { [ "$(git -C "$W" rev-parse HEAD)" = "$(git -C "$WF" rev-parse main)" ] && [ -z "$(git -C "$W" status --porcelain)" ]; }
+w_fmain() { git -C "$WF" rev-parse main; }
+
+# W1: 他の窓の push だけ(母艦に手元の変更なし)
+w_mk; w_other; out="$(whs)"
+chk "W1 他の窓が memory 以外(変更・新規・削除)を push → 母艦の Stop で HEAD・index・作業木が揃い、git status に取り消しの差分が無い" \
+  bash -c "[ '$out' = 0 ] && cd '$W' && [ \"\$(git rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ] && [ -z \"\$(git status --porcelain)\" ] && [ \"\$(cat code.txt)\" = code2 ] && [ \"\$(cat docs/new.md)\" = NEW ] && [ ! -e old.txt ]"
+# W1b: memory も一緒に変わった push(他の窓が memory と code を 1 commit で)
+w_mk; echo "AX" >"$WO/.claude/memory/a.md"; echo "BX" >"$WO/.claude/memory/b.md"; w_other; out="$(whs)"
+chk "W1b memory も一緒に変わった他の窓の push も、作業木・index・HEAD が揃う(memory の新規・更新も降りる)" \
+  bash -c "[ '$out' = 0 ] && cd '$W' && [ \"\$(git rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ] && [ -z \"\$(git status --porcelain)\" ] && [ \"\$(cat .claude/memory/a.md)\" = AX ] && [ \"\$(cat .claude/memory/b.md)\" = BX ] && [ \"\$(cat code.txt)\" = code2 ]"
+
+# W2: 他の窓が変えた path を母艦が手元で編集中 → HEAD は進まず、編集は残り、記録に残る。編集を消した次の Stop で揃う
+w_mk; echo "my wip" >>"$W/code.txt"; h0="$(git -C "$W" rev-parse HEAD)"; w_other; out="$(whs)"
+chk "W2 他の窓が変えた path を手元で編集中なら、HEAD は進まず、編集は残り、新しいファイルも降ろさず、記録に refused を残す" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && grep -q 'my wip' '$W/code.txt' && [ ! -e '$W/docs/new.md' ] && [ -e '$W/old.txt' ] && grep -q 'read-tree refused' '$sbx/st-w/sync.log' && grep -q 'code.txt' '$sbx/st-w/sync.log' && [ \"\$(git -C '$W' status --porcelain)\" = ' M code.txt' ]"
+git -C "$W" checkout -q -- code.txt; out="$(whs)"
+chk "W2b 編集を消した次の Stop で揃う" test "$out" = 0 && chk "W2c(揃った後の git status が空)" w_aligned
+# W2d: stage 済みの手元変更でも同じ
+w_mk; echo "staged wip" >>"$W/code.txt"; git -C "$W" add code.txt; h0="$(git -C "$W" rev-parse HEAD)"; w_other; whs >/dev/null
+chk "W2d stage 済みの手元変更がある path が変わっていても HEAD は進まず、stage は残る" bash -c "[ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && [ \"\$(git -C '$W' status --porcelain)\" = 'M  code.txt' ]"
+
+# W3: 母艦の main に push 前の commit がある → HEAD は動かず、その commit は main に残る
+w_mk; echo u >"$W/unpushed.txt"; git -C "$W" add unpushed.txt; "$GAS" anno -C "$W" commit -q -m unpushed; u="$(git -C "$W" rev-parse HEAD)"; w_other; out="$(whs)"
+chk "W3 push 前の commit がある母艦は、他の窓の push があっても HEAD が動かず(その commit が main に残り)、作業木も壊れない" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $u ] && [ \"\$(git -C '$W' rev-parse main)\" = $u ] && [ -z \"\$(git -C '$W' status --porcelain)\" ] && grep -q 'not a fast-forward' '$sbx/st-w/sync.log' && [ \"\$(cat '$W/code.txt')\" = code ]"
+# W3b: 母艦に push 前の commit があり memory も書き換わった → push しない(今の挙動)、commit は残る
+echo "M3" >"$WH/m3.md"; f0="$(w_fmain)"; out="$(whs)"
+chk "W3b push 前の commit があって memory も書いたとき: Forgejo の main は動かず、HEAD も動かない(今の挙動)" test "$out" = 0 -a "$(w_fmain)" = "$f0" -a "$(git -C "$W" rev-parse HEAD)" = "$u"
+
+# W4: 他の窓が足したファイルと同名の追跡外ファイルが母艦にある → 上書きしない、HEAD は進まない。どかすと進む
+w_mk; mkdir -p "$W/docs"; echo "mine" >"$W/docs/new.md"; h0="$(git -C "$W" rev-parse HEAD)"; w_other; out="$(whs)"
+chk "W4 同名の追跡外ファイルがあれば上書きせず、HEAD も進まず、記録に残る" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(cat '$W/docs/new.md')\" = mine ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && [ \"\$(cat '$W/code.txt')\" = code ] && grep -q 'docs/new.md' '$sbx/st-w/sync.log'"
+rm -f "$W/docs/new.md"; rmdir "$W/docs" 2>/dev/null; out="$(whs)"
+chk "W4b どかした次の Stop で揃う" bash -c "[ '$out' = 0 ]" && chk "W4c(揃った後の git status が空)" w_aligned
+# W4d: .gitignore に載る追跡外ファイルでも上書きしない(read-tree -u は無視される追跡外を黙って上書きするので、hook 側で止める)
+w_mk; git -C "$WO" pull -q --ff-only origin main; echo "ign" >"$WO/ign.txt"; git -C "$WO" add -f ign.txt; "$GAS" anno -C "$WO" commit -q -m "add ign.txt"; git -C "$WO" push -q origin main
+echo "my secret" >"$W/ign.txt"; h0="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"
+chk "W4d .gitignore された同名の追跡外ファイルも上書きせず、HEAD は進まない" bash -c "[ '$out' = 0 ] && [ \"\$(cat '$W/ign.txt')\" = 'my secret' ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && grep -q 'ign.txt' '$sbx/st-w/sync.log'"
+
+# W5: 手元の memory 変更と、他の窓の memory 以外の push が同時 → push しない(今の挙動)。作業木・index は壊れず、pull(ff)した次の Stop で memory が上がる
+w_mk; echo "AL" >"$WH/a.md"; echo "BL" >"$WH/b.md"; h0="$(git -C "$W" rev-parse HEAD)"; f0="$(git -C "$WF" rev-parse main)"; w_other; f1="$(w_fmain)"; out="$(whs)"
+chk "W5 手元の memory 変更と他の窓の memory 以外の push が同時なら、Forgejo へ push せず(main 不変)、HEAD も動かず、作業木・index は memory の変更だけが残る" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$WF' rev-parse main)\" = $f1 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && [ \"\$(cat '$WH/a.md')\" = AL ] && [ \"\$(cat '$W/code.txt')\" = code ] && [ \"\$(git -C '$W' status --porcelain | sort | tr '\n' ',')\" = ' M .claude/memory/a.md,?? .claude/memory/b.md,' ] && grep -q 'HEAD..new has non-memory paths' '$sbx/st-w/sync.log'"
+git -C "$W" pull -q --ff-only origin main 2>/dev/null; out="$(whs)"
+chk "W5b pull(ff)した次の Stop で memory(a.md・b.md)が Forgejo に上がり、揃う" bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$WF' show main:.claude/memory/a.md)\" = AL ] && [ \"\$(git -C '$WF' show main:.claude/memory/b.md)\" = BL ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ] && [ -z \"\$(git -C '$W' status --porcelain)\" ]"
+
+# W6: HEAD..N で変わらない path の手元の変更(他の窓の書きかけ)は残る
+w_mk; echo wip >>"$W/other.txt"; echo staged >"$W/staged.txt"; git -C "$W" add staged.txt; echo untr >"$W/untr.txt"; w_other; out="$(whs)"
+chk "W6 HEAD..N で変わらない path の手元の変更(未 commit・staged・追跡外)は残り、HEAD は進む" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = \"\$(git -C '$WF' rev-parse main)\" ] && [ \"\$(git -C '$W' status --porcelain | sort | tr '\n' ',')\" = ' M other.txt,?? untr.txt,A  staged.txt,' ] && [ \"\$(cat '$W/code.txt')\" = code2 ]"
+
+# W7: update-ref が失敗する(ref lock)→ index・作業木だけ進んだ形を残さず、取り返す。lock を外した次の Stop で揃う
+w_mk; w_other; touch "$W/.git/refs/heads/main.lock"; h0="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"
+chk "W7 update-ref が失敗(ref lock)しても、index・作業木は HEAD のまま戻り(git status が空)、記録に残る" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && [ -z \"\$(git -C '$W' status --porcelain)\" ] && [ \"\$(cat '$W/code.txt')\" = code ] && [ -e '$W/old.txt' ] && grep -q 'put back' '$sbx/st-w/sync.log'"
+rm -f "$W/.git/refs/heads/main.lock"; out="$(whs)"
+chk "W7b lock を外した次の Stop で揃う" bash -c "[ '$out' = 0 ]" && chk "W7c(揃った後の git status が空)" w_aligned
+# W7d: memory も降りる push のとき、取り返しても memory の作業木は N の中身のまま(memory の同期は止めない)
+w_mk; echo "AX" >"$WO/.claude/memory/a.md"; echo "BX" >"$WO/.claude/memory/b.md"; w_other; touch "$W/.git/refs/heads/main.lock"; out="$(whs)"
+chk "W7d ref lock で HEAD が進まなくても、memory の降ろし(a.md・b.md)は作業木に残り、memory 以外は HEAD のまま" \
+  bash -c "[ '$out' = 0 ] && [ \"\$(cat '$WH/a.md')\" = AX ] && [ \"\$(cat '$WH/b.md')\" = BX ] && [ \"\$(cat '$W/code.txt')\" = code ] && [ -z \"\$(git -C '$W' diff --cached --name-only)\" ]"
+rm -f "$W/.git/refs/heads/main.lock"; out="$(whs)"
+chk "W7e lock を外した次の Stop で揃う" bash -c "[ '$out' = 0 ]" && chk "W7f(揃った後の git status が空)" w_aligned
+
+# W7g: read-tree の終わりから update-ref までの間に、他の窓が HEAD を動かした(PATH の git の薄い包みで、read-tree -m -u の直後に 1 回だけ
+# 別の commit へ main を進める)→ 取り返す先は「いまの HEAD の木」。HEAD は他の窓の commit のまま、作業木・index はそれに揃う
+mkdir -p "$sbx/shim"; realgit="$(command -v git)"
+cat >"$sbx/shim/git" <<SH
+#!/bin/bash
+"$realgit" "\$@"; rc=\$?
+case " \$* " in *" read-tree -m -u "*) if [ -n "\${SHIM_AFTER:-}" ] && [ ! -e "\$SHIM_FLAG" ]; then : >"\$SHIM_FLAG"; ( eval "\$SHIM_AFTER" ) >/dev/null 2>&1; fi ;; esac
+exit \$rc
+SH
+chmod +x "$sbx/shim/git"
+w_mk; echo "AX" >"$WO/.claude/memory/a.md"; w_other; h0="$(git -C "$W" rev-parse HEAD)"; rm -f "$sbx/shim.flag"
+SHIM_AFTER="c=\$($realgit -c user.name=x -c user.email=x@x -C '$W' commit-tree \"\$($realgit -C '$W' rev-parse HEAD^{tree})\" -p $h0 -m other-window-commit) && $realgit -C '$W' update-ref refs/heads/main \$c"
+out="$(PATH="$sbx/shim:$PATH" SHIM_FLAG="$sbx/shim.flag" SHIM_AFTER="$SHIM_AFTER" whs)"; h1="$(git -C "$W" rev-parse HEAD)"
+chk "W7g update-ref の前に他の窓が HEAD を動かしても、HEAD はその commit のまま、index・作業木は(memory の降ろしを除いて)その HEAD に揃い、記録に残る" \
+  bash -c "[ '$out' = 0 ] && [ -e '$sbx/shim.flag' ] && [ '$h1' != $h0 ] && [ \"\$(git -C '$W' log -1 --format=%s)\" = other-window-commit ] && [ \"\$(cat '$W/code.txt')\" = code ] && [ -e '$W/old.txt' ] && [ ! -e '$W/docs/new.md' ] && [ -z \"\$(git -C '$W' diff --cached --name-only)\" ] && [ \"\$(cat '$WH/a.md')\" = AX ] && [ \"\$(git -C '$W' status --porcelain)\" = ' M .claude/memory/a.md' ] && grep -q 'put back' '$sbx/st-w/sync.log'"
+
+# W8: merge の途中は何もしない
+w_mk; w_other; git -C "$W" rev-parse HEAD >"$W/.git/MERGE_HEAD"; h0="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"
+chk "W8 merge の途中(MERGE_HEAD)は HEAD も作業木も動かさず、記録に残る" bash -c "[ '$out' = 0 ] && [ \"\$(git -C '$W' rev-parse HEAD)\" = $h0 ] && [ \"\$(cat '$W/code.txt')\" = code ] && grep -q 'in progress' '$sbx/st-w/sync.log'"
+rm -f "$W/.git/MERGE_HEAD"; out="$(whs)"; chk "W8b 途中でなくなった次の Stop で揃う" bash -c "[ '$out' = 0 ]" && chk "W8c(揃った後の git status が空)" w_aligned
+
+# W9: stat だけ変わった(touch)追跡 file は、中身が同じなら進められる
+w_mk; touch "$W/code.txt"; sleep 1; touch "$W/code.txt"; w_other; out="$(whs)"
+chk "W9 touch しただけ(中身は同じ)の追跡 file が HEAD..N で変わる path でも、誤って拒まず揃う" bash -c "[ '$out' = 0 ]" && chk "W9b(揃った後の git status が空)" w_aligned
+# W10: 2 回目以降(HEAD == N)は何もしない
+h1="$(git -C "$W" rev-parse HEAD)"; out="$(whs)"; chk "W10 揃った後の Stop は何も変えない" test "$out" = 0 -a "$(git -C "$W" rev-parse HEAD)" = "$h1" -a -z "$(git -C "$W" status --porcelain)"
+
 echo "# 速度"
 ms() { local s e; s=$(date +%s%N); "$@" >/dev/null; e=$(date +%s%N); echo $(( (e-s)/1000000 )); }
 export MEMSYNC_FETCH_EVERY=600
