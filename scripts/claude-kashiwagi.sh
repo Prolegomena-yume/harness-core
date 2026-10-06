@@ -36,8 +36,11 @@
 # env:
 #   KASHIWAGI_MODEL(既定は models.env の KASHIWAGI_OPUS_MODEL) / KASHIWAGI_EFFORT(既定は同 KASHIWAGI_OPUS_EFFORT)
 #
-# 使い方: claude-kashiwagi.sh --no-loop [-C dir] -f <path> [--log path] [--model id] [--effort level] [--dry-run]
+# 使い方: claude-kashiwagi.sh --no-loop [-C dir] -f <path> [--gate 1|2] [--log path] [--model id] [--effort level] [--dry-run]
 # -f は複数可(codex-agent.sh と同じ、末尾のファイル名でゲート番号を判定)。task 引数(-f 以外)も付けられる。
+# ゲート番号は plan.md=1、findings.md / gate2-*.md=2、他は --gate で明示(無ければ不明 = 書き込み不可 + 警告)。
+# 依頼文の名が findings.md でないと不明になり、acceptEdits が付かず Edit / Write が全拒否になる
+# (2026-10-06 guard-3 / rv-ex-1 の事故、-f が gate2-<便>.md だった)。
 
 set -euo pipefail
 
@@ -47,7 +50,10 @@ usage() {
 
 options:
   -f, --file <path>   タスク本文をファイルから読む。複数指定可(最後のファイル名でゲート番号を判定:
-                       plan.md → ゲート1、findings.md → ゲート2、それ以外は判定なし)
+                       plan.md → ゲート1、findings.md または gate2-*.md → ゲート2、それ以外は判定なし)
+      --gate <1|2>     ゲート番号を明示する。ファイル名で判定できない依頼文(例: 鷹野が書く gate2-<便>.md 以外の名)用。
+                       ファイル名の判定と食い違えば die(plan.md に --gate 2 でゲート1の穴を開けさせない)。
+                       判定できないまま起動すると書き込み不可(Edit / Write は全拒否)で、起動時に警告する
   -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)
       --log <path>     ログ出力先
       --model <id>     Claude model(既定は models.env の KASHIWAGI_OPUS_MODEL、env KASHIWAGI_MODEL でも指定可)
@@ -63,7 +69,7 @@ task と --file が無い場合は標準入力からタスク本文を読む。
 CODEX_AGENT_RUN_DIR で export する。起動時に `rates claude` を 1 回叩いて <run_dir>/rates.json に残す。
 
 NIEKAWA_INBOX が環境にあれば(贄川の子として起動された場合)、その dirname の gates.tsv で
-「ゲートは便に1回」を判定する。-f の最後のファイル名が plan.md/findings.md のとき、該当ゲートが
+「ゲートは便に1回」を判定する。ゲート番号が決まっている(-f の名前か --gate)とき、該当ゲートが
 既に記録済みなら run_dir を作る前に die する。die しなければ起動直後に 1 行 append する
 (codex-agent.sh と同じ書き手責務、hook は検査専任)。
 USAGE
@@ -116,6 +122,7 @@ effort="${KASHIWAGI_EFFORT:-$KASHIWAGI_OPUS_EFFORT}"
 task_files=()
 task_args=()
 dry_run=0
+gate_opt=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -142,6 +149,14 @@ while [ "$#" -gt 0 ]; do
     --effort)
       [ "$#" -ge 2 ] || die "$1 には level が必要"
       effort="$2"
+      shift 2
+      ;;
+    --gate)
+      [ "$#" -ge 2 ] || die "$1 には 1 か 2 が必要"
+      case "$2" in
+        1|2) gate_opt="$2" ;;
+        *) die "--gate は 1 か 2: $2" ;;
+      esac
       shift 2
       ;;
     --no-loop)
@@ -206,8 +221,19 @@ fi
 gate_num=""
 case "$gate_target" in
   plan.md) gate_num=1 ;;
-  findings.md) gate_num=2 ;;
+  findings.md|gate2-*.md) gate_num=2 ;;
 esac
+# --gate は名前で決まらないときの明示。名前と食い違うなら die ── plan.md(ゲート1)に --gate 2 を付けると
+# 贄川の run_dir への書き込み許可になる(PoC の事故と同じ穴)ので、名前が決めたゲートは動かさせない。
+if [ -n "$gate_opt" ]; then
+  if [ -n "$gate_num" ] && [ "$gate_num" != "$gate_opt" ]; then
+    die "--gate $gate_opt は -f の名前($gate_target = ゲート $gate_num)と食い違う"
+  fi
+  gate_num="$gate_opt"
+fi
+if [ -z "$gate_num" ]; then
+  echo "警告: ゲート番号を判定できない(-f の名前: ${gate_target:-無し})── 書き込み不可で起動する(Edit / Write は全拒否)。ゲート2なら -f を findings.md か gate2-*.md にするか --gate 2 を付ける" >&2
+fi
 
 if [ -n "$gate_batch_dir" ] && [ -n "$gate_num" ] && gate_has_gate_record "$gate_gates_tsv" "$gate_num"; then
   die "ゲート $gate_num は便に1回、直った巡は贄川の検収で閉じて次へ進む(claude-kashiwagi 経路)"
@@ -292,7 +318,7 @@ export GIT_AUTHOR_EMAIL="kashiwagi@ai.yumemism.dev" GIT_COMMITTER_EMAIL="kashiwa
 # 与えると、cwd = run_dir なので plan.md / 他ゲートの所見への書き込み許可になってしまう
 # (PoC の事故 ── gate2.md 上書き ── と同じ穴、役員 人見 2026-09-22 の指摘)。
 # ゲート2(findings.md、-C は作業木)だけ acceptEdits を与える(P2 の自己 commit はここだけ)。
-# ゲート番号が判定できない呼び出し(-f が plan.md/findings.md 以外)も安全側で「書き込み無し」にする。
+# ゲート番号が判定できない呼び出し(名前が plan.md / findings.md / gate2-*.md 以外で --gate も無い)は安全側で「書き込み無し」にする(上で警告を出す)。
 if [ "$gate_num" = "2" ]; then
   permission_mode_args=(--permission-mode acceptEdits)
 else

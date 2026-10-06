@@ -236,6 +236,29 @@ LC_ALL=C grep -q 'permission_mode_args=--permission-mode acceptEdits' "$test_roo
   && pass 'ゲート2(findings.md)は --permission-mode acceptEdits を渡す' \
   || fail "ゲート2の permission_mode_args が想定外: $(out c-gate2-mode)"
 
+echo "== 9. ゲート番号の判定 ── gate2-*.md と --gate 2 で acceptEdits、不明は警告、plan.md に --gate 2 は die(2026-10-06 の事故の再発防止) =="
+batch6="$(new_batch batch6)"
+printf 'gate2 request\n' > "$batch6/gate2-fix-1.md"
+printf 'odd name\n' > "$batch6/request.md"
+printf 'plan body\n' > "$batch6/plan.md"
+state6="$test_root/state6"
+run_claude_launcher c-g2name "$state6" "" --no-loop -C "$repo" -f "$batch6/gate2-fix-1.md" --dry-run
+LC_ALL=C grep -q 'permission_mode_args=--permission-mode acceptEdits' "$test_root/c-g2name.out" \
+  && pass 'gate2-<便>.md はゲート2として acceptEdits を渡す' \
+  || fail "gate2-*.md が acceptEdits にならない: $(out c-g2name)"
+run_claude_launcher c-odd "$state6" "" --no-loop -C "$repo" -f "$batch6/request.md" --dry-run
+LC_ALL=C grep -q 'permission_mode_args=(無し' "$test_root/c-odd.out" && LC_ALL=C grep -q '警告: ゲート番号を判定できない' "$test_root/c-odd.out" \
+  && pass '名前で判定できない依頼文は書き込み不可のまま警告を出す' \
+  || fail "不明ゲートの警告か書き込み不可が無い: $(out c-odd)"
+run_claude_launcher c-odd-g2 "$state6" "" --no-loop -C "$repo" -f "$batch6/request.md" --gate 2 --dry-run
+LC_ALL=C grep -q 'permission_mode_args=--permission-mode acceptEdits' "$test_root/c-odd-g2.out" \
+  && pass '--gate 2 は名前で判定できない依頼文をゲート2にする' \
+  || fail "--gate 2 が効かない: $(out c-odd-g2)"
+run_claude_launcher c-plan-g2 "$state6" "" --no-loop -C "$repo" -f "$batch6/plan.md" --gate 2 --dry-run
+[ "$(st c-plan-g2)" != 0 ] && LC_ALL=C grep -q '食い違う' "$test_root/c-plan-g2.out" \
+  && pass 'plan.md(ゲート1)に --gate 2 は die する(ゲート1に acceptEdits を与えない)' \
+  || fail "plan.md --gate 2 が通った: exit $(st c-plan-g2) $(out c-plan-g2)"
+
 echo
 echo "== summary =="
 echo "pass: $pass_count  fail: $fail_count"
