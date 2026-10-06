@@ -31,6 +31,8 @@
 #     「レビュアーは書き込み無し」は締めすぎ)。**ゲート1(plan のレビュー)は一切書けない**(同日中の
 #     再訂正 ── 「作業木の外だけ禁止」を素朴に実装すると、ゲート1の作業木＝run_dir 自身のせいで
 #     PoC の事故と同じ穴が残ったため)
+#   - **ゲート2の -C が run_dir(~/.codex-agents/runs/ 以下)の下なら die**(acceptEdits の「cwd 内は自動承認」が
+#     run_dir にも効くため、2026-10-07)。hook は Bash の相対パスを cwd から解決して見る(worktree-guard-claude.sh)
 #   - --resume / --rounds は受けない(kashiwagi は元々巡ループを持たない。1 session = 1 ゲート)
 #
 # env:
@@ -54,7 +56,8 @@ options:
       --gate <1|2>     ゲート番号を明示する。ファイル名で判定できない依頼文(例: 鷹野が書く gate2-<便>.md 以外の名)用。
                        ファイル名の判定と食い違えば die(plan.md に --gate 2 でゲート1の穴を開けさせない)。
                        判定できないまま起動すると書き込み不可(Edit / Write は全拒否)で、起動時に警告する
-  -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)
+  -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)。ゲート2で run_dir(~/.codex-agents/runs/ 以下)の
+                       下を渡すと die(acceptEdits が run_dir にも効くため)
       --log <path>     ログ出力先
       --model <id>     Claude model(既定は models.env の KASHIWAGI_OPUS_MODEL、env KASHIWAGI_MODEL でも指定可)
       --effort <level> reasoning effort(既定は models.env の KASHIWAGI_OPUS_EFFORT、env KASHIWAGI_EFFORT でも指定可)
@@ -233,6 +236,21 @@ if [ -n "$gate_opt" ]; then
 fi
 if [ -z "$gate_num" ]; then
   echo "警告: ゲート番号を判定できない(-f の名前: ${gate_target:-無し})── 書き込み不可で起動する(Edit / Write は全拒否)。ゲート2なら -f を findings.md か gate2-*.md にするか --gate 2 を付ける" >&2
+fi
+
+# ゲート2の -C が run_dir(~/.codex-agents/runs/ 以下、実際の状態ディレクトリの runs/ も同じ)の下なら die。
+# ゲート2に付ける acceptEdits は「cwd の中は自動承認」なので、-C が run_dir の下だと run_dir(plan.md・
+# 他ゲートの所見)への書き込み許可になってしまう ── ゲート1の穴(PoC の事故)をゲート2の -C で再び開けない。
+# 比べるのは realpath(root は上で pwd -P 済み、runs は readlink -m で解く)。ゲート1の -C は設計上 run_dir 自身なので対象外。
+if [ "$gate_num" = "2" ]; then
+  for runs_base in "$HOME/.codex-agents/runs" "${CODEX_AGENT_STATE_DIR:-$HOME/.codex-agents}/runs"; do
+    runs_real="$(readlink -m -- "$runs_base" 2>/dev/null || printf '%s' "$runs_base")"
+    case "$root" in
+      "$runs_real"|"$runs_real"/*)
+        die "ゲート2の -C が run_dir の下($root)── acceptEdits が run_dir にも効いてしまう。-C には作業木(git worktree)を渡す"
+        ;;
+    esac
+  done
 fi
 
 if [ -n "$gate_batch_dir" ] && [ -n "$gate_num" ] && gate_has_gate_record "$gate_gates_tsv" "$gate_num"; then

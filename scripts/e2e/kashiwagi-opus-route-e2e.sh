@@ -259,6 +259,74 @@ run_claude_launcher c-plan-g2 "$state6" "" --no-loop -C "$repo" -f "$batch6/plan
   && pass 'plan.md(ゲート1)に --gate 2 は die する(ゲート1に acceptEdits を与えない)' \
   || fail "plan.md --gate 2 が通った: exit $(st c-plan-g2) $(out c-plan-g2)"
 
+echo "== 10. 相対パスの Bash 書き込み ── hook 入力の cwd から解決して判定する(2026-10-07、ゲート1で run_dir に書けた穴) =="
+guard_rel_test() {
+  local desc="$1" root="$2" cwd="$3" cmd="$4" expect="$5" gate="${6:-}"
+  local result json
+  json="$(jq -nc --arg c "$cmd" --arg d "$cwd" '{hook_event_name:"PreToolUse",session_id:"s1",cwd:$d,tool_name:"Bash",tool_input:{command:$c},tool_call_id:"c1"}')"
+  set +e
+  printf '%s' "$json" | CLAUDE_KASHIWAGI_ROOT="$root" CLAUDE_KASHIWAGI_GATE="$gate" bash "$guard_hook" >/dev/null 2>&1
+  result=$?
+  set -e
+  if [ "$expect" = allow ]; then
+    [ "$result" -eq 0 ] && pass "$desc" || fail "$desc(exit $result、期待 0)"
+  else
+    [ "$result" -eq 2 ] && pass "$desc" || fail "$desc(exit $result、期待 2)"
+  fi
+}
+rel_run="$HOME/.codex-agents/runs/e2e-fake-rel-run"
+mkdir -p "$wtroot/sub"
+rel_to_claude="$(realpath -m --relative-to="$wtroot" "$HOME/.claude/e2e-leak.txt")"
+guard_rel_test 'ゲート1: 相対パスのリダイレクト(echo > plan2.md、cwd = run_dir)は block' "$rel_run" "$rel_run" "echo a > plan2.md" deny 1
+guard_rel_test 'ゲート1: 相対パスの tee は block' "$rel_run" "$rel_run" "cat x | tee out.md" deny 1
+guard_rel_test 'ゲート1: 相対パスの cp / rm は block' "$rel_run" "$rel_run" "cp plan.md plan.bak; rm gate2.md" deny 1
+guard_rel_test 'ゲート1: fd 付き(2>err.txt)の相対リダイレクトも block' "$rel_run" "$rel_run" "ls 2>err.txt" deny 1
+guard_rel_test 'ゲート1: cd .. を挟んだ相対パスも block' "$rel_run" "$rel_run" "cd .. && echo a > y.md" deny 1
+guard_rel_test 'ゲート1: 変数で組んだ書き込み先(判定不能)は安全側で block' "$rel_run" "$rel_run" 'echo a > "$OUT"' deny 1
+guard_rel_test 'ゲート1: 読み取り(cat plan.md)と /tmp への絶対パス書き込みは通る' "$rel_run" "$rel_run" "cat plan.md > /dev/null; echo a > /tmp/e2e-rel-ok.txt" allow 1
+guard_rel_test 'ゲート2: 作業木の外(~/.claude)へ .. で出る相対パスは block' "$wtroot" "$wtroot" "echo a > $rel_to_claude" deny 2
+guard_rel_test 'ゲート2: cd で作業木の外(.codex-agents)へ出て相対パスで書くのも block' "$wtroot" "$wtroot" "cd $HOME/.codex-agents && echo a > leak.txt" deny 2
+guard_rel_test 'ゲート2: root が run_dir 配下でも他の run_dir へ ../ で出る相対パスは block' "$rel_run" "$rel_run" "echo a > ../other-run/leak.txt" deny 2
+guard_rel_test 'ゲート2: 作業木の中の相対パス(リダイレクト・cp・cd sub 後)は通る' "$wtroot" "$wtroot" "echo a > inside.txt && cp inside.txt sub/b.txt && cd sub && echo b > c.txt" allow 2
+heredoc_commit="git commit -m \"\$(cat <<'EOF'
+fix: it's > ok
+EOF
+)\""
+guard_rel_test 'ゲート2: 作業木の中の git commit(ヒアドキュメントの本文に > と引用符)は通る' "$wtroot" "$wtroot" "$heredoc_commit" allow 2
+guard_rel_test 'ゲート2: 作業木内で cd sub した後に .. で外へ出る相対パスは block' "$wtroot" "$wtroot" "cd sub && echo a > $(realpath -m --relative-to="$wtroot/sub" "$HOME/.claude/e2e-leak.txt")" deny 2
+
+echo "== 11. ゲート2の -C が run_dir の下なら claude-kashiwagi.sh が die する(acceptEdits が run_dir に効かないように) =="
+batch7="$(new_batch batch7)"
+printf 'findings body\n' > "$batch7/findings.md"
+printf 'plan body\n' > "$batch7/plan.md"
+state7="$test_root/state7"
+mkdir -p "$state7/runs/kashiwagi-fake-run/sub" "$test_root/home7/.codex-agents/runs/kashiwagi-fake-run"
+run_claude_launcher c-g2-cunder "$state7" "" --no-loop -C "$state7/runs/kashiwagi-fake-run" -f "$batch7/findings.md" --dry-run
+[ "$(st c-g2-cunder)" != 0 ] && LC_ALL=C grep -q 'run_dir の下' "$test_root/c-g2-cunder.out" \
+  && pass 'ゲート2: -C が状態ディレクトリの runs/ 配下なら die' \
+  || fail "c-g2-cunder が die しない: exit $(st c-g2-cunder) $(out c-g2-cunder)"
+run_claude_launcher c-g2-cunder-sub "$state7" "" --no-loop -C "$state7/runs/kashiwagi-fake-run/sub" -f "$batch7/findings.md" --dry-run
+[ "$(st c-g2-cunder-sub)" != 0 ] && pass 'ゲート2: -C が run_dir のさらに下でも die' \
+  || fail "c-g2-cunder-sub が die しない: $(out c-g2-cunder-sub)"
+ln -s "$state7/runs/kashiwagi-fake-run" "$test_root/link-to-run"
+run_claude_launcher c-g2-clink "$state7" "" --no-loop -C "$test_root/link-to-run" -f "$batch7/findings.md" --dry-run
+[ "$(st c-g2-clink)" != 0 ] && pass 'ゲート2: run_dir への symlink を -C に渡しても realpath で比べて die' \
+  || fail "c-g2-clink が die しない: $(out c-g2-clink)"
+set +e
+HOME="$test_root/home7" PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state7" NIEKAWA_INBOX="" \
+  "$claude_launcher" --no-loop -C "$test_root/home7/.codex-agents/runs/kashiwagi-fake-run" -f "$batch7/findings.md" --dry-run > "$test_root/c-g2-chome.out" 2>&1
+c_g2_chome_status=$?
+set -e
+[ "$c_g2_chome_status" != 0 ] && LC_ALL=C grep -q 'run_dir の下' "$test_root/c-g2-chome.out" \
+  && pass 'ゲート2: -C が $HOME/.codex-agents/runs/ 配下でも die' \
+  || fail "c-g2-chome が die しない: exit $c_g2_chome_status $(cat "$test_root/c-g2-chome.out")"
+run_claude_launcher c-g2-cwt "$state7" "" --no-loop -C "$repo" -f "$batch7/findings.md" --dry-run
+[ "$(st c-g2-cwt)" = 0 ] && pass 'ゲート2: -C が通常の作業木なら従来どおり通る' \
+  || fail "c-g2-cwt が通らない: $(out c-g2-cwt)"
+run_claude_launcher c-g1-cunder "$state7" "" --no-loop -C "$state7/runs/kashiwagi-fake-run" -f "$batch7/plan.md" --dry-run
+[ "$(st c-g1-cunder)" = 0 ] && pass 'ゲート1の -C は設計上 run_dir 自身なので die しない' \
+  || fail "c-g1-cunder が die した: $(out c-g1-cunder)"
+
 echo
 echo "== summary =="
 echo "pass: $pass_count  fail: $fail_count"
