@@ -26,6 +26,11 @@
 #     真壁に与える committer 名義(下の GIT_COMMITTER_EMAIL)のエントリがあるときだけ権限逸脱(exit 3)。別名義だけなら
 #     警告 1 行で footer は通常どおり。reflog が無い・起動時の値が reflog に見つからないときは従来どおり「変化 = 逸脱」
 #     (判定は lib/git-run-diff.sh の git_ref_guard)。
+#   - **途中で発言を足せる**(庵野 2026-10-07、役員 人見): claude -p を --input-format stream-json --output-format stream-json で
+#     起こし、標準入力を開いたまま lib/makabe-stream.py が持つ。最初の発言は prompt、以降は <run_dir>/inbox.fifo に
+#     `makabe-send <run_dir|最新> "<本文>"`(scripts/makabe-send.sh)が書いた発言を中継する。type=result を受けて
+#     残りの発言が無ければ標準入力を閉じて終わる(1 起動 = 1 session は従来どおり)。last.json はその result 行
+#     (--output-format json の単一オブジェクトと同じ形)、全行は <run_dir>/stream.jsonl。
 #   - 巡ループ・ゲート番号の概念を持たない(makabe は codex 版でも supports_loop=0)。--resume は受けない
 #     ── 続きは贄川が新しい指示書(前 run の sha を明記)で起こし直す(codex/makabe.md の「終端の見方」)。
 #
@@ -54,6 +59,8 @@ options:
 task と --file が無い場合は標準入力からタスク本文を読む。
 --resume / --rounds は無い(1 起動 = 1 session、makabe は元々巡ループを持たない)。
 
+走っている間は <run_dir>/inbox.fifo へ `makabe-send <run_dir|最新> "<本文>"` で途中の訂正を送れる
+(送った本文は <run_dir>/sent/ に残る。result 済みの run には送れない)。
 起動時の run_dir(${CODEX_AGENT_STATE_DIR:-~/.codex-agents}/runs/makabe-<ts>-<pid>-<rand>)を
 CODEX_AGENT_RUN_DIR で export する。起動時に `rates claude` を 1 回叩いて <run_dir>/rates.json に残す。
 USAGE
@@ -305,6 +312,7 @@ prompt_lines_path="$run_dir/prompt.md"
 {
   printf '真壁として、この経路(claude-makabe、Claude sonnet, effort %s)で起こされた。1 起動 = 1 session、巡ループは無い。\n' "$effort"
   printf 'run_dir: %s\n' "$run_dir"
+  printf '途中で鷹野から訂正・追加の発言(user 発言)が届くことがある。届いたら最新の指示として従う。\n'
   printf '作業ルート(-C): %s\n' "$root"
   if [ -n "$model_requested" ] && [ "$model_requested" != "$MAKABE_CLAUDE_MODEL" ]; then
     printf '\n(注記: --model %s が指定されたが、この経路では常に %s を使う。記録のみ)\n' "$model_requested" "$MAKABE_CLAUDE_MODEL"
@@ -322,6 +330,7 @@ fi
 if [ "$dry_run" -eq 1 ]; then
   echo "[makabe/claude] dry-run root=$root run_dir=$run_dir model=$model effort=$effort model_requested=${model_requested:-(無し)}"
   echo "[makabe/claude] settings: $settings_path"
+  echo "[makabe/claude] input: stream-json(inbox: $run_dir/inbox.fifo、送り口 makabe-send)"
   echo "--- prompt ---"
   cat "$prompt_lines_path"
   exit 0
@@ -356,20 +365,37 @@ on_term() {
 }
 trap on_term TERM INT
 
+# 標準入力を stream-json で開いたまま持つ(lib/makabe-stream.py)。最初の発言は prompt、途中の発言は inbox.fifo から。
+# --replay-user-messages: 流した発言(最初の prompt も makabe-send の訂正も)を stream.jsonl に user 行として残す(証拠)。
 claude_args=(claude -p --model "$model" --effort "$effort" --dangerously-skip-permissions)
-claude_args+=(--output-format json --append-system-prompt "$system_prompt" --settings "$settings_path" -- "$prompt_arg")
+claude_args+=(--input-format stream-json --output-format stream-json --verbose --replay-user-messages)
+claude_args+=(--append-system-prompt "$system_prompt" --settings "$settings_path")
+
+inbox_fifo="$run_dir/inbox.fifo"
+stream_json="$run_dir/stream.jsonl"
+first_prompt_path="$run_dir/first-prompt.txt"
+printf '%s' "$prompt_arg" > "$first_prompt_path"
+mkfifo -m 600 "$inbox_fifo"
+: > "$stream_json"
+rm -f "$run_dir/closed"
 
 set +e
-setsid bash -c 'cd "$1" || exit 91; shift; exec "$@"' _ "$root" "${claude_args[@]}" \
-  < /dev/null > "$round_json" 2>"$stderr_log" &
+setsid python3 "$CORE/scripts/lib/makabe-stream.py" \
+  --cwd "$root" --fifo "$inbox_fifo" --lock "$run_dir/inbox.lock" --closed "$run_dir/closed" \
+  --pidfile "$run_dir/driver.pid" --stream "$stream_json" --last-json "$round_json" \
+  --stderr-log "$stderr_log" --first-prompt-file "$first_prompt_path" -- "${claude_args[@]}" \
+  < /dev/null > /dev/null 2>>"$stderr_log" &
 current_child_pid=$!
+echo "[makabe/claude] 途中の訂正: makabe-send $run_dir \"<本文>\""
 wait "$current_child_pid"
 claude_status=$?
 current_child_pid=""
 set -e
+touch "$run_dir/closed"
+rm -f "$run_dir/driver.pid"
 
 {
-  echo "=== claude stdout(json) ==="
+  echo "=== claude result(json、全行は $stream_json) ==="
   cat "$round_json"
   echo
   if [ -s "$stderr_log" ]; then

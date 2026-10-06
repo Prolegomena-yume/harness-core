@@ -103,6 +103,8 @@ harness-route                                    # 今日の配役表(read-only�
 
 **claude-makabe・kimi-makabe の `main` / `master` の移動は reflog の名義で見分ける。**worktree は refs を共有し、別窓(鷹野・人見)の `main` への commit・merge・pull でも値が動くため、run の間に積まれた reflog に真壁名義(launcher の `GIT_COMMITTER_EMAIL`)の更新があるときだけ逸脱にし、別名義だけなら警告で通す。reflog で見分けられなければ従来どおり逸脱。claude-makabe は `main` / `master` の上では起動しない(役員 人見 2026-10-03 の裁定 案 A+C、判定は `scripts/lib/git-run-diff.sh`)。
 
+**bg で起こした claude-makabe には、走っている間に訂正を送れる。**`makabe-send <run_dir|最新> "<本文>"`(`scripts/makabe-send.sh`、`~/bin` に symlink)が `<run_dir>/inbox.fifo` へ書き、駆動役 `scripts/lib/makabe-stream.py` が claude の標準入力(stream-json)へ中継する ── 止めて起こし直さない。走っていない run(result 済み)には書かずエラーで返り、送った本文は `<run_dir>/sent/` に時刻付きで残る。`last.json`・`parse.env`・`last-message.md`・footer は従来どおり、全行は `<run_dir>/stream.jsonl`。run が `CODEX_AGENT_STATE_DIR` を替えて起こされているときは送る側にも同じ env を渡す。
+
 ## 真壁はトップレベル session ── codex 組み込みの子にしない
 
 **贄川は真壁を `codex-makabe` で起こす。**Kimi に codex 組み込みの子を起こす手段は無く、sol の贄川も形を揃えて使わない。真壁はトップレベルの codex session になるので、**外から `--resume <session_id>` が効く**(子の thread は外から resume できなかった、09-13 の制約が消えた)。

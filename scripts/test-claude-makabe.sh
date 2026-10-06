@@ -18,9 +18,13 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 mkdir -p "$sbx/bin"
 cat >"$sbx/bin/claude" <<'S'
 #!/usr/bin/env bash
-# 偽の claude -p。cwd(= 作業ルート)で FAKE_CLAUDE_SCENARIO を実行して JSON を返すだけ。
+# 偽の claude -p(stream-json 入出力)。最初の発言を 1 行読み、cwd(= 作業ルート)で FAKE_CLAUDE_SCENARIO を実行して
+# result 行を返し、標準入力が閉じる(EOF)まで待って終わる(本物と同じ終わり方)。
+IFS= read -r _first
 bash "$FAKE_CLAUDE_SCENARIO" >&2
-printf '{"session_id":"fake-session","is_error":false,"result":"fake done"}'
+printf '{"type":"system","subtype":"init","session_id":"fake-session"}\n'
+printf '{"type":"result","subtype":"success","session_id":"fake-session","is_error":false,"result":"fake done"}\n'
+cat >/dev/null
 S
 printf '#!/bin/sh\nexit 1\n' >"$sbx/bin/rates"
 chmod +x "$sbx/bin/claude" "$sbx/bin/rates"
