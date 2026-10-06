@@ -295,6 +295,19 @@ EOF
 guard_rel_test 'ゲート2: 作業木の中の git commit(ヒアドキュメントの本文に > と引用符)は通る' "$wtroot" "$wtroot" "$heredoc_commit" allow 2
 guard_rel_test 'ゲート2: 作業木内で cd sub した後に .. で外へ出る相対パスは block' "$wtroot" "$wtroot" "cd sub && echo a > $(realpath -m --relative-to="$wtroot/sub" "$HOME/.claude/e2e-leak.txt")" deny 2
 
+echo "-- 許可リスト方式(鷹野の裁定 2026-10-07): 許可は /tmp 以下・/dev/null 等・ゲート2は root 以下だけ --"
+# root が /tmp の下だと cd .. の先も /tmp(許可)になるので、cd .. の試験は /tmp の外の root(実在しなくてよい)で行う。
+fake_wt="$HOME/e2e-fake-worktree-allowlist"
+guard_rel_test 'ゲート2: cd .. して作業木の親へ書く(cd .. && echo x > y)は block' "$fake_wt" "$fake_wt" "cd .. && echo x > y" deny 2
+guard_rel_test 'ゲート1: cd ../../.. して ~ へ書く(cd ../../.. && echo x > foo)は block' "$rel_run" "$rel_run" "cd ../../.. && echo x > foo" deny 1
+guard_rel_test 'ゲート番号不明も ~ への絶対パス書き込みは block(許可リストはゲート1と同じ)' "$rel_run" "$rel_run" "echo x > $HOME/e2e-foo" deny ""
+guard_rel_test 'ゲート2: 絶対の /tmp への書き込みは通る(固定名)' "$fake_wt" "$fake_wt" "echo x > /tmp/kashiwagi-e2e-fixed-name" allow 2
+guard_rel_test 'ゲート1: 絶対の /tmp への書き込みも通る' "$rel_run" "$rel_run" "echo x > /tmp/kashiwagi-e2e-fixed-name" allow 1
+guard_rel_test 'ゲート2: > /dev/null 2>&1 は通る' "$fake_wt" "$fake_wt" "ls $wtroot > /dev/null 2>&1" allow 2
+guard_rel_test 'ゲート2: /tmp と /dev/stderr 以外の ~ 直下への絶対パス書き込みは block' "$fake_wt" "$fake_wt" "echo x > $HOME/e2e-foo" deny 2
+guard_rel_test 'ゲート2: cp のコピー元は読むだけ(元が root の外でも宛先が root 内なら通る)' "$fake_wt" "$fake_wt" "cp /etc/hostname ./h" allow 2
+guard_rel_test 'ゲート2: cp の宛先が root の外(../)なら block' "$fake_wt" "$fake_wt" "cp a ../b" deny 2
+
 echo "== 11. ゲート2の -C が run_dir の下なら claude-kashiwagi.sh が die する(acceptEdits が run_dir に効かないように) =="
 batch7="$(new_batch batch7)"
 printf 'findings body\n' > "$batch7/findings.md"

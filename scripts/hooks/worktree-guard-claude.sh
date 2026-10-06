@@ -26,6 +26,9 @@
 #
 # **相対パスは hook 入力の cwd(無ければ $PWD)から解決してから判定する**(庵野 2026-10-07、ゲート1の cwd は
 # run_dir 自身なので `echo x > plan2.md` が絶対パスしか見ない旧 hook をすり抜けて run_dir に書けた)。
+# **新しい判定は許可リスト方式**(鷹野の裁定 2026-10-07: `cd ..` で作業木の親・~ に書けた穴を塞ぐ)。解決した先が
+# /tmp 以下・/dev/null・/dev/stdout・/dev/stderr・/dev/fd/*・/dev/tty、ゲート2だけ加えて root 以下、のどれかでなければ block
+# (ゲート1・番号不明は root も許可しない)。/tmp は柏木の一時出力を止めないためで、harness の状態・リポのどちらでもない。
 # 書き込み先として読むのは リダイレクト(> >> >| &> >&)・tee・rm/mv/cp/ln/mkdir/touch/truncate/chmod 等の引数・
 # dd of=・sed -i・find -delete/-exec/-fprint の起点・`bash -c`/`eval` の中身。`cd` を挟んだ複合コマンドは
 # cd 先を追う(cd 先が変数・`cd -`・サブシェル・パイプ内などで決まらなければ cwd 不明)。**判定が付かないもの
@@ -119,9 +122,9 @@ for tok in tokens:
             sys.exit(0)
 
 # ── 相対パス・変数・cd を挟んだ書き込み先の判定(2026-10-07 追加) ──
-# 上の絶対パス・~ のトークン走査は従来のまま。ここでは書き込み先として読めた語を、hook 入力の cwd から
-# 解決して同じ禁止プレフィックスと突き合わせる。判定が付かないものは安全側で違反扱いにする。
-import fnmatch
+# 上の絶対パス・~ のトークン走査(禁止プレフィックス)は従来のまま二重の網として残す。ここでは書き込み先として
+# 読めた語を、hook 入力の cwd から解決して**許可リスト**と突き合わせる(/tmp 以下・/dev/null 等・ゲート2は root 以下)。
+# 判定が付かないものは安全側で違反扱いにする。
 import shlex
 
 cwd_arg = sys.argv[4] if len(sys.argv) > 4 else ""
@@ -199,19 +202,29 @@ def resolve(word, cwd):
     return os.path.realpath(p), bool(re.search(r"[*?\[]", comps[-1]))
 
 
+SAFE_DEVICES = re.compile(r"/dev/(null|stdout|stderr|tty)|/dev/fd/[0-9]+")
+tmp_real = os.path.realpath("/tmp")
+
+
 def violation_of(word, cwd):
+    """許可リスト方式(鷹野の裁定 2026-10-07): 書き込み先として読めた語は、解決した先が
+    /tmp 以下・/dev/null 等の端末系・(ゲート2だけ)root 以下のどれかでなければ違反。
+    ゲート1・ゲート番号不明は root(= 贄川の run_dir)も許可しない。"""
+    if SAFE_DEVICES.fullmatch(word):
+        return None
     norm, extra = resolve(word, cwd)
     if norm is None:
         return f"書き込み先を静的に判定できない({extra}): {word}。絶対パスで書き直す"
+    if norm == tmp_real or norm.startswith(tmp_real + os.sep):
+        return None
     if root_carve_out and (norm == root or norm.startswith(root + os.sep)):
         return None
+    where = "作業木(root)の外" if root_carve_out else "ゲート1・不明は /tmp と /dev/null 等以外"
     for prefix in forbidden_prefixes:
         if norm == prefix or norm.startswith(prefix + os.sep):
-            return f"{norm}(相対・変数は cwd から解決: {word})"
-        if extra and os.path.dirname(norm) == os.path.dirname(prefix) \
-                and fnmatch.fnmatch(os.path.basename(prefix), os.path.basename(norm)):
-            return f"{norm}(glob が {prefix} に当たる: {word})"
-    return None
+            where = f"禁止プレフィックス {prefix} 配下"
+            break
+    return f"{norm}({where}、書き込み先の語: {word})"
 
 
 def positional(args):
@@ -249,8 +262,18 @@ def command_index(words):
 
 
 def write_targets(name, args, problems, cwd, depth):
-    if name in ("rm", "rmdir", "unlink", "shred", "touch", "mkdir", "truncate", "tee", "chmod", "chown",
-                "mv", "cp", "ln", "install", "rsync"):
+    if name in ("cp", "ln", "install", "rsync"):
+        # 書かれるのは宛先だけ(コピー元は読むだけ)。-t DIR / --target-directory=DIR があればそれ、無ければ最後の引数。
+        for k, a in enumerate(args):
+            if a in ("-t", "--target-directory") and k + 1 < len(args):
+                return [args[k + 1]]
+            if a.startswith("--target-directory="):
+                return [a.split("=", 1)[1]]
+            if re.fullmatch(r"-[A-Za-z]*t.+", a) and name != "rsync":
+                return [a.split("t", 1)[1]]
+        pos = positional(args)
+        return pos[-1:]
+    if name in ("rm", "rmdir", "unlink", "shred", "touch", "mkdir", "truncate", "tee", "chmod", "chown", "mv"):
         return positional(args)
     if name == "dd":
         return [a[3:] for a in args if a.startswith("of=")]
