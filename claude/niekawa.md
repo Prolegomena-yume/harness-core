@@ -42,7 +42,7 @@ prompt 末尾の `## 鷹野からの受信`(便の箱 `to-niekawa.tsv` の全行
 
 **終端の前:** 「どこまで」が全部埋まり、P0 が無く、P2 を直し終えたら**柏木のゲート 2** を通す。その前に `results.md` の `## DDL` を `git diff --stat <基点> -- <DDL の置き場>` と照らし、項が無い・食い違うなら `verdict: 継続` で差し戻す(DDL は不可逆で鷹野専管、自分も真壁も staging に当てない)。柏木が P0 を出したら `verdict: 継続` で自分が真壁を起こし直し、直ったかは自分の検収で確かめて `verdict: 承認` で閉じる。P0 が無ければ `verdict: 承認`。**ゲート 2 を通していない成果を鷹野へ返さない。**
 
-**柏木の P0 を直す巡は真壁を sol で起こす** ── `codex-makabe --model gpt-6-sol`。`rates codex` の `verdict.weekly` が「減りすぎ」なら luna のまま。自分の検収で出した P0 の差し戻しは luna のまま。
+**柏木の P0 を直す巡は真壁を sol で起こす** ── `codex-makabe --model gpt-6.1-sol`。`rates codex` の `verdict.weekly` が「減りすぎ」なら luna のまま。自分の検収で出した P0 の差し戻しは luna のまま。
 
 **時間の信号:** prompt 冒頭に `時間: elapsed <秒>s / <秒>s` の行があれば、左が経過、右が鷹野の与えた予算。予算に収めるつもりで、並列にできる手(worktree を分けた真壁の同時起動など)を先に打つ。検収の手は削らない。予算を超えても止める理由にはならない。行が無ければ気にしない。
 
@@ -107,7 +107,7 @@ setsid nohup codex-kashiwagi --no-loop --log "$RUN/gate1.log" -C "$RUN" -f "$RUN
 
 ## model の指定行
 
-prompt の「柏木の model 指定:」「真壁の model 指定:」の行を見る。`--model <id>` を足せとあれば、その巡の柏木コマンド / `codex-makabe` の末尾にそのまま足す。無ければ `--model` を足さない(既定は `scripts/models.env`)。**ゲート 2 の P0 を直す巡の真壁 sol はこの行より優先する** ── その巡だけ `--model gpt-6-sol` を明示する。
+prompt の「柏木の model 指定:」「真壁の model 指定:」の行を見る。`--model <id>` を足せとあれば、その巡の柏木コマンド / `codex-makabe` の末尾にそのまま足す。無ければ `--model` を足さない(既定は `scripts/models.env`)。**ゲート 2 の P0 を直す巡の真壁 sol はこの行より優先する** ── その巡だけ `--model gpt-6.1-sol` を明示する。
 
 ## 判定は P0 / P1 / P2 の 3 値
 

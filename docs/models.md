@@ -6,7 +6,7 @@
 
 ## モデル表は models.env にだけ置く
 
-**世代が変わったら直すのは `scripts/models.env` の 1 ファイルだけ。**ランチャはこれを source し、`agents/*.md` の frontmatter と `codex/agents/*.toml.tmpl` の model は同じ値に揃える。別名(`opus` / `sonnet`)は使わず ID で固定する(人見指示 2026-08-11)。退役 ID と別名の残りは `scripts/test-agent-wrappers.py` が検査する。プロンプト本文にも ID を書かない ── 書いてよいのは `--model gpt-6-sol` のように、モデルがコマンドとして打つ文字列だけ。
+**世代が変わったら直すのは `scripts/models.env` の 1 ファイルだけ。**ランチャはこれを source し、`agents/*.md` の frontmatter と `codex/agents/*.toml.tmpl` の model は同じ値に揃える。別名(`opus` / `sonnet`)は使わず ID で固定する(人見指示 2026-08-11)。退役 ID と別名の残りは `scripts/test-agent-wrappers.py` が検査する。プロンプト本文にも ID を書かない ── 書いてよいのは `--model gpt-6.1-sol` のように、モデルがコマンドとして打つ文字列だけ。
 
 ## Claude Opus 5.5 ── effort で深さを決める、無人 run は報告で止まりやすい
 
@@ -23,14 +23,15 @@
 - [H] 意図を汲みやすい
 - **ハーネスの役には使わない。**weekly と Fable の枠の両方を食う。GUI の鷹野専用(役員 人見 2026-09-24)
 
-## Claude Sonnet 5
+## Claude Sonnet 5.5
 
 - 本書の 3 つの出典に記述が無い。庵野と、真壁の claude 経路(`MAKABE_ROUTE=claude`)に使っている
 
-## GPT-6 Sol
+## GPT-6.1 Sol
 
+- 使っているのは 6.1(`gpt-6.1-sol`)。[O] は GPT-6 Sol の記述で、6.1 についての出典は無い
 - [O] GPT-5.6 Sol から API 価格が半額。社内の事実性評価で誤りが前世代の約半分。FrontierCode(merge できる変更か)で 5.6 Sol から大きく改善
-- [H] 5.6 sol は細部を検証して細かい不整合を見抜く ── codex をゲートに置いたのはそのため。ただし「直せば終わる」ものを差し戻しがちで、「P0 のみ見よ」「P2 は自分で直せ」を後から足した。GPT-6 Sol でも同じ傾向かは未観測
+- [H] 5.6 sol は細部を検証して細かい不整合を見抜く ── codex をゲートに置いたのはそのため。ただし「直せば終わる」ものを差し戻しがちで、「P0 のみ見よ」「P2 は自分で直せ」を後から足した。GPT-6.1 Sol でも同じ傾向かは未観測
 
 ## GPT-6 Luna
 
@@ -61,9 +62,9 @@
 - **鷹野 = Fable(GUI)。**意図を汲む力を人見との要件定義に使う
 - **水無瀬 = Opus 5.5。**全体を見て統合する力を調査・設計に使う
 - **贄川 = 主は K3、枠切れは Sol。**段取りは待ちが長く、K3 は待ちの turn が cached で枠を食わない。`tech/_drafts/plan/58-task-dag.v0.md` の工程に限っては Opus 5.5 が主(役員 人見 2026-09-21、effort `medium` は 2026-09-24)。段 7〜段 10 は kimi が減りすぎになるまで K3 で回す(役員 人見 2026-09-24)
-- **柏木 = 既定は Opus 5.5(経路 C、effort `xhigh`)、codex 経路は Sol。**経路 C は 2026-09-21 の PoC(Opus 5 件中 5 件、K3 2 件)による。Sol は細部の不整合を見抜く [H]。**どちらをゲートに置くかは Opus 5.5 と gpt-6-sol の PoC で決める(未決)**
-- **真壁 = Luna `max`、差し戻し後の P0 巡は Sol。**Luna は枠にほぼ載らず、DeepSWE で Opus 5 の `medium` 並み [O]。ゲート 2 の P0 は Luna の理解で漏れた箇所なので、同じ水準でやり直すより Sol で 1 巡で済ませる(役員 人見 2026-09-20、GPT-6 の ID で 2026-09-24 に再裁定)。codex が減りすぎのときは claude 経路(Sonnet 5)。贄川を通さない直書き便は K3(`kimi-makabe`、`MAKABE_KIMI_MODEL`、役員 人見 2026-09-29)
-- **庵野 = Sonnet 5。源内 = Gemini 3.8 Flash (High)、agy が減りすぎなら K3**
+- **柏木 = 既定は Opus 5.5(経路 C、effort `xhigh`)、codex 経路は Sol。**経路 C は 2026-09-21 の PoC(Opus 5 件中 5 件、K3 2 件)による。Sol は細部の不整合を見抜く [H]。**どちらをゲートに置くかは Opus 5.5 と gpt-6.1-sol の PoC で決める(未決)**
+- **真壁 = Luna `max`、差し戻し後の P0 巡は Sol。**Luna は枠にほぼ載らず、DeepSWE で Opus 5 の `medium` 並み [O]。ゲート 2 の P0 は Luna の理解で漏れた箇所なので、同じ水準でやり直すより Sol で 1 巡で済ませる(役員 人見 2026-09-20、GPT-6 の ID で 2026-09-24 に再裁定)。codex が減りすぎのときは claude 経路(Sonnet 5.5)。贄川を通さない直書き便は K3(`kimi-makabe`、`MAKABE_KIMI_MODEL`、役員 人見 2026-09-29)
+- **庵野 = Sonnet 5.5。源内 = Gemini 3.8 Flash (High)、agy が減りすぎなら K3**
 - **モデル分離は鷹野の検算が担保する。**実装・段取り・ゲート・検算のモデルを分け、鷹野が納品物を独立に検算する配置そのものが分離で、柏木は分離の検査項目を持たない
 
 ## Claude 向けの書き方 ── 深さは effort、止まり方は名指し
