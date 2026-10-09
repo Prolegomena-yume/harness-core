@@ -1,5 +1,5 @@
 ---
-description: セッションを締める。同義語で自然発火(締めて/終わる/閉じる/サマリ起こす/定時)。サマリ1本を書いて git-as commit、push は鷹野のみ、memory 索引に1行足す
+description: セッションを締める。同義語で自然発火(締めて/終わる/閉じる/サマリ起こす/定時)。サマリ1本を書いて git-as commit、push は役職者(managers)、memory 索引に1行足す
 ---
 
 # close-session
@@ -16,7 +16,7 @@ description: セッションを締める。同義語で自然発火(締めて/�
 
 1. **サマリ 1 本を書く。**今のリポの `_sessions/` 直下に `YYYY-MM-DD_NN.md`。日付ディレクトリは作らない。NN はそのリポ・その日の既存ファイルの続き番号(無ければ `01`)。会社の現在値を動かす決定を含む回は `company/keiei` の `_sessions/` にも decision 行を立てる(正典が指示する場合のみ)
 2. **memory を更新する。**Claude Code の auto memory の規則どおり、索引(`MEMORY.md`)は 1 行 1 ポインタで足す。新しい学び・裁定・落とし穴があれば `memory/<slug>.md` を添えて索引から繋ぐ。無ければ索引更新だけで良い。置き場は各リポの `.claude/memory/`(`autoMemoryDirectory`)で、worktree のセッションでも main checkout(`~/canonical/<repo>/.claude/memory/`)に落ちる
-3. **(母艦)`git-as <自ロール>` で commit。**サマリと、この回に書き換わった `.claude/memory/` を commit に含める ── memory は main checkout 側にあるので、worktree の回はそちらで別に commit する。author/committer は役名(例 `git-as 鷹野 commit ...`)。**push は鷹野の職務** ── このコマンドを鷹野のセッションで実行しているときだけ push まで行う。他ロールのセッションで実行している場合は commit で止め、push が要ることを鷹野へ申し送る
+3. **(母艦)`git-as <自ロール>` で commit。**サマリと、この回に書き換わった `.claude/memory/` を commit に含める ── memory は main checkout 側にあるので、worktree の回はそちらで別に commit する。author/committer は役名(例 `git-as 鷹野 commit ...`)。**push は役職者の職務** ── 役職者は `company/keiei` の `organization.yml` の `managers`(大橋・鷹野・麻布)。役職者のセッションなら push まで行う。配下の人格(`members`)のセッションなら commit で止め、push が要ることを親の役職者へ申し送る(役員 人見 2026-10-10。元は真壁に push させないための一文だった)
 4. **commit した直後に `discord/session-post <サマリの path>` を走らせる。**push の有無には依存しない ── 他ロールの回で push が無くても走らせる。#session への投稿はこの道具が持つ(設計は `company/tech` の `discord.md`)。**失敗しても締めは止めない。**失敗した場合はその旨を報告に書く
 
 ## cloud の締めは別の形
