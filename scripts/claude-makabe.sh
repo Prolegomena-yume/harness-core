@@ -7,7 +7,9 @@
 #   - -f <task.md> でタスク本文、-C で作業ルート(worktree)、--log、--dry-run
 #   - footer は codex 経路と同じ字面で `変更ファイル数:` と `makabe_commit_sha:` を出す
 #     (起動時と終了時の worktree の HEAD を比較するだけ。checkpoint commit も squash 後の 1 本も拾う、H1)
-#   - --model <id> は受けるが記録だけ(sol 指定の巡が来ても、この経路では常に sonnet を使う)
+#   - --model <id> は受けるが記録だけ(sol 指定が来ても model は変わらない)。ゲート 2 の P0 を直す巡は `--p0`
+#     (贄川が付ける)── その巡だけ MAKABE_CLAUDE_P0_MODEL(opus)/ MAKABE_CLAUDE_P0_EFFORT(high)で起こす。
+#     他の巡は常に sonnet(役員 人見 2026-10-11)
 #
 # 差分(意図的):
 #   - engine は claude -p --model <MAKABE_CLAUDE_MODEL> --effort <MAKABE_CLAUDE_EFFORT>
@@ -35,10 +37,10 @@
 #     ── 続きは贄川が新しい指示書(前 run の sha を明記)で起こし直す(codex/makabe.md の「終端の見方」)。
 #
 # env:
-#   MAKABE_MODEL(渡されても記録のみ、実際は常に models.env の MAKABE_CLAUDE_MODEL) /
-#   MAKABE_EFFORT(既定は models.env の MAKABE_CLAUDE_EFFORT)
+#   MAKABE_MODEL(渡されても記録のみ、実際は models.env の MAKABE_CLAUDE_MODEL か、--p0 のとき MAKABE_CLAUDE_P0_MODEL) /
+#   MAKABE_EFFORT(既定は models.env の MAKABE_CLAUDE_EFFORT、--p0 のときは MAKABE_CLAUDE_P0_EFFORT)
 #
-# 使い方: claude-makabe.sh [-C dir] -f <task.md> [--log path] [--model id] [--effort level] [--dry-run]
+# 使い方: claude-makabe.sh [-C dir] -f <task.md> [--log path] [--p0] [--model id] [--effort level] [--dry-run]
 # -f は複数可(codex-agent.sh と同じ、末尾のファイルを task 本文として読む)。task 引数(-f 以外)も付けられる。
 
 set -euo pipefail
@@ -51,8 +53,9 @@ options:
   -f, --file <path>   タスク本文をファイルから読む。複数指定可
   -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)。main / master の上では起動しない
       --log <path>     ログ出力先
-      --model <id>     記録のみ(この経路では常に claude sonnet を使う。env MAKABE_MODEL でも指定可)
-      --effort <level> reasoning effort(既定 high、env MAKABE_EFFORT でも指定可)
+      --p0             ゲート 2 の P0 を直す巡。model と effort を models.env の MAKABE_CLAUDE_P0_MODEL / _EFFORT(opus / high)にする
+      --model <id>     記録のみ(model は変わらない。通常は claude sonnet、--p0 のときは opus。env MAKABE_MODEL でも指定可)
+      --effort <level> reasoning effort(既定 high、env MAKABE_EFFORT でも指定可。--p0 でもこちらが優先)
       --dry-run        起動コマンドを組み立てて stdout に出し、claude を起動せず exit 0(検算用)
   -h, --help           この usage を表示
 
@@ -109,7 +112,8 @@ fi
 root_input="$default_root"
 log_path=""
 model_requested="${MAKABE_MODEL:-}"
-effort="${MAKABE_EFFORT:-$MAKABE_CLAUDE_EFFORT}"
+effort="${MAKABE_EFFORT:-}"
+p0=0
 task_files=()
 task_args=()
 dry_run=0
@@ -141,6 +145,10 @@ while [ "$#" -gt 0 ]; do
       effort="$2"
       shift 2
       ;;
+    --p0)
+      p0=1
+      shift
+      ;;
     --resume|--rounds)
       die "$1 はこの経路(claude-makabe)では受けない ── 続きは新しい指示書で起こし直す"
       ;;
@@ -165,14 +173,21 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+# effort の優先順: --effort / MAKABE_EFFORT > (--p0 なら P0 の値、無ければ通常の値)
+if [ -z "$effort" ]; then
+  if [ "$p0" -eq 1 ]; then effort="$MAKABE_CLAUDE_P0_EFFORT"; else effort="$MAKABE_CLAUDE_EFFORT"; fi
+fi
 [ -n "$effort" ] || die "--effort に空文字は指定できない"
 [ -d "$root_input" ] || die "作業ルートが見つからない: $root_input"
 root="$(cd "$root_input" && pwd -P)"
 
-# この経路は常に Claude sonnet を使う。--model / MAKABE_MODEL で別 id(gpt-6-sol 等)が来ても
-# 無視して sonnet を使い、要求は記録だけ残す(claude-niekawa.sh の round prompt に既に「claude 経路では
-# 無視して sonnet でよい、記録だけ」と明記されている)。
-model="$MAKABE_CLAUDE_MODEL"
+# model は --model / MAKABE_MODEL(gpt-6-sol 等)で変わらない ── 要求は記録だけ残す。通常は sonnet、
+# ゲート 2 の P0 を直す巡(贄川が --p0 を付ける)だけ MAKABE_CLAUDE_P0_MODEL(opus)。
+if [ "$p0" -eq 1 ]; then
+  model="$MAKABE_CLAUDE_P0_MODEL"
+else
+  model="$MAKABE_CLAUDE_MODEL"
+fi
 
 git_repo=0
 git_root=""
@@ -310,12 +325,12 @@ PY
 
 prompt_lines_path="$run_dir/prompt.md"
 {
-  printf '真壁として、この経路(claude-makabe、Claude sonnet, effort %s)で起こされた。1 起動 = 1 session、巡ループは無い。\n' "$effort"
+  printf '真壁として、この経路(claude-makabe、%s, effort %s%s)で起こされた。1 起動 = 1 session、巡ループは無い。\n' "$model" "$effort" "$([ "$p0" -eq 1 ] && printf ', ゲート 2 の P0 を直す巡')"
   printf 'run_dir: %s\n' "$run_dir"
   printf '途中で鷹野から訂正・追加の発言(user 発言)が届くことがある。届いたら最新の指示として従う。\n'
   printf '作業ルート(-C): %s\n' "$root"
-  if [ -n "$model_requested" ] && [ "$model_requested" != "$MAKABE_CLAUDE_MODEL" ]; then
-    printf '\n(注記: --model %s が指定されたが、この経路では常に %s を使う。記録のみ)\n' "$model_requested" "$MAKABE_CLAUDE_MODEL"
+  if [ -n "$model_requested" ] && [ "$model_requested" != "$model" ]; then
+    printf '\n(注記: --model %s が指定されたが、この経路では %s を使う。記録のみ)\n' "$model_requested" "$model"
   fi
   printf '\n## 今回のタスク\n\n'
   cat "$task_path"
@@ -328,7 +343,7 @@ else
 fi
 
 if [ "$dry_run" -eq 1 ]; then
-  echo "[makabe/claude] dry-run root=$root run_dir=$run_dir model=$model effort=$effort model_requested=${model_requested:-(無し)}"
+  echo "[makabe/claude] dry-run root=$root run_dir=$run_dir model=$model effort=$effort p0=$p0 model_requested=${model_requested:-(無し)}"
   echo "[makabe/claude] settings: $settings_path"
   echo "[makabe/claude] input: stream-json(inbox: $run_dir/inbox.fifo、送り口 makabe-send)"
   echo "--- prompt ---"

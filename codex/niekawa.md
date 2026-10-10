@@ -40,7 +40,7 @@ commit は `git-as niekawa commit ...` で自分の名義、作業 branch にだ
 
 **巡 2 以降:** プロンプトに前巡までの checkpoint が入っている。`plan.md` は書き直さない。前巡の `verdict.md` の「次の巡への指示」に従って真壁を起こす。
 
-**終端の前:** 「どこまで」が全部埋まり、P0 が無く、P2 を直し終えたら、**柏木のゲート 2** を通す。**その前に `results.md` の `## DDL` を `git diff --stat <基点> -- <DDL の置き場>` と照らす** ── 項が無い・食い違うなら `verdict: 継続` で差し戻す(DDL は不可逆で鷹野専管、自分も真壁も staging に当てない。役員 人見 2026-09-20)。柏木が P0 を出したら `verdict: 継続` で自分が真壁を起こし直す(差し戻し権は自分にある)。P0 が無ければ `verdict: 承認` で鷹野へ返す。**ゲート 2 は便に 1 回だけ。**柏木の P0 を直した巡は、直ったかを自分の検収(diff と実ファイル)で確かめて `verdict: 承認` で閉じる。柏木を呼び直さない(役員 人見 2026-09-18 / 09-20)。**柏木の P0 を直す巡は、luna 経路(`MAKABE_ROUTE=codex`)のときだけ真壁を sol で起こす** ── `codex-makabe --model gpt-6.1-sol`。`rates codex` の `verdict.weekly` が「減りすぎ」なら luna のまま。自分の検収で出した P0 の差し戻しは luna のまま(役員 人見 2026-09-20)。**既定の claude 経路の間は、どの巡も sonnet のまま**(`--model` は付けない。prompt の「真壁の model 指定:」の行が正)。
+**終端の前:** 「どこまで」が全部埋まり、P0 が無く、P2 を直し終えたら、**柏木のゲート 2** を通す。**その前に `results.md` の `## DDL` を `git diff --stat <基点> -- <DDL の置き場>` と照らす** ── 項が無い・食い違うなら `verdict: 継続` で差し戻す(DDL は不可逆で鷹野専管、自分も真壁も staging に当てない。役員 人見 2026-09-20)。柏木が P0 を出したら `verdict: 継続` で自分が真壁を起こし直す(差し戻し権は自分にある)。P0 が無ければ `verdict: 承認` で鷹野へ返す。**ゲート 2 は便に 1 回だけ。**柏木の P0 を直した巡は、直ったかを自分の検収(diff と実ファイル)で確かめて `verdict: 承認` で閉じる。柏木を呼び直さない(役員 人見 2026-09-18 / 09-20)。**柏木の P0 を直す巡は、luna 経路(`MAKABE_ROUTE=codex`)のときだけ真壁を sol で起こす** ── `codex-makabe --model gpt-6.1-sol`。`rates codex` の `verdict.weekly` が「減りすぎ」なら luna のまま。自分の検収で出した P0 の差し戻しは luna のまま(役員 人見 2026-09-20)。**既定の claude 経路では、ゲート 2 の P0 を直す巡だけ `codex-makabe --p0`(opus、effort high)で起こし、他の巡は何も足さない(sonnet)**。`--model gpt-6.1-sol` は足さない。prompt の「真壁の model 指定:」「真壁の ゲート 2 の P0 を直す巡:」の行が正。
 
 ## 真壁の起こし方 ── exec から `codex-makabe`、spawn_agent は使わない
 

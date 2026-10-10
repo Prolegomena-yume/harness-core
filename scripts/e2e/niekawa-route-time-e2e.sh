@@ -15,6 +15,9 @@
 #      MAKABE_ROUTE=codex は codex。kimi / claude 両ランチャの round prompt と、codex-agent.sh makabe の分岐
 #      (claude なら claude-makabe.sh の dry-run、codex なら codex exec の dry-run)を --dry-run の出力で見る
 #      不正値は exit 2。既定が models.env の 1 か所だけにあること(ランチャに `:-codex` の直書きが無い)も見る
+#   7. claude 経路の P0 巡 ── 通常の巡は sonnet / high、codex-makabe に --p0 を足した巡(ゲート 2 の P0 を直す巡)は
+#      opus / high(役員 人見 2026-10-11)。--model gpt-6.1-sol が付いても model は変わらない。値は models.env の
+#      MAKABE_CLAUDE_P0_MODEL / _EFFORT 1 か所(env で替わる)。両ランチャの round prompt は claude 経路でだけ --p0 を案内する
 #
 # 軽量・実処理無し。再実行可能($CODEX_AGENT_STATE_DIR を毎回新規の temp に作る)。
 
@@ -239,6 +242,52 @@ fi
 [ "$(grep -cE '^MAKABE_ROUTE="\$\{MAKABE_ROUTE:-claude\}"' "$core_dir/scripts/models.env")" -eq 1 ] \
   && pass 'models.env に MAKABE_ROUTE="${MAKABE_ROUTE:-claude}" が 1 行' \
   || fail 'models.env の MAKABE_ROUTE の既定が 1 行でない'
+
+echo "== 7. claude 経路の P0 巡は opus、通常の巡は sonnet(codex-agent.sh makabe の分岐先 claude-makabe.sh) =="
+p0_run() { # <label> <env...> -- <args...>  出力を $test_root/p0-<label>.out、exit を返す
+  local label="$1"; shift
+  local envs=()
+  while [ "$1" != -- ]; do envs+=("$1"); shift; done
+  shift
+  set +e
+  env -u MAKABE_ROUTE -u MAKABE_MODEL -u MAKABE_EFFORT "${envs[@]}" NIEKAWA_NO_UNIT=1 PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" \
+    "$core_dir/scripts/codex-agent.sh" makabe --dry-run -C "$repo" -f "$test_root/route-brief.md" "$@" > "$test_root/p0-$label.out" 2>&1
+  local st=$?
+  set -e
+  return "$st"
+}
+p0_line() { grep -a '^\[makabe/claude\] dry-run' "$test_root/p0-$1.out" | grep -ao 'model=[^ ]* effort=[^ ]* p0=[0-9]'; }
+check_p0() { # <label> <期待する model effort p0> <env...> -- <args...>
+  local label="$1" want="$2"; shift 2
+  p0_run "$label" "$@" || true
+  local got; got="$(p0_line "$label" || true)"
+  [ "$got" = "$want" ] && pass "$label: $got" || fail "$label: 期待 [$want] 実際 [$got] / $(head -3 "$test_root/p0-$label.out")"
+}
+check_p0 normal   'model=claude-sonnet-5-5 effort=high p0=0' --
+check_p0 p0       'model=claude-opus-5-5 effort=high p0=1' -- --p0
+check_p0 p0-sol   'model=claude-opus-5-5 effort=high p0=1' -- --p0 --model gpt-6.1-sol
+check_p0 sol-only 'model=claude-sonnet-5-5 effort=high p0=0' -- --model gpt-6.1-sol
+check_p0 p0-effort 'model=claude-opus-5-5 effort=max p0=1' -- --p0 --effort max
+check_p0 p0-env   'model=claude-sonnet-5-5 effort=low p0=1' MAKABE_CLAUDE_P0_MODEL=claude-sonnet-5-5 MAKABE_CLAUDE_P0_EFFORT=low -- --p0
+grep -aq 'ゲート 2 の P0 を直す巡' "$test_root/p0-p0.out" && grep -aq 'claude-opus-5-5' "$test_root/p0-p0.out" \
+  && pass 'P0 巡の prompt に opus と「ゲート 2 の P0 を直す巡」が出る' || fail "P0 巡の prompt: $(head -8 "$test_root/p0-p0.out")"
+if p0_run p0-codex MAKABE_ROUTE=codex -- --p0; then
+  fail 'MAKABE_ROUTE=codex に --p0 を渡したのに通った(codex 経路は --p0 を受けない)'
+else
+  pass 'MAKABE_ROUTE=codex に --p0 は渡せない(exit 非 0)'
+fi
+for l in kimi claude; do
+  launcher_path="$kimi_launcher"; [ "$l" = claude ] && launcher_path="$claude_launcher"
+  out="$test_root/p0-prompt-$l.out"; out2="$test_root/p0-prompt-$l-codex.out"
+  env -u MAKABE_ROUTE PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" "$launcher_path" -f "$brief1" --batch "dry-p0-$l" --dry-run > "$out" 2>&1 || true
+  MAKABE_ROUTE=codex PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" "$launcher_path" -f "$brief1" --batch "dry-p0-$l-c" --dry-run > "$out2" 2>&1 || true
+  LC_ALL=C grep -a '真壁の ゲート 2 の P0 を直す巡: codex-makabe に --p0 を足す(claude-opus-5-5、effort high' "$out" >/dev/null \
+    && LC_ALL=C grep -a '真壁の model 指定: 通常の巡は何も足さない(sonnet、effort high)' "$out" >/dev/null \
+    && pass "$l 版 prompt: claude 経路は P0 巡 --p0(opus high)、通常の巡は何も足さない(sonnet high)" \
+    || fail "$l 版 prompt に P0 巡の案内が無い: $(grep -a '真壁' "$out")"
+  ! LC_ALL=C grep -a -e '--p0' "$out2" >/dev/null \
+    && pass "$l 版 prompt: codex 経路には --p0 を案内しない" || fail "$l 版 prompt(codex)に --p0 が出た"
+done
 
 echo
 echo "== summary =="
