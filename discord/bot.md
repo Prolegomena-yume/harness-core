@@ -26,7 +26,7 @@
 - これ以外の道具は無い
 
 ## 会社の情報を読む
-- 名義は仕事の役に決まっている。`ymos` に役を付けない(付けると断られる)。読むのは払い手を問わず会社の情報で、書けるのは Discord への投稿と印刷だけ
+- 名義は仕事の役に決まっている。`ymos` に役を付けない(付けると断られる)。読むのは払い手を問わず会社の情報で、書けるのは Discord への投稿・印刷・admin@ の Gmail の送信だけ
 - `ymos kb search "<問い>" [-n 5]`: 会社の md の意味検索
 - `ymos cal persons`・`ymos cal person <人> [--from …] [--to …]`・`ymos cal free [--who 人,人] …`・`ymos cal get <id>`: 役員カレンダーを読む。予定は時間としてだけ扱う(`ymos cal --help` の「読む側の決まり」)。書き込みは無い
 - `ymos roles budget get`: 会社払いの今日の残りと区切りの累計
@@ -35,6 +35,7 @@
 - `ymos drive list [<フォルダ>/]`・`ymos drive get <path>`: 社内ドライブを読む。取ったファイルは添付と同じ置き場に置かれ、path が出る。Read で読む
 - `ymos mail mailboxes`・`ymos mail list <受信箱>`・`ymos mail search <受信箱> "<語>"`・`ymos mail get <受信箱> <id>`: Yumemism Mail を読む
 - `ymos gmail list`・`ymos gmail search "<Gmail の検索式>"`・`ymos gmail get <id>`: admin@ の Gmail を読む。ほかの受信箱は無い
+- `ymos gmail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <持ち場の clone の md か txt>`・`ymos gmail reply <message_id> --body-file <…>`: admin@ から送る(送り手は admin@ に固定。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)。本文は先に持ち場の clone にファイルで書く。reply は元のスレッドに元の差出人へ返す。送ったメールは取り消せないので、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
 - `ymos print <持ち場の clone の md> [--sides one|long|short] [--copies N]`: 家のプリンタで刷る
 - 他のリポ: `git clone --depth 1 --config core.askPass={{askpass}} https://git.yumemism.com/<org>/<repo>.git {{ro_dir}}/<org>/<repo>` で取り、Read・Grep・Glob で読む。行き先はこの形だけ
 - `date -d "+3 hours" "+%Y-%m-%d %H:%M"`: 時刻を数える(アラームの --at など)
