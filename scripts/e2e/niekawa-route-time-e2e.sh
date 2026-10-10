@@ -18,6 +18,9 @@
 #   7. claude 経路の P0 巡 ── 通常の巡は sonnet / high、codex-makabe に --p0 を足した巡(ゲート 2 の P0 を直す巡)は
 #      opus / high(役員 人見 2026-10-11)。--model gpt-6.1-sol が付いても model は変わらない。値は models.env の
 #      MAKABE_CLAUDE_P0_MODEL / _EFFORT 1 か所(env で替わる)。両ランチャの round prompt は claude 経路でだけ --p0 を案内する
+#   8. claude 経路のゲート 2 の担保 ── ゲート 2 の記録(<便>/gates.tsv の gate=2)がある便では --p0 が無いと die、
+#      --p0 ありなら opus、記録が無い便(贄川自身の検収の P0 の差し戻し)は --p0 なしで sonnet。luna 経路の
+#      「記録があると --model sol が無いと die」と同じ判定・同じ記録(lib/batch-inbox.sh の gate_has_gate2_record)
 #
 # 軽量・実処理無し。再実行可能($CODEX_AGENT_STATE_DIR を毎回新規の temp に作る)。
 
@@ -288,6 +291,59 @@ for l in kimi claude; do
   ! LC_ALL=C grep -a -e '--p0' "$out2" >/dev/null \
     && pass "$l 版 prompt: codex 経路には --p0 を案内しない" || fail "$l 版 prompt(codex)に --p0 が出た"
 done
+
+echo "== 8. claude 経路のゲート 2 の担保(--p0 の強制、luna 経路の sol の強制と同じ記録) =="
+g2_batch="$test_root/batches/g2"; g2_none="$test_root/batches/g2-none"
+mkdir -p "$g2_batch" "$g2_none"
+printf '%s\t-\t2\n' "$(date '+%Y-%m-%dT%H:%M:%S%:z')" > "$g2_batch/gates.tsv"   # ゲート 2 の記録あり
+printf '%s\t-\t1\n' "$(date '+%Y-%m-%dT%H:%M:%S%:z')" > "$g2_none/gates.tsv"   # ゲート 1 だけ(ゲート 2 の記録なし)
+g2_run() { # <label> <便dir または -> -- <args...>
+  local label="$1" batch="$2"; shift 3
+  local inbox_env=()
+  [ "$batch" = - ] || inbox_env=(NIEKAWA_INBOX="$batch/to-niekawa.tsv")
+  set +e
+  env -u MAKABE_ROUTE -u MAKABE_MODEL -u MAKABE_EFFORT "${inbox_env[@]}" NIEKAWA_NO_UNIT=1 PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" \
+    "$core_dir/scripts/codex-agent.sh" makabe --dry-run -C "$repo" -f "$test_root/route-brief.md" "$@" > "$test_root/g2-$label.out" 2>&1
+  local st=$?
+  set -e
+  return "$st"
+}
+runs_before="$(ls "$state1/runs" 2>/dev/null | grep -c '^makabe-' || true)"
+if g2_run g2-nop0 "$g2_batch" --; then
+  fail "ゲート 2 の記録あり・--p0 なしが通った: $(head -3 "$test_root/g2-g2-nop0.out")"
+else
+  st=$?
+  { [ "$st" -eq 2 ] && LC_ALL=C grep -aq 'ゲート 2 の後の真壁は --p0 を付けて起こす' "$test_root/g2-g2-nop0.out"; } \
+    && pass "ゲート 2 の記録あり・--p0 なし: die(exit 2): $(head -1 "$test_root/g2-g2-nop0.out")" \
+    || fail "die の形が想定外(exit $st): $(head -3 "$test_root/g2-g2-nop0.out")"
+fi
+runs_after="$(ls "$state1/runs" 2>/dev/null | grep -c '^makabe-' || true)"
+[ "$runs_before" = "$runs_after" ] && pass 'die は makabe の run_dir を作らない' || fail "run_dir が残った(before=$runs_before after=$runs_after)"
+if g2_run g2-p0 "$g2_batch" -- --p0; then
+  got="$(grep -a '^\[makabe/claude\] dry-run' "$test_root/g2-g2-p0.out" | grep -ao 'model=[^ ]* effort=[^ ]* p0=[0-9]')"
+  [ "$got" = 'model=claude-opus-5-5 effort=high p0=1' ] && pass "ゲート 2 の記録あり・--p0 あり: opus で通る($got)" || fail "model が想定外: $got"
+else
+  fail "ゲート 2 の記録あり・--p0 ありが落ちた: $(head -3 "$test_root/g2-g2-p0.out")"
+fi
+if g2_run g2-none "$g2_none" --; then
+  got="$(grep -a '^\[makabe/claude\] dry-run' "$test_root/g2-g2-none.out" | grep -ao 'model=[^ ]* effort=[^ ]* p0=[0-9]')"
+  [ "$got" = 'model=claude-sonnet-5-5 effort=high p0=0' ] && pass "ゲート 2 の記録なし(ゲート 1 だけ)・--p0 なし: sonnet で通る($got)" || fail "model が想定外: $got"
+else
+  fail "ゲート 2 の記録なし・--p0 なしが落ちた: $(head -3 "$test_root/g2-g2-none.out")"
+fi
+if g2_run g2-outside - --; then
+  pass '便の外(NIEKAWA_INBOX 無し)は --p0 なしでも素通し(sonnet)'
+else
+  fail "便の外が落ちた: $(head -3 "$test_root/g2-g2-outside.out")"
+fi
+# 同じ記録を luna 経路も読んでいる(記録あり・codex 経路・--model なしは従来どおり die)
+set +e
+env MAKABE_ROUTE=codex NIEKAWA_INBOX="$g2_batch/to-niekawa.tsv" NIEKAWA_NO_UNIT=1 PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" \
+  "$core_dir/scripts/codex-agent.sh" makabe --dry-run -C "$repo" -f "$test_root/route-brief.md" > "$test_root/g2-codex.out" 2>&1
+st=$?
+set -e
+{ [ "$st" -eq 2 ] && LC_ALL=C grep -aq 'ゲート 2 の後の真壁は sol で起こす' "$test_root/g2-codex.out"; } \
+  && pass '同じ記録で luna 経路は --model sol を要求して die(従来どおり)' || fail "luna 経路の die が想定外(exit $st): $(head -3 "$test_root/g2-codex.out")"
 
 echo
 echo "== summary =="

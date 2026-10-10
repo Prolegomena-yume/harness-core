@@ -317,16 +317,6 @@ fi
 gate_gates_tsv=""
 [ -z "$gate_batch_dir" ] || gate_gates_tsv="$gate_batch_dir/gates.tsv"
 
-gate_has_gate2_record() {
-  # $1 の gates.tsv(時刻 \t run_dir \t gate)にゲート 2 の行が既にあるか。
-  [ -f "$1" ] && awk -F'\t' '$3=="2"{found=1} END{exit !found}' "$1"
-}
-
-gate_has_gate_record() {
-  # $1 の gates.tsv に $2 のゲート番号の行が既にあるか。
-  [ -f "$1" ] && awk -F'\t' -v g="$2" '$3==g{found=1} END{exit !found}' "$1"
-}
-
 if [ -n "$gate_batch_dir" ] && [ "$persona" = kashiwagi ]; then
   # 柏木の 2 回目は run_dir を作る前に die。ゲート 1(plan.md)もゲート 2(findings.md)も便に 1 回
   # (BRIEF-gate1-once、役員 人見 2026-09-20)。

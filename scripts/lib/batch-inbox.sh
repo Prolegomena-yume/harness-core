@@ -165,3 +165,15 @@ batch_notify_takano() {
   fi
   return 0
 }
+
+# ゲートの記録(<便ディレクトリ>/gates.tsv)の読み口。codex-agent.sh(柏木・luna 経路の真壁)と
+# claude-makabe.sh(claude 経路の真壁の --p0 強制)が同じ判定を使う(BRIEF-gate2-launcher-guard、役員 人見 2026-09-20)。
+gate_has_gate2_record() {
+  # $1 の gates.tsv(時刻 \t run_dir \t gate)にゲート 2 の行が既にあるか。
+  [ -f "$1" ] && awk -F'\t' '$3=="2"{found=1} END{exit !found}' "$1"
+}
+
+gate_has_gate_record() {
+  # $1 の gates.tsv に $2 のゲート番号の行が既にあるか。
+  [ -f "$1" ] && awk -F'\t' -v g="$2" '$3==g{found=1} END{exit !found}' "$1"
+}

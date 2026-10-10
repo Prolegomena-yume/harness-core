@@ -453,7 +453,7 @@ build_round_prompt() {
     if [ "$makabe_route" = claude ]; then
       printf '真壁の呼び出し: codex-makabe をそのまま使う(env MAKABE_ROUTE=claude、既定。codex-agent.sh makabe が claude-makabe(Claude sonnet、effort %s)へ分岐する。役員 人見 2026-10-11)\n' "$MAKABE_CLAUDE_EFFORT"
       printf '真壁の model 指定: 通常の巡は何も足さない(sonnet、effort %s)。--model / env MAKABE_MODEL は記録のみで model は変わらない\n' "$MAKABE_CLAUDE_EFFORT"
-      printf '真壁の ゲート 2 の P0 を直す巡: codex-makabe に --p0 を足す(%s、effort %s。役員 人見 2026-10-11)。--model %s は足さない。贄川自身の検収で出した P0 の差し戻しは通常の巡と同じ(--p0 を付けない)\n' "$MAKABE_CLAUDE_P0_MODEL" "$MAKABE_CLAUDE_P0_EFFORT" "$CODEX_SOL_MODEL"
+      printf '真壁の ゲート 2 の P0 を直す巡: codex-makabe に --p0 を足す(%s、effort %s。役員 人見 2026-10-11)。--model %s は足さない。贄川自身の検収で出した P0 の差し戻し(ゲート 2 の記録が無い巡)は通常の巡と同じ(--p0 を付けない)。ゲート 2 の記録がある便で --p0 が無いとランチャが die する\n' "$MAKABE_CLAUDE_P0_MODEL" "$MAKABE_CLAUDE_P0_EFFORT" "$CODEX_SOL_MODEL"
     else
       printf '真壁の呼び出し: codex-makabe を使う(env MAKABE_ROUTE=codex、従来の経路。gpt-6-luna)\n'
       if [ -n "$makabe_model" ]; then

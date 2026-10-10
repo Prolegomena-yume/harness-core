@@ -96,6 +96,8 @@ CORE="$(dirname "$(dirname "$script_path")")"
 source "$CORE/scripts/models.env"
 # shellcheck source=lib/git-run-diff.sh
 source "$CORE/scripts/lib/git-run-diff.sh"
+# shellcheck source=lib/batch-inbox.sh
+source "$CORE/scripts/lib/batch-inbox.sh"
 [ -f "$CORE/roles/makabe.md" ] || die "人物像の正典が見つからない: $CORE/roles/makabe.md"
 [ -f "$CORE/claude/makabe.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/makabe.md"
 
@@ -208,6 +210,14 @@ for task_file in "${task_files[@]}"; do
   [ -f "$task_file" ] || die "タスクファイルが見つからない: $task_file"
   [ -r "$task_file" ] || die "タスクファイルを読めない: $task_file"
 done
+
+# ゲート 2 の担保(ランチャ側、BRIEF-gate2-launcher-guard、鷹野の裁定 2026-10-11)。luna 経路は codex-agent.sh が
+# 「ゲート 2 の記録がある便では --model sol が無いと die」。claude 経路も同じ判定・同じ記録(<便>/gates.tsv の gate=2)で
+# 「--p0 が無いと die」する。便の外(NIEKAWA_INBOX 無し)は素通し。贄川自身の検収の P0 の差し戻し(ゲート 2 の記録が無い巡)は
+# --p0 なしで通る。die は run_dir・log を作る前(残骸を残さない)。
+if [ -n "${NIEKAWA_INBOX:-}" ] && [ "$p0" -eq 0 ] && gate_has_gate2_record "$(dirname -- "$NIEKAWA_INBOX")/gates.tsv"; then
+  die "ゲート 2 の後の真壁は --p0 を付けて起こす(opus): codex-makabe --p0(便: $(dirname -- "$NIEKAWA_INBOX"))"
+fi
 
 timestamp="$(date '+%Y%m%d-%H%M%S')"
 agent_state_dir="${CODEX_AGENT_STATE_DIR:-$HOME/.codex-agents}"

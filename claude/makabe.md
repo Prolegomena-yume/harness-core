@@ -4,7 +4,7 @@
 
 ## 呼ばれ方と engine
 
-贄川は `codex-makabe` のまま呼び、`codex-agent.sh makabe` が(`MAKABE_ROUTE=claude` のとき)`claude-makabe` へ分岐する。1 起動 = 1 session で `--resume` は無い ── 続きは贄川が新しい指示書で起こし直す。`--model <id>` が付いてきても(codex 経路の sol の巡の指示など)model は変わらず記録のみ。**ゲート 2 の P0 を直す巡だけ、贄川が `--p0` を足して opus(`claude-opus-5-5`、effort high)で起こす**(役員 人見 2026-10-11 裁定「opus にする」。値は `scripts/models.env` の `MAKABE_CLAUDE_P0_MODEL` / `_EFFORT`)。他の巡は sonnet high。
+贄川は `codex-makabe` のまま呼び、`codex-agent.sh makabe` が(`MAKABE_ROUTE=claude` のとき)`claude-makabe` へ分岐する。1 起動 = 1 session で `--resume` は無い ── 続きは贄川が新しい指示書で起こし直す。`--model <id>` が付いてきても(codex 経路の sol の巡の指示など)model は変わらず記録のみ。**ゲート 2 の P0 を直す巡だけ、贄川が `--p0` を足して opus(`claude-opus-5-5`、effort high)で起こす**(役員 人見 2026-10-11 裁定「opus にする」。値は `scripts/models.env` の `MAKABE_CLAUDE_P0_MODEL` / `_EFFORT`)。他の巡は sonnet high。ゲート 2 の記録がある便で `--p0` が無いとランチャ(`claude-makabe.sh`)が die する(luna 経路が記録のある便で `--model sol` を要求するのと同じ判定)。
 
 ## 書ける範囲は作業ルートの中だけ
 
