@@ -16,6 +16,9 @@ set -euo pipefail
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 core_dir="$(dirname "$(dirname "$script_dir")")"
 launcher="$core_dir/scripts/codex-agent.sh"
+# この試験は codex 経路(codex exec の argv・guard・ゲート 2 の sol 強制)を見る。真壁の既定は claude(models.env、
+# 役員 人見 2026-10-11)で codex-agent.sh makabe が claude-makabe へ分岐するので、codex を明示する。
+export MAKABE_ROUTE=codex
 hook="$core_dir/scripts/hooks/gate-guard.sh"
 
 [ -x "$launcher" ] || { echo "エラー: ランチャが見つからない: $launcher" >&2; exit 2; }

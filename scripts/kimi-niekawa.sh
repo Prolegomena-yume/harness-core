@@ -17,11 +17,11 @@ options:
                          codex なら sol(astra は既定から退役、役員 人見 2026-09-24)。env KASHIWAGI_MODEL でも指定できる)
                          柏木の実行経路は env KASHIWAGI_ROUTE(opus|codex、既定 opus)で切り替える。
                          opus は claude-kashiwagi.sh(effort xhigh)、codex は従来の codex-kashiwagi
-      --makabe-model <id>     贄川が真壁を起こすときの model(既定は persona 既定の luna、env
-                         MAKABE_MODEL でも指定できる。ゲート 2 の P0 を直す巡は既存の作法どおり sol)
-                         真壁の実行経路は env MAKABE_ROUTE(claude|codex、既定 codex)で切り替える。
-                         claude は codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する経路
-                         (codex weekly 逼迫時の代替、庵野 2026-09-22)、codex は従来の codex-makabe
+      --makabe-model <id>     贄川が真壁を起こすときの model(codex 経路のときだけ効く、既定は persona 既定の luna、env
+                         MAKABE_MODEL でも指定できる。ゲート 2 の P0 を直す巡は codex 経路なら既存の作法どおり sol)
+                         真壁の実行経路は env MAKABE_ROUTE(claude|codex、既定は models.env の claude)で切り替える。
+                         claude は codex-makabe(codex-agent.sh makabe)が claude-makabe(Claude sonnet)へ分岐する経路
+                         (既定、役員 人見 2026-10-11)、codex は従来の codex-makabe(luna)
       --batch <name>     便名を明示する(既定: BRIEF 本文の「便: <名>」行)
       --inbox <path>     鷹野の箱(to-takano.tsv)を明示する。既定は便ディレクトリの to-takano.tsv
       --resume-run [<前run_dir>]
@@ -140,11 +140,11 @@ case "$kashiwagi_route" in
   opus|codex) ;;
   *) die "KASHIWAGI_ROUTE は opus か codex のどちらか: $kashiwagi_route" ;;
 esac
-# 真壁の実行経路(codex weekly 逼迫時の代替、庵野 2026-09-22)。既定 codex = 従来の codex-makabe
-# (gpt-6-luna)。claude なら codex-makabe が内部で claude-makabe(Claude sonnet)へ分岐する ──
-# 贄川の呼び出しコマンド自体は codex-makabe のまま変えない。走行中の run には効かない(env は
-# 起動時に固定、新しい起動からだけ適用される)。
-makabe_route="${MAKABE_ROUTE:-codex}"
+# 真壁の実行経路。既定は models.env の MAKABE_ROUTE(claude = Claude sonnet、役員 人見 2026-10-11 の裁定)。
+# codex なら従来の codex-makabe(gpt-6-luna)。どちらでも贄川の呼び出しコマンドは codex-makabe のまま ──
+# MAKABE_ROUTE=claude のとき codex-agent.sh makabe が claude-makabe.sh へ分岐する。走行中の run には
+# 効かない(env は起動時に固定、新しい起動からだけ適用される)。既定をここに直書きしない(二重に書かない)。
+makabe_route="$MAKABE_ROUTE"
 case "$makabe_route" in
   claude|codex) ;;
   *) die "MAKABE_ROUTE は claude か codex のどちらか: $makabe_route" ;;
@@ -451,12 +451,15 @@ build_round_prompt() {
       fi
     fi
     if [ "$makabe_route" = claude ]; then
-      printf '真壁の呼び出し: codex-makabe をそのまま使う(env MAKABE_ROUTE=claude、wrapper が内部で claude-makabe(Claude sonnet)へ分岐する。codex weekly 逼迫時の代替経路、庵野 2026-09-22)\n'
-    fi
-    if [ -n "$makabe_model" ]; then
-      printf '真壁の model 指定: codex-makabe に --model %s を足す(env MAKABE_MODEL、工程限定の裁定。MAKABE_ROUTE=claude の間は無視されて claude sonnet 固定)\n' "$makabe_model"
+      printf '真壁の呼び出し: codex-makabe をそのまま使う(env MAKABE_ROUTE=claude、既定。codex-agent.sh makabe が claude-makabe(Claude sonnet、effort %s)へ分岐する。役員 人見 2026-10-11)\n' "$MAKABE_CLAUDE_EFFORT"
+      printf '真壁の model 指定: この経路では --model / env MAKABE_MODEL は記録のみで sonnet 固定。ゲート 2 の P0 を直す巡も sonnet のまま(--model %s を足さない)\n' "$CODEX_SOL_MODEL"
     else
-      printf '真壁の model 指定: 既定のまま(--model を足さない、persona 既定 luna。ゲート 2 の P0 を直す巡は従来どおり --model %s、MAKABE_ROUTE=claude の間は sonnet 固定)\n' "$CODEX_SOL_MODEL"
+      printf '真壁の呼び出し: codex-makabe を使う(env MAKABE_ROUTE=codex、従来の経路。gpt-6-luna)\n'
+      if [ -n "$makabe_model" ]; then
+        printf '真壁の model 指定: codex-makabe に --model %s を足す(env MAKABE_MODEL、工程限定の裁定)\n' "$makabe_model"
+      else
+        printf '真壁の model 指定: 既定のまま(--model を足さない、persona 既定 luna。ゲート 2 の P0 を直す巡は従来どおり --model %s)\n' "$CODEX_SOL_MODEL"
+      fi
     fi
     if [ "$round" -gt 1 ]; then
       prev_verdict="$rounds_dir/r$((round - 1))/verdict.md"

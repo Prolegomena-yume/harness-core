@@ -8,7 +8,7 @@
 | 水無瀬[PL] | Claude | `claude-opus-5-5` | 調査、設計案、影響範囲。鷹野直属 | Agent tool `subagent_type: minase` |
 | 贄川[ORC] | Kimi K3 | `kimi-code/k3-256k` | 段取り(plan)、真壁の起動と差し戻し、巡ごとのレビュー、鷹野への納品 | `kimi-niekawa -f <BRIEF>`(枠切れは `codex-niekawa`、sol) |
 | 柏木[CM] | **Claude opus(effort xhigh)= 実行経路 C、既定** / Codex `gpt-6.1-sol`(`KASHIWAGI_ROUTE=codex`、astra は既定から退役、役員 人見 2026-09-24) | レビュー・監査・助言。ゲート 1(plan 後)とゲート 2(納品前)。ゲート 1 は書き込み無し、ゲート 2 は作業木の中だけ書ける(P2 の自己 commit) | 贄川が `claude-kashiwagi --no-loop`(codex 経路は `codex-kashiwagi --no-loop`)── 役員 人見 2026-09-21 23:55(PoC:Opus 5 / 5、K3 2 / 5、`_sessions/2026-09-21_09`)。cloud セッションでは鷹野が Agent tool `subagent_type: kashiwagi`(1 便 1 回、読み取り専用、cloud 専用) |
-| 真壁[IM] | Codex | `gpt-6-luna` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から。贄川を通さない直書き便は鷹野が `kimi-makabe -C <worktree> -f <BRIEF>`(K3、`MAKABE_KIMI_MODEL`。役員 人見 2026-09-29)。cloud セッションでは鷹野が Agent tool `subagent_type: makabe`(Sonnet 5.5、cloud 専用、[cloud-session.md](cloud-session.md)。役員 人見 2026-09-30) |
+| 真壁[IM] | **Claude sonnet(effort high)= 既定** / Codex `gpt-6-luna`(`MAKABE_ROUTE=codex`、effort max)。既定にしたのは 役員 人見 2026-10-11、根拠は tech の `_drafts/bench/luna-max-vs-haiku-xhigh/results.md` | `claude-sonnet-5-5` | 実装、テスト、実測 | 贄川が `codex-makabe` を Bash / exec から(既定は wrapper 先の `codex-agent.sh makabe` が `claude-makabe` へ分岐する。`MAKABE_ROUTE` の既定は `scripts/models.env` の 1 か所)。贄川を通さない直書き便は鷹野が `kimi-makabe -C <worktree> -f <BRIEF>`(K3、`MAKABE_KIMI_MODEL`。役員 人見 2026-09-29)。cloud セッションでは鷹野が Agent tool `subagent_type: makabe`(Sonnet 5.5、cloud 専用、[cloud-session.md](cloud-session.md)。役員 人見 2026-09-30) |
 | 庵野[EXP] | Claude | `claude-sonnet-5-5` | 道具作り、Playwright、PoC、検証しながらの実装。鷹野直属 | Agent tool `subagent_type: anno` |
 | 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(枠切れは `--k3`) |
 
@@ -34,9 +34,9 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 1. **鷹野が BRIEF を書く**(ファイル)
 2. **贄川が plan を書く** ── 作業域(worktree / branch)、真壁ごとの担当、完了条件、検収の手、並列の割り付け。置き場は作業木でなく贄川の run_dir(`~/.codex-agents/runs/niekawa-<run_id>/plan.md`)── 同じ木で動く真壁に検収の手を見せないため
 3. **柏木のゲート 1** ── 贄川が `codex-kashiwagi --no-loop -C <run_dir> -f <run_dir>/plan.md` で起こす。**所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。**反映してから次へ。**ゲート 1 も便に 1 回**(役員 人見 2026-09-20)。P0 が出たら plan を直し、直ったかは贄川自身の検収で閉じて次(真壁)へ進む、柏木を呼び直さない。担保はゲート 2 と同じランチャ + hook の 2 段
-4. **真壁が実装する** ── 贄川が `codex-makabe` を起こす。指示書は run_dir のファイル、渡すのはパス 1 行。中身は plan のうち真壁の分だけ
+4. **真壁が実装する** ── 贄川が `codex-makabe` を起こす(既定は claude 経路で sonnet、`MAKABE_ROUTE=codex` なら luna)。指示書は run_dir のファイル、渡すのはパス 1 行。中身は plan のうち真壁の分だけ
 5. **贄川が巡ごとに検収する** ── `git diff` と実ファイル。P0 があれば `verdict: 継続` で真壁を起こし直す。P2 は自分で直して commit、P1 は記録
-6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**ゲート 2 の P0 を直す巡だけ、真壁を sol で起こす**(`codex-makabe --model gpt-6.1-sol`、codex が減りすぎでないとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**担保は 2 段、ゲート 1 も 2 も同じ形** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、ゲート 1 への拡張は BRIEF-gate1-once、役員 人見 2026-09-20)
+6. **柏木のゲート 2** ── 「どこまで」が埋まり、P0 が無く、P2 を直し終えたら `codex-kashiwagi --no-loop -C <作業木> -f <run_dir>/findings.md`。柏木が P0 を出したら 4 へ戻る。**ゲート 2 は便に 1 回。**直ったかは 5 で贄川が検算して 7 へ、柏木を呼び直さない(1 ゲート 1 回、役員 人見 2026-09-18 / 09-20 ── gen-3 巡 5 で gate2b を通したのは逸脱)。**luna 経路(`MAKABE_ROUTE=codex`)のとき、ゲート 2 の P0 を直す巡だけ真壁を sol で起こす**(`codex-makabe --model gpt-6.1-sol`、codex が減りすぎでないとき)── 差し戻された P0 は luna の理解で漏れた箇所、同じ水準でやり直すより 1 巡で済ませる方が安い(役員 人見 2026-09-20)。贄川自身の検収で出た P0(「どこまで」の未充足)は luna のまま。**既定の claude 経路の間は、ゲート 2 の P0 を直す巡も sonnet のまま**(`--model` は記録のみで、ランチャの sol 強制も通らない。この巡だけ model を上げるかは未裁定)。**担保は 2 段、ゲート 1 も 2 も同じ形** ── kimi の PreToolUse hook(`gate-guard.sh`)は K3 経路の `codex-kashiwagi` しか見ないため、`codex-agent.sh`(ランチャ)自身が persona=kashiwagi / makabe の全経路(K3・sol 贄川・人の手)で同じ判定をする。record の書き手はランチャだけに一本化し、hook は検査だけ(BRIEF-gate2-launcher-guard、ゲート 1 への拡張は BRIEF-gate1-once、役員 人見 2026-09-20)
 7. **鷹野へ納品** ── 贄川の `verdict: 承認`。鷹野が独立検算(diff、test、実測の再現)をして merge / push
 
 **水無瀬の plan 赤入れは無い**(2026-09-18 に廃止、ゲート 1 が代替)。**柏木は真壁を起こさない**、巡も回さない。
@@ -77,8 +77,8 @@ harness-route                                    # 今日の配役表(read-only�
 |---|---|
 | agy が減りすぎ | 源内を K3 で動かす(`genai --k3`) |
 | kimi が減りすぎ | 贄川を Codex sol で動かす(`codex-niekawa`) |
-| claude が減りすぎ | Claude は鷹野の窓だけに絞る。庵野を使わず真壁へ。K3 は Fable の代替として温存し、段取りは sol |
-| codex が減りすぎ | 実装は庵野(この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持ち、鷹野とはメッセージで連絡 |
+| claude が減りすぎ | Claude は鷹野の窓だけに絞る。庵野を使わず真壁へ ── 真壁は既定の claude 経路でなく codex 経路(`MAKABE_ROUTE=codex`、luna max)で起こす。K3 は Fable の代替として温存し、段取りは sol |
+| codex が減りすぎ | 実装は庵野(この時だけ柏木のゲートを通す)。段取りは bg の Claude Code で水無瀬が持ち、鷹野とはメッセージで連絡。真壁の経路は替えない(既定の claude のまま、`MAKABE_ROUTE=codex` を渡さない) |
 
 **閾値の判定はランチャに入れない。**起こされた後のランチャに選択肢は無く、ランチャが別のランチャを起こす形は自己参照の事故に近づく。代わりに 2 つ ── 鷹野が起動前に `harness-route` を 1 回打って配役表を見る(read-only、起動しない)、各ランチャは起動時に自サービスの `rates` を 1 回だけ叩いて `<run_dir>/rates.json` に残す(失敗は警告だけで続行)。
 
@@ -107,7 +107,7 @@ harness-route                                    # 今日の配役表(read-only�
 
 ## 真壁はトップレベル session ── codex 組み込みの子にしない
 
-**贄川は真壁を `codex-makabe` で起こす。**Kimi に codex 組み込みの子を起こす手段は無く、sol の贄川も形を揃えて使わない。真壁はトップレベルの codex session になるので、**外から `--resume <session_id>` が効く**(子の thread は外から resume できなかった、09-13 の制約が消えた)。
+**贄川は真壁を `codex-makabe` で起こす。**Kimi に codex 組み込みの子を起こす手段は無く、sol の贄川も形を揃えて使わない。codex 経路(`MAKABE_ROUTE=codex`)の真壁はトップレベルの codex session になるので、**外から `--resume <session_id>` が効く**(子の thread は外から resume できなかった、09-13 の制約が消えた)。既定の claude 経路は `--resume` が無く、続きは贄川が新しい指示書で起こし直す([../claude/makabe.md](../claude/makabe.md))。
 
 ```bash
 setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.md" \
@@ -170,7 +170,7 @@ sleep 280; tail -n 5 "$RUN/makabe-a.out"; rg -n '^変更ファイル数:' "$RUN/
 
 ## 出力の上限は上位モデルにだけ効く、evidence は repo に置いてよい
 
-**真壁(luna)の exec 出力が 10KB を超えるのは構わない。**luna は枠にほぼ計上されず、真壁の transcript は贄川に流れない。ダメなのは贄川(K3)と柏木(codex 経路は sol)がそれを読むこと ── 読むのは真壁の報告(2KB)、`results.md`、diff だけ。真壁 toml の「10KB 以内」は真壁自身の文脈を守る目安で、超えた件数を違反として数えない(役員 人見 2026-09-16)。
+**真壁(codex 経路の luna)の exec 出力が 10KB を超えるのは構わない。**luna は枠にほぼ計上されず、真壁の transcript は贄川に流れない。ダメなのは贄川(K3)と柏木(codex 経路は sol)がそれを読むこと ── 読むのは真壁の報告(2KB)、`results.md`、diff だけ。真壁 toml の「10KB 以内」は真壁自身の文脈を守る目安で、超えた件数を違反として数えない(役員 人見 2026-09-16)。
 
 **検証の evidence(test の全出力、tail など)は repo の `docs/evidence/` に置いてよい。**誰も全文を読まず、必要な行を `rg` / `sed -n` で参照する運用なら量は問題にならない。要約 + パスへの圧縮は要らない。
 
@@ -247,7 +247,7 @@ from-niekawa --wait --cap 1800 --inbox ~/.codex-agents/batches/<便名>/to-takan
 
 1. bypass で起動する(ランチャが付ける)
 2. 仕様をファイルへ落とし `-f` で渡す。**`kimi -p` の argv は 128KB で落ちる**(09-18 実測、exit 126)ので、100KB を超える prompt はファイル経由にする
-3. reasoning effort はランチャの既定(値は `scripts/models.env`、真壁(luna)の max は役員 人見 09-13)。`-c model_reasoning_effort=...` を手で足さない
+3. reasoning effort はランチャの既定(値は `scripts/models.env`、真壁の codex 経路(luna)の max は役員 人見 09-13、既定の claude 経路は high)。`-c model_reasoning_effort=...` を手で足さない
 4. exit code だけで成功とせず、footer・`git diff --stat`・実ファイルを検算する
 5. 同じ persona を同じ秒に 2 本起動しない(run_dir は pid と乱数で一意化済みだが、ログの読み違いを避ける)
 

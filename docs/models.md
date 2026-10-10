@@ -25,7 +25,7 @@
 
 ## Claude Sonnet 5.5
 
-- 本書の 3 つの出典に記述が無い。庵野と、真壁の claude 経路(`MAKABE_ROUTE=claude`)に使っている
+- 本書の 3 つの出典に記述が無い。庵野と、真壁の既定の経路(`MAKABE_ROUTE=claude`)に使っている
 
 ## GPT-6.1 Sol
 
@@ -63,7 +63,7 @@
 - **水無瀬 = Opus 5.5。**全体を見て統合する力を調査・設計に使う
 - **贄川 = 主は K3、枠切れは Sol。**段取りは待ちが長く、K3 は待ちの turn が cached で枠を食わない。`tech/_drafts/plan/58-task-dag.v0.md` の工程に限っては Opus 5.5 が主(役員 人見 2026-09-21、effort `medium` は 2026-09-24)。段 7〜段 10 は kimi が減りすぎになるまで K3 で回す(役員 人見 2026-09-24)
 - **柏木 = 既定は Opus 5.5(経路 C、effort `xhigh`)、codex 経路は Sol。**経路 C は 2026-09-21 の PoC(Opus 5 件中 5 件、K3 2 件)による。Sol は細部の不整合を見抜く [H]。**どちらをゲートに置くかは Opus 5.5 と gpt-6.1-sol の PoC で決める(未決)**
-- **真壁 = Luna `max`、差し戻し後の P0 巡は Sol。**Luna は枠にほぼ載らず、DeepSWE で Opus 5 の `medium` 並み [O]。ゲート 2 の P0 は Luna の理解で漏れた箇所なので、同じ水準でやり直すより Sol で 1 巡で済ませる(役員 人見 2026-09-20、GPT-6 の ID で 2026-09-24 に再裁定)。codex が減りすぎのときは claude 経路(Sonnet 5.5)。贄川を通さない直書き便は K3(`kimi-makabe`、`MAKABE_KIMI_MODEL`、役員 人見 2026-09-29)
+- **真壁 = 既定は Sonnet 5.5 `high`(claude 経路)、codex 経路(`MAKABE_ROUTE=codex`)は Luna `max` で差し戻し後の P0 巡は Sol。**既定を Luna から Sonnet に移した(役員 人見 2026-10-11)。根拠は tech の `_drafts/bench/luna-max-vs-haiku-xhigh/results.md` ── 真壁の実指示文の再演(課題 C・D)で、Sonnet `high` は壁時計が最短、審査は Opus と並んで上位、Luna は D で最下位だった。Luna は枠にほぼ載らず、DeepSWE で Opus 5 の `medium` 並み [O]。codex 経路のゲート 2 の P0 は Luna の理解で漏れた箇所なので、同じ水準でやり直すより Sol で 1 巡で済ませる(役員 人見 2026-09-20、GPT-6 の ID で 2026-09-24 に再裁定)。claude が減りすぎのときは codex 経路へ戻す。贄川を通さない直書き便は K3(`kimi-makabe`、`MAKABE_KIMI_MODEL`、役員 人見 2026-09-29)
 - **庵野 = Sonnet 5.5。源内 = Gemini 3.8 Flash (High)、agy が減りすぎなら K3**
 - **モデル分離は鷹野の検算が担保する。**実装・段取り・ゲート・検算のモデルを分け、鷹野が納品物を独立に検算する配置そのものが分離で、柏木は分離の検査項目を持たない
 

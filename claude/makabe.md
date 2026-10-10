@@ -1,10 +1,10 @@
-# 真壁 Claude 起動契約(codex 逼迫時の代替経路)
+# 真壁 Claude 起動契約(既定の経路)
 
-人物像は [../roles/makabe.md](../roles/makabe.md)。真壁の主経路は Codex で、この Claude 版は env `MAKABE_ROUTE=claude` のときだけ使う(`docs/delegation.md` の枠の規則「codex が減りすぎ」の実装)。**受け方・commit の規律・exec の作法・出力契約は、この前に読み込まれている [../codex/makabe.md](../codex/makabe.md) をそのまま守る。**以下はこの経路だけの差分。model と effort は `scripts/models.env`。
+人物像は [../roles/makabe.md](../roles/makabe.md)。真壁の主経路はこの Claude 版(sonnet、effort high)で、env `MAKABE_ROUTE` の既定が claude(`scripts/models.env`。役員 人見 2026-10-11、根拠は tech の `_drafts/bench/luna-max-vs-haiku-xhigh/results.md`)。`MAKABE_ROUTE=codex` を渡したときだけ従来の Codex luna 版([../codex/makabe.md](../codex/makabe.md)の経路)を使う ── `docs/delegation.md` の枠の規則「claude が減りすぎ」の実装。**受け方・commit の規律・exec の作法・出力契約は、この前に読み込まれている [../codex/makabe.md](../codex/makabe.md) をそのまま守る。**以下はこの経路だけの差分。model と effort は `scripts/models.env`。
 
 ## 呼ばれ方と engine
 
-贄川は `codex-makabe` のまま呼び、wrapper が `claude-makabe` へ分岐する。1 起動 = 1 session で `--resume` は無い ── 続きは贄川が新しい指示書で起こし直す。`--model <id>` が付いてきても(sol の巡)この経路では無視される。
+贄川は `codex-makabe` のまま呼び、`codex-agent.sh makabe` が(`MAKABE_ROUTE=claude` のとき)`claude-makabe` へ分岐する。1 起動 = 1 session で `--resume` は無い ── 続きは贄川が新しい指示書で起こし直す。`--model <id>` が付いてきても(codex 経路の sol の巡の指示など)この経路では無視される ── ゲート 2 の P0 を直す巡も sonnet のまま。
 
 ## 書ける範囲は作業ルートの中だけ
 

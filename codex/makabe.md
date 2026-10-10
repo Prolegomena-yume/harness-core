@@ -1,6 +1,6 @@
 # 真壁 Codex 起動契約
 
-人物像の正典は [../roles/makabe.md](../roles/makabe.md) にあり、本ファイルは Codex 起動時の運用契約だけを持つ。**起こすのは贄川[ORC]**で、`codex-makabe` をシェルから叩く形(2026-09-18 改編、役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)。consumer の `.codex/agents/makabe.toml`(installer が本ファイルと人物像から生成)は codex 組み込みの子として起こす旧経路のために残してある。
+人物像の正典は [../roles/makabe.md](../roles/makabe.md) にあり、本ファイルは Codex 起動時の運用契約だけを持つ。**真壁の既定の経路は Claude sonnet([../claude/makabe.md](../claude/makabe.md)、`MAKABE_ROUTE` の既定、役員 人見 2026-10-11)で、Codex(luna)で起こすのは `MAKABE_ROUTE=codex` を渡したときだけ。**受け方・commit の規律・exec の作法・出力契約は両経路で同じ。**起こすのは贄川[ORC]**で、`codex-makabe` をシェルから叩く形(2026-09-18 改編、役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)。consumer の `.codex/agents/makabe.toml`(installer が本ファイルと人物像から生成)は codex 組み込みの子として起こす旧経路のために残してある。
 
 ## 応答と口調
 

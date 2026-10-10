@@ -97,6 +97,20 @@ script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 # shellcheck source=models.env
 source "$CORE/scripts/models.env"
+# 真壁の実行経路(models.env の MAKABE_ROUTE、既定 claude)。claude なら codex-makabe の呼び出しをそのまま
+# claude-makabe.sh へ渡して終わる ── 贄川の呼び出しコマンドは codex-makabe のまま変えない。分岐は ~/bin の wrapper
+# ではなくここに置く(wrapper は installer が上書きするため、手で足した分岐は 2026-09-24 に消えた)。
+# unit-wrap・rates・ゲート 2 の sol 強制はこの先にあるので claude 経路は通らない(claude-makabe.sh は --model を記録のみ)。
+if [ "$persona" = makabe ]; then
+  case "$MAKABE_ROUTE" in
+    claude)
+      [ -x "$CORE/scripts/claude-makabe.sh" ] || die "claude-makabe.sh が見つからないか実行できない: $CORE/scripts/claude-makabe.sh"
+      exec "$CORE/scripts/claude-makabe.sh" "$@"
+      ;;
+    codex) ;;
+    *) die "MAKABE_ROUTE は claude か codex のどちらか: $MAKABE_ROUTE" ;;
+  esac
+fi
 [ -d "$CORE/roles" ] || die "roles ディレクトリが見つからない: $CORE/roles"
 [ -d "$CORE/codex" ] || die "codex ディレクトリが見つからない: $CORE/codex"
 [ -f "$CORE/roles/$persona.md" ] || die "人物像の正典が見つからない: $CORE/roles/$persona.md"

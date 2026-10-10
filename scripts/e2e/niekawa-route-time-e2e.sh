@@ -11,6 +11,11 @@
 #   4. --budget 指定時は両版とも「時間: elapsed <秒>s / <秒>s」の行を出す(budget_min*60 と一致)
 #   5. --resume-run で前 run の runs.tsv 1 行目(便の最初の run)からの経過秒を通算する(kimi 版)
 #
+#   6. 真壁の経路 ── MAKABE_ROUTE 未指定は claude(models.env の既定、役員 人見 2026-10-11)、
+#      MAKABE_ROUTE=codex は codex。kimi / claude 両ランチャの round prompt と、codex-agent.sh makabe の分岐
+#      (claude なら claude-makabe.sh の dry-run、codex なら codex exec の dry-run)を --dry-run の出力で見る
+#      不正値は exit 2。既定が models.env の 1 か所だけにあること(ランチャに `:-codex` の直書きが無い)も見る
+#
 # 軽量・実処理無し。再実行可能($CODEX_AGENT_STATE_DIR を毎回新規の temp に作る)。
 
 set -euo pipefail
@@ -152,6 +157,88 @@ kimi_bad_budget_status=$?
 set -e
 [ "$kimi_bad_budget_status" -eq 2 ] && pass 'kimi-niekawa --budget abc は exit 2 で die' \
   || fail "exit $kimi_bad_budget_status(期待 2): $(cat "$kimi_bad_budget_out")"
+
+echo "== 6. 真壁の経路 ── 未指定は claude、MAKABE_ROUTE=codex は codex =="
+for l in kimi claude; do
+  launcher_path="$kimi_launcher"; [ "$l" = claude ] && launcher_path="$claude_launcher"
+  for route in unset claude codex; do
+    out="$test_root/makabe-route-$l-$route.out"
+    set +e
+    if [ "$route" = unset ]; then
+      env -u MAKABE_ROUTE PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" \
+        "$launcher_path" -f "$brief1" --batch "dry-route-$l-$route" --dry-run > "$out" 2>&1
+    else
+      PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" MAKABE_ROUTE="$route" \
+        "$launcher_path" -f "$brief1" --batch "dry-route-$l-$route" --dry-run > "$out" 2>&1
+    fi
+    st=$?
+    set -e
+    [ "$st" -eq 0 ] || fail "$l-niekawa --dry-run($route)が exit $st: $(cat "$out")"
+    want=claude; [ "$route" = codex ] && want=codex
+    if [ "$want" = claude ]; then
+      LC_ALL=C grep -Fq '真壁の呼び出し: codex-makabe をそのまま使う(env MAKABE_ROUTE=claude' "$out" \
+        && ! LC_ALL=C grep -Fq 'env MAKABE_ROUTE=codex、従来の経路' "$out" \
+        && pass "$l 版: MAKABE_ROUTE=$route で真壁は claude 経路(sonnet)" \
+        || fail "$l 版($route): claude 経路の行が出ない: $(grep -a '真壁' "$out")"
+    else
+      LC_ALL=C grep -Fq 'env MAKABE_ROUTE=codex、従来の経路' "$out" \
+        && ! LC_ALL=C grep -Fq '真壁の呼び出し: codex-makabe をそのまま使う' "$out" \
+        && pass "$l 版: MAKABE_ROUTE=codex で真壁は codex 経路(luna)" \
+        || fail "$l 版($route): codex 経路の行が出ない: $(grep -a '真壁' "$out")"
+    fi
+  done
+  bad_out="$test_root/makabe-route-$l-bad.out"
+  set +e
+  PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" MAKABE_ROUTE=foo \
+    "$launcher_path" -f "$brief1" --batch "dry-route-$l-bad" --dry-run > "$bad_out" 2>&1
+  bad_st=$?
+  set -e
+  [ "$bad_st" -eq 2 ] && pass "$l 版: MAKABE_ROUTE=foo は exit 2 で die" \
+    || fail "$l 版: MAKABE_ROUTE=foo が exit $bad_st(期待 2)"
+done
+
+# codex-agent.sh makabe の分岐。-C は main でない branch の repo($repo は impl/e2e)。
+cd "$repo"
+printf 'route probe\n' > "$test_root/route-brief.md"
+route_out="$test_root/agent-unset.out"
+set +e
+env -u MAKABE_ROUTE NIEKAWA_NO_UNIT=1 PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" \
+  "$core_dir/scripts/codex-agent.sh" makabe --dry-run -C "$repo" -f "$test_root/route-brief.md" > "$route_out" 2>&1
+st=$?
+set -e
+[ "$st" -eq 0 ] && LC_ALL=C grep -Fq '[makabe/claude] dry-run' "$route_out" && LC_ALL=C grep -Fq 'model=claude-sonnet-5-5 effort=high' "$route_out" \
+  && ! LC_ALL=C grep -Fq 'dry-run command: codex exec' "$route_out" \
+  && pass 'codex-agent.sh makabe: MAKABE_ROUTE 未指定は claude-makabe(sonnet / high)へ分岐する' \
+  || fail "codex-agent.sh makabe(未指定)が claude へ分岐しない(exit $st): $(head -5 "$route_out")"
+
+route_out="$test_root/agent-codex.out"
+set +e
+MAKABE_ROUTE=codex NIEKAWA_NO_UNIT=1 PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" \
+  "$core_dir/scripts/codex-agent.sh" makabe --dry-run -C "$repo" -f "$test_root/route-brief.md" > "$route_out" 2>&1
+st=$?
+set -e
+[ "$st" -eq 0 ] && LC_ALL=C grep -Fq 'dry-run command: codex exec' "$route_out" && LC_ALL=C grep -Fq 'gpt-6-luna' "$route_out" \
+  && ! LC_ALL=C grep -Fq '[makabe/claude]' "$route_out" \
+  && pass 'codex-agent.sh makabe: MAKABE_ROUTE=codex は codex exec(gpt-6-luna)のまま' \
+  || fail "codex-agent.sh makabe(codex)が codex exec にならない(exit $st): $(head -5 "$route_out")"
+
+route_out="$test_root/agent-bad.out"
+set +e
+MAKABE_ROUTE=foo NIEKAWA_NO_UNIT=1 PATH="$fake_bin:$PATH" CODEX_AGENT_STATE_DIR="$state1" \
+  "$core_dir/scripts/codex-agent.sh" makabe --dry-run -C "$repo" -f "$test_root/route-brief.md" > "$route_out" 2>&1
+st=$?
+set -e
+[ "$st" -eq 2 ] && pass 'codex-agent.sh makabe: MAKABE_ROUTE=foo は exit 2' || fail "MAKABE_ROUTE=foo が exit $st(期待 2)"
+
+# 既定は models.env の 1 か所。ランチャ・codex-agent.sh に直書きの既定を置かない
+if grep -nE 'MAKABE_ROUTE:-' "$core_dir/scripts/kimi-niekawa.sh" "$core_dir/scripts/claude-niekawa.sh" "$core_dir/scripts/codex-agent.sh" >/dev/null; then
+  fail "ランチャに MAKABE_ROUTE の既定が直書きされている: $(grep -nE 'MAKABE_ROUTE:-' "$core_dir"/scripts/{kimi-niekawa,claude-niekawa,codex-agent}.sh)"
+else
+  pass 'MAKABE_ROUTE の既定はランチャに直書きされていない(models.env の 1 か所)'
+fi
+[ "$(grep -cE '^MAKABE_ROUTE="\$\{MAKABE_ROUTE:-claude\}"' "$core_dir/scripts/models.env")" -eq 1 ] \
+  && pass 'models.env に MAKABE_ROUTE="${MAKABE_ROUTE:-claude}" が 1 行' \
+  || fail 'models.env の MAKABE_ROUTE の既定が 1 行でない'
 
 echo
 echo "== summary =="

@@ -4,6 +4,9 @@ set -euo pipefail
 
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 launcher="$script_dir/codex-agent.sh"
+# この試験は codex 経路(codex exec の argv・guard・ゲート 2 の sol 強制)を見る。真壁の既定は claude(models.env、
+# 役員 人見 2026-10-11)で codex-agent.sh makabe が claude-makabe へ分岐するので、codex を明示する。
+export MAKABE_ROUTE=codex
 kimi_launcher="$script_dir/kimi-niekawa.sh"
 test_root="$(mktemp -d /tmp/codex-agent-guard.XXXXXX)"
 fake_bin="$test_root/bin"
