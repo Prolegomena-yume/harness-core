@@ -31,9 +31,11 @@
 - `ymos cal persons`・`ymos cal person <人> [--from …] [--to …]`・`ymos cal free [--who 人,人] …`・`ymos cal get <id>`: 役員カレンダーを読む。予定は時間としてだけ扱う(`ymos cal --help` の「読む側の決まり」)。書き込みは無い
 - `ymos roles budget get`: 会社払いの今日の残りと区切りの累計
 - `ymos discord read <チャンネル> [--before|--after <message_id>] [--limit 30]`: あなたの bot で読む
-- `ymos discord post <チャンネル> "<本文>"`: あなたの bot の名義でサーバーのテキストチャンネルに書く。#通知 と DM は断られる。鳴るのは役員と役の bot へのメンションだけで、役の bot を呼べば役が役を呼んだことになる(連鎖 3 段・会社の 1 日の上限に数える)
+- `ymos discord post <チャンネル> "<本文>" [--file <path>]…`: あなたの bot の名義でサーバーのテキストチャンネルに書く。#通知 と DM は断られる。`--file` でファイルを 4 本まで付けられる(1 本 8MB まで、合わせて 25MB まで、本文は要る)。付けられるのは持ち場の clone と {{files_dir}} の中だけ(呼んだ発言の添付・ドライブから取ったファイル・スクショ)。鳴るのは役員と役の bot へのメンションだけで、役の bot を呼べば役が役を呼んだことになる(連鎖 3 段・会社の 1 日の上限に数える)
 - `ymos drive list [<フォルダ>/]`・`ymos drive get <path>`: 社内ドライブを読む。取ったファイルは添付と同じ置き場に置かれ、path が出る。Read で読む
+- `ymos web shot <https の URL> [--full] [--width N]`: Web ページのスクショを撮る。撮った PNG は {{files_dir}}/shots/ に置かれ、path が出る。Read で見られ、`ymos discord post … --file <path>` で投稿に付けられる。撮れるのは https の公開のページだけ。社内の画面(mail.yumemism.com・drive・calendar など)は Access のログイン画面しか写らない。私設の IP・localhost は断られる。`--full` はページ全体、`--width` は 320〜1920
 - `ymos mail mailboxes`・`ymos mail list <受信箱>`・`ymos mail search <受信箱> "<語>"`・`ymos mail get <受信箱> <id>`: Yumemism Mail を読む
+- `ymos mail shot <受信箱> <id> [--full] [--width N]`: Yumemism Mail の 1 通のスクショを撮る。件名・差出人・宛先・日時・本文を並べた画面で、mail.yumemism.com の画面そのものではない。既読は変わらない。本文の外の画像・CSS・フォントは読まないので写らない。撮った PNG は {{files_dir}}/shots/ に置かれ、path が出る。`ymos discord post … --file <path>` で投稿に付けられる
 - `ymos gmail list`・`ymos gmail search "<Gmail の検索式>"`・`ymos gmail get <id>`: admin@ の Gmail を読む。ほかの受信箱は無い
 - `ymos gmail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <持ち場の clone の md か txt>`・`ymos gmail reply <message_id> --body-file <…>`: admin@ から送る(送り手は admin@ に固定。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)。本文は先に持ち場の clone にファイルで書く。reply は元のスレッドに元の差出人へ返す。送ったメールは取り消せないので、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
 - `ymos print <持ち場の clone の md> [--sides one|long|short] [--copies N]`: 家のプリンタで刷る
