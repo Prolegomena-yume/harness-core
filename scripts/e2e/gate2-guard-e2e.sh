@@ -20,6 +20,9 @@ launcher="$core_dir/scripts/codex-agent.sh"
 # 役員 人見 2026-10-11)で codex-agent.sh makabe が claude-makabe へ分岐するので、codex を明示する。
 export MAKABE_ROUTE=codex
 hook="$core_dir/scripts/hooks/gate-guard.sh"
+# モデル ID は models.env の 1 か所から読む(直書きしない。世代交代で直すのは models.env だけ、docs/models.md)。
+# shellcheck source=../models.env
+source "$core_dir/scripts/models.env"
 
 [ -x "$launcher" ] || { echo "エラー: ランチャが見つからない: $launcher" >&2; exit 2; }
 [ -f "$hook" ] || { echo "エラー: hook が見つからない: $hook" >&2; exit 2; }
@@ -215,9 +218,19 @@ CODEX_AGENT_FAKE_RATES_WEEKLY=15 run_launcher m-low-weekly-ok "$state3" "$batch3
   || fail "m-low-weekly-ok: exit $(launcher_status m-low-weekly-ok)。out: $(launcher_out m-low-weekly-ok)"
 
 CODEX_AGENT_FAKE_RATES_WEEKLY=50 run_launcher m-sol-ok "$state3" "$batch3/to-niekawa.tsv" \
-  makabe -C "$repo" -f "$task3" --dry-run --model gpt-6-sol
-[ "$(launcher_status m-sol-ok)" = 0 ] && pass '--model gpt-6-sol は weekly に関わらず続行(exit 0)' \
+  makabe -C "$repo" -f "$task3" --dry-run --model "$CODEX_SOL_MODEL"
+[ "$(launcher_status m-sol-ok)" = 0 ] && pass "--model $CODEX_SOL_MODEL(sol)は weekly に関わらず続行(exit 0)" \
   || fail "m-sol-ok: exit $(launcher_status m-sol-ok)。out: $(launcher_out m-sol-ok)"
+
+# 逆向き: sol の ID でないもの(世代交代で退役した旧 sol の ID を模す。現行 ID に接尾辞を足した実在しない ID)は
+# weekly=50 で die(exit 2)し、理由文に現行 sol の再起動コマンドが出る。
+CODEX_AGENT_FAKE_RATES_WEEKLY=50 run_launcher m-old-sol-die "$state3" "$batch3/to-niekawa.tsv" \
+  makabe -C "$repo" -f "$task3" --dry-run --model "${CODEX_SOL_MODEL}-retired"
+[ "$(launcher_status m-old-sol-die)" = 2 ] && pass 'sol でない ID(旧 sol 相当)は weekly=50% で die(exit 2)' \
+  || fail "m-old-sol-die: exit $(launcher_status m-old-sol-die)(2 が期待)。out: $(launcher_out m-old-sol-die)"
+LC_ALL=C grep -qF "codex-makabe --model $CODEX_SOL_MODEL" "$test_root/m-old-sol-die.out" \
+  && pass 'die の理由に現行 sol の ID(models.env)の再起動コマンドが出る' \
+  || fail "旧 sol の die 文言が無い: $(launcher_out m-old-sol-die)"
 
 echo "== 5. gate2 記録が無い便では真壁は既定(luna)のまま通る =="
 batch4="$(new_batch batch4)"
