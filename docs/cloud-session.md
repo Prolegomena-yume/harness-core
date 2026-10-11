@@ -12,7 +12,8 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - keiei を `~/canonical/keiei` へ浅く clone する(MEMORY.md を文脈に入れるため、下の節)。終わりに `bootstrap-done` の印を置く。memory の同期の起点を置いて 1 回走らせる(下の節)
 - musearch を `~/yumemism_repo/musearch` へ clone する。**母艦の置き場と同じパスにしたのは、BRIEF や docs の絶対パスと「tech の兄弟」という形をそのまま通すため。**clone は hook の中でする ── setup script には API credential が付かず、Forgejo の private が取れない
 
-- yumemi を `~/yumemism_repo/yumemi` へ Forgejo の `satellite/yumemi` から clone する(musearch の兄弟、生成器の在処)。`cloud-bridge` は yumemi に read。**GitHub の写し `canon-ical/yumemi` は手動 push で遅れることがあり(2026-09-30 に 0.11.6 で止まっていた)、使わない**
+- yumemi を `~/yumemism_repo/yumemi` へ Forgejo の `satellite/yumemi` から clone する(musearch の兄弟、framework の正本を読む口)。`cloud-bridge` は yumemi に read。**GitHub の写し `canon-ical/yumemi` は手動 push で遅れることがあり(2026-09-30 に 0.11.6 で止まっていた)、使わない**
+- **yumemi 0.12 から生成器は本体の module `yumemi/gen` で Hex に載り、app の lock の版が走る。**musearch が 0.12 系に上がった後は `cd api && gleam run -m yumemi/gen -- . ..` で起こし、yumemi の clone も旧 package `yumemi_gen` も要らない。musearch が 0.11 系の間(段 D の merge まで)は、従来どおり clone の tag から起こす(2026-10-12、0.12.0 の publish)
 - **tech と musearch の作業木に Forgejo の remote `forgejo`(`https://git.yumemism.com/company/tech.git`、`business/musearch.git`)を足す(fetch はしない、冪等、push 先は変えない ── cloud-pr は URL を直に指す)。**cloud の tech の origin は GitHub の写しで、`discord/session-post` が git.yumemism.com の remote を見て #session の URL の repo path を決めるため、無いと `Prolegomena-yume/tech` に崩れる(2026-10-01 実機)
 - **`CLAUDE_ENV_FILE` に `export TZ=Asia/Tokyo` を足す**(zoneinfo が無い VM では `JST-9`)。cloud の VM は TZ が UTC で、締めのサマリ名の日付が JST とずれる(JST 10-01 02:16 が `2026-09-30_08` になった)。**効くのは Claude の Bash tool の各コマンドだけで、hook と MCP には渡らない(公式)**が、日付を決めるのは close-session の Bash で、hook の `date` は epoch と `-u` だけ。母艦では `CLAUDE_CODE_REMOTE` が真のときしか走らないので何も変わらない
 - 最後に、完了の印を置いてから [../cloud/setup.sh](../cloud/setup.sh) を走らせる(下の節)
