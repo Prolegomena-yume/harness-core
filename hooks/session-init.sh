@@ -294,7 +294,7 @@ def fetch_neon():
     url_file = cfg["neon_url_file"]
     if not url_file:
         return ""
-    heading = "\n### Neon recent documents (harness_index_db, JST)"
+    heading = "\n### Index recent documents (harness_index_db, JST)"
     url_path = os.path.expanduser(url_file)
     if not os.path.isfile(url_path):
         return f"{heading}\n- fetch failed: urlFile not found: {url_file}\n"
@@ -318,7 +318,7 @@ def fetch_neon():
     )
     try:
         result = subprocess.run(
-            [client, url, "-X", "-tA", "-F", "\t", "-c", query],
+            [client, *(["--url-file", url_path] if client != "psql" else [url]), "-X", "-tA", "-F", "\t", "-c", query],
             cwd=repo_root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -338,7 +338,7 @@ def fetch_neon():
         return f"{heading}\n- fetch failed: {reason}\n"
     except Exception as exc:
         return f"{heading}\n- fetch failed: {type(exc).__name__}: {exc}\n"
-    lines = ["", "### Neon recent documents (harness_index_db, JST)"]
+    lines = ["", "### Index recent documents (harness_index_db, JST)"]
     for row in result.stdout.splitlines():
         fields = row.split("\t", 2)
         if len(fields) == 3:

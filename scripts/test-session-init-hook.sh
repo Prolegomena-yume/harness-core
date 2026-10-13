@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Minimal smoke test for hooks/session-init.sh (2026-09-24 改修).
 # 実 consumer(既定 tech、REPO_ROOT で差し替え可)の .harness.json に対して実行し、
-#   1. Neon recent documents の見出しに JST が付く
+#   1. Index recent documents の見出しに JST が付く
 #   2. latest session summary 行が実際の `_sessions/YYYY-MM-DD_NN.md` を指す
 # ことを確かめる。Neon urlFile が使えない環境では Neon の検査を skip する
 # (fetch failed でも hook 自体は exit 0 を保つのが仕様なので、それは落とさない)。
@@ -47,8 +47,8 @@ else
   ok "additionalContext is non-empty"
 fi
 
-if printf '%s' "$ctx" | grep -Eq '### Neon recent documents \(harness_index_db, JST\)'; then
-  ok "Neon heading marks JST"
+if printf '%s' "$ctx" | grep -Eq '### Index recent documents \(harness_index_db, JST\)'; then
+  ok "Index heading marks JST"
 elif printf '%s' "$ctx" | grep -q 'fetch failed'; then
   ok "Neon fetch unavailable in this environment (skip JST check)"
 else

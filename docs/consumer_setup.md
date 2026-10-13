@@ -317,7 +317,7 @@ cloud session UI の「セットアップスクリプト」欄に全文貼付。
 
 cloud session 起動後、最初の発話で context に下記が注入されているか確認(または手動 `bash .claude/_core/hooks/session-init.sh` 実行):
 
-- environment / git / session / mirror / startup reminders / Neon recent documents(設定時)
+- environment / git / session / mirror / startup reminders / Index recent documents(設定時)
 
 Anthropic 既知問題で **新規 cloud session の冒頭 context 注入が走らないことあり**(claude-code Issue #10373)、その場合は手動 fallback。
 
@@ -329,7 +329,7 @@ bash .claude/_core/hooks/session-init.sh
 
 # stdout に JSON 1 行が出力、hookSpecificOutput.additionalContext 内に
 # environment / git / session / mirror / startup reminders と
-# Neon recent documents (neon.urlFile 設定時) の各節が見える
+# Index recent documents (neon.urlFile 設定時) の各節が見える
 ```
 
 `.harness.json` 不在時は warning section が出るが、graceful default で exit 0、SessionStart hook を fail させない。
