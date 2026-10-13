@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Minimal smoke test for hooks/session-init.sh (2026-09-24 改修).
 # 実 consumer(既定 tech、REPO_ROOT で差し替え可)の .harness.json に対して実行し、
-#   1. Neon recent documents の見出しに JST が付く
+#   1. Index recent documents の見出しに JST が付く
 #   2. latest session summary 行が実際の `_sessions/YYYY-MM-DD_NN.md` を指す
 # ことを確かめる。Neon urlFile が使えない環境では Neon の検査を skip する
 # (fetch failed でも hook 自体は exit 0 を保つのが仕様なので、それは落とさない)。
@@ -47,8 +47,8 @@ else
   ok "additionalContext is non-empty"
 fi
 
-if printf '%s' "$ctx" | grep -Eq '### Neon recent documents \(harness_index_db, JST\)'; then
-  ok "Neon heading marks JST"
+if printf '%s' "$ctx" | grep -Eq '### Index recent documents \(harness_index_db, JST\)'; then
+  ok "Index heading marks JST"
 elif printf '%s' "$ctx" | grep -q 'fetch failed'; then
   ok "Neon fetch unavailable in this environment (skip JST check)"
 elif printf '%s' "$ctx" | grep -q 'Neon の鍵なし(想定内)'; then
@@ -68,6 +68,22 @@ if printf '%s' "$ctx" | grep -Eq '^- latest session dir|^- daily_summary:'; then
 else
   ok "old broken latest-session-dir/daily_summary lines removed"
 fi
+
+# Dleam の url(host が *.neon.tech でない)を向けたとき、dleam-sql が無ければ「届かない」と分かる 1 行にして exit 0 を保つ。
+# 一時 HOME と一時 consumer で流す(実際の urlFile には触れない)。
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/home/.ssh" "$tmp/repo"
+printf 'postgresql://u:p@dleam.example.test/harness_index_db\n' > "$tmp/home/.ssh/neon-harness-index-url.txt"
+printf '{"neon":{"urlFile":"~/.ssh/neon-harness-index-url.txt"},"mirror":{"enabled":false}}\n' > "$tmp/repo/.harness.json"
+dleam_out="$(HOME="$tmp/home" DLEAM_SQL_BIN="$tmp/missing-dleam-sql" CLAUDE_PROJECT_DIR="$tmp/repo" bash "$hook" 2>/dev/null)"
+dleam_rc=$?
+dleam_ctx="$(printf '%s' "$dleam_out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])')"
+if [ "$dleam_rc" -eq 0 ] && printf '%s' "$dleam_ctx" | grep -q -- '- fetch failed: 索引 DB の url は Dleam.*dleam-sql が無い'; then
+  ok "Dleam を向いて client が無いと fetch failed の 1 行、hook は exit 0"
+else
+  not_ok "Dleam を向いて client が無いときの fetch failed が出ない(rc=$dleam_rc)"
+fi
+rm -rf "$tmp"
 
 echo "1..$count"
 exit $fail
