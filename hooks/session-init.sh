@@ -274,6 +274,22 @@ ctx = f"""## SessionStart context (auto-injected by hooks/session-init.sh)
 - {canonical_md}
 """
 
+def index_sql_client(url):
+    """url の host で索引 DB に問う client を選ぶ。(argv0, エラーの文) を返す。
+    *.neon.tech なら psql(今のまま)、それ以外(Dleam)なら dleam-sql(env DLEAM_SQL_BIN、既定は
+    ~/yumemism_repo/dleam/infra/dleam-sql)。Dleam は Postgres の wire を外に開けていないので、
+    client が無いときは「届かない」と分かる失敗にする。URL の形でない文字列は psql に渡す。"""
+    if "://" not in url:
+        return "psql", None
+    authority = url.split("://", 1)[1].split("/", 1)[0].split("?", 1)[0]
+    host = authority.rsplit("@", 1)[-1].split(":", 1)[0].lower()
+    if host.endswith(".neon.tech"):
+        return "psql", None
+    client = os.path.expanduser(os.environ.get("DLEAM_SQL_BIN") or "~/yumemism_repo/dleam/infra/dleam-sql")
+    if not (os.path.isfile(client) and os.access(client, os.X_OK)):
+        return None, f"索引 DB の url は Dleam({host or 'host 無し'})を向いているが dleam-sql が無い: {client}"
+    return client, None
+
 def fetch_neon():
     url_file = cfg["neon_url_file"]
     if not url_file:
@@ -282,8 +298,6 @@ def fetch_neon():
     url_path = os.path.expanduser(url_file)
     if not os.path.isfile(url_path):
         return f"{heading}\n- fetch failed: urlFile not found: {url_file}\n"
-    if shutil.which("psql") is None:
-        return f"{heading}\n- fetch failed: psql not found on PATH\n"
     try:
         with open(url_path, encoding="utf-8", errors="replace") as f:
             url = f.readline().strip()
@@ -291,6 +305,11 @@ def fetch_neon():
         return f"{heading}\n- fetch failed: urlFile unreadable: {exc}\n"
     if not url:
         return f"{heading}\n- fetch failed: urlFile is empty: {url_file}\n"
+    client, client_error = index_sql_client(url)
+    if client_error:
+        return f"{heading}\n- fetch failed: {client_error}\n"
+    if client == "psql" and shutil.which("psql") is None:
+        return f"{heading}\n- fetch failed: psql not found on PATH\n"
     limit = cfg["neon_limit"] or 5
     query = (
         "SELECT path, coalesce(title,''), "
@@ -299,7 +318,7 @@ def fetch_neon():
     )
     try:
         result = subprocess.run(
-            ["psql", url, "-X", "-tA", "-F", "\t", "-c", query],
+            [client, url, "-X", "-tA", "-F", "\t", "-c", query],
             cwd=repo_root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -313,7 +332,9 @@ def fetch_neon():
         return f"{heading}\n- fetch failed: timed out after 10 seconds\n"
     except subprocess.CalledProcessError as exc:
         reason = (exc.stderr or "").strip().splitlines()
-        reason = reason[-1] if reason else f"psql exited with status {exc.returncode}"
+        reason = reason[-1] if reason else f"{os.path.basename(client)} exited with status {exc.returncode}"
+        if client != "psql":
+            reason = f"索引 DB に届かない ── {reason}"
         return f"{heading}\n- fetch failed: {reason}\n"
     except Exception as exc:
         return f"{heading}\n- fetch failed: {type(exc).__name__}: {exc}\n"
