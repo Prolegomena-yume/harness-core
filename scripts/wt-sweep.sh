@@ -11,6 +11,7 @@
 #   [4] <repo>/.git/worktrees/<name>/HEAD の mtime が MIN_AGE(既定 12 時間)より古い
 # 判定に使わないもの: reflog(logs/HEAD)と index の mtime(全部同時刻に書き換わる / git status が書く)
 # 対象外: リポ本体(main worktree)、locked、bare、$WT_SWEEP_EXCLUDE(既定 ~/old-pc)と ~/.codex ~/.claude ~/.kimi-code の下(出力にも出さない)、
+#         */.claude/worktrees/*(Claude のアプリが持つ木。走査では「残す」の行、--only で名指しすると exit 2)、
 #         走査のときは $WT_SWEEP_ROOT の外の worktree(「残す」の行で出す)、--exclude GLOB(worktree のパスに bash の glob で一致)
 # 枝は消さない。git worktree prune は、1 本以上消したリポでだけ消した後に呼ぶ。
 #
@@ -229,6 +230,9 @@ under_exclude() { local e; for e in "${HARD_EXCLUDES[@]}"; do [[ "$1" == "$e" ||
 # soft_exclude <wt> : 走査の範囲外(ROOT の外 / --exclude)なら REASONS・CATS を立てて 0
 soft_exclude() {
   local g real; real="$(realpath -m "$1")"
+  if [[ "$real" == */.claude/worktrees/* ]]; then   # Claude のアプリが作って持っている木。既定の対象外
+    V="残す"; BASE_USED="-"; HAS_SUB=0; REASONS="対象外(Claude アプリの worktree)"; CATS="Claude アプリの worktree"; return 0
+  fi
   if [[ "$real" != "$ROOT_REAL"/* ]]; then
     V="残す"; BASE_USED="-"; HAS_SUB=0; REASONS="対象外(\$WT_SWEEP_ROOT の外)"; CATS="ROOT の外"; return 0
   fi
@@ -262,6 +266,7 @@ snapshot_procs
 if [ -n "$ONLY" ]; then
   real_only="$ONLY"
   under_exclude "$real_only" && die "対象外(\$WT_SWEEP_EXCLUDE の下): $real_only"
+  [[ "$real_only" == */.claude/worktrees/* ]] && die "対象外(Claude アプリの worktree): $real_only"
   common="$(git -C "$real_only" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || die "git の worktree ではない: $real_only"
   [ "$(basename "$common")" = .git ] || die "bare / 特殊な構成は扱わない: $common"
   repo="$(dirname "$common")"

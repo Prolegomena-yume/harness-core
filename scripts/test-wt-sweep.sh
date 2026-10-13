@@ -77,6 +77,9 @@ g worktree add -q -b br-oldpc "$OLDPC/wt-oldpc" main 2>/dev/null; old "$OLDPC/wt
 g worktree add -q -b br-codex "$HOME/.codex/worktrees/wt-codex" main 2>/dev/null; old "$HOME/.codex/worktrees/wt-codex"   # ~/.codex の下(対象外・出力にも出ない)
 g worktree add -q -b br-outside "$sbx/outside/wt-outside" main 2>/dev/null; old "$sbx/outside/wt-outside"            # ROOT の外(全条件を満たしても「残す」)
 
+mkdir -p "$R/.claude/worktrees"
+g worktree add -q -b br-app "$R/.claude/worktrees/wt-app" main 2>/dev/null; old "$R/.claude/worktrees/wt-app"   # Claude アプリの木(全条件を満たしても対象外)
+
 # プロセス
 ( cd "$ROOT/wt-cwd" && exec sleep 600 ) >/dev/null 2>&1 & pids+=($!)
 bash -c 'sleep 600; :' _ "$ROOT/wt-arg/some/file" >/dev/null 2>&1 & pids+=($!)
@@ -118,6 +121,7 @@ d17() { has '^# 消す [0-9]+ 本、合計 .*残す [0-9]+ 本' && has '^# 残�
 chk "D17 末尾に「消す N 本、合計 …」と残す理由の内訳" d17
 chk "D18 サイズ列が入る(wt-ok は数字+K/M/G)" bash -c "[[ \"\$0\" =~ ^[0-9.]+[KMG]\$ ]]" "$(col wt-ok 2)"
 chk "D20 ROOT の外の worktree は全条件を満たしても「残す」(理由に出る)" has "^残す\\t.*\\t$sbx/outside/wt-outside\\t.*対象外"
+chk "D21 */.claude/worktrees/* は全条件を満たしても「残す」(対象外・Claude アプリの worktree)" has "^残す\\t.*\\t$R/.claude/worktrees/wt-app\\t.*対象外\\(Claude アプリの worktree\\)"
 want_del="wt-ok wt-ok-p wt-ok-q wt-arg2 wt-ancestor wt-anc-cwd wt-sub wt-origin"
 got_del="$(awk -F'\t' '$1=="消す"{n=split($4,a,"/"); print a[n]}' <<<"$out" | sort | paste -sd' ')"
 chk "D19 消す行の集合が想定どおり($want_del)" test "$got_del" = "$(tr ' ' '\n' <<<"$want_del" | sort | paste -sd' ')"
@@ -140,6 +144,8 @@ chk "O7 呼び出し元の cwd が中にあれば止まる(祖先の cwd は数�
 
 o="$("$SWEEP" --only "$HOME/.codex/worktrees/wt-codex" --apply 2>&1)"; rc=$?
 chk "O8 --only で ~/.codex の下を指すと exit 2 で消さない" bash -c "[ $rc = 2 ] && [ -d '$HOME/.codex/worktrees/wt-codex' ]"
+o="$("$SWEEP" --only "$R/.claude/worktrees/wt-app" --apply 2>&1)"; rc=$?
+chk "O10 --only で */.claude/worktrees/* を名指しすると exit 2 で消さない" bash -c "[ $rc = 2 ] && [ -d '$R/.claude/worktrees/wt-app' ] && grep -q 'Claude アプリ' <<<\"\$0\"" "$o"
 o2="$("$SWEEP" --exclude '*/wt-ok-q' 2>&1)"
 chk "O9 --exclude GLOB に一致する worktree は残す(理由に --exclude)" grep -qP "^残す\t.*\t$ROOT/wt-ok-q\t.*--exclude" <<<"$o2"
 
@@ -147,7 +153,7 @@ chk "O9 --exclude GLOB に一致する worktree は残す(理由に --exclude)" 
 out="$("$SWEEP" --apply 2>&1)"; rc=$?
 chk "A0 --apply は exit 0" test "$rc" = 0
 chk "A1 消す行は実体が無くなる(submodule 付きも --force で)" bash -c "$(declare -f gone); ROOT='$ROOT'; gone wt-ok wt-arg2 wt-ancestor wt-anc-cwd wt-sub wt-origin wt-ok-q"
-chk "A2 残す行は全部そのまま(未 merge・dirty・使用中・新しい・locked・submodule 絡み・EXCLUDE の下)" bash -c "$(declare -f kept); ROOT='$ROOT'; kept wt-unmerged wt-dirty wt-untracked wt-cwd wt-arg wt-new wt-locked wt-sub-dirty wt-sub-unpushed && [ -d '$OLDPC/wt-oldpc' ] && [ -d '$HOME/.codex/worktrees/wt-codex' ] && [ -d '$sbx/outside/wt-outside' ]"
+chk "A2 残す行は全部そのまま(未 merge・dirty・使用中・新しい・locked・submodule 絡み・EXCLUDE の下)" bash -c "$(declare -f kept); ROOT='$ROOT'; kept wt-unmerged wt-dirty wt-untracked wt-cwd wt-arg wt-new wt-locked wt-sub-dirty wt-sub-unpushed && [ -d '$OLDPC/wt-oldpc' ] && [ -d '$HOME/.codex/worktrees/wt-codex' ] && [ -d '$sbx/outside/wt-outside' ] && [ -d '$R/.claude/worktrees/wt-app' ]"
 chk "A3 枝は消えない" bash -c "git -C '$R' rev-parse --verify -q refs/heads/br-wt-ok >/dev/null && git -C '$R' rev-parse --verify -q refs/heads/br-wt-sub >/dev/null"
 chk "A4 消した分の管理領域は prune されている" bash -c "! ls '$R/.git/worktrees' | grep -qE '^(wt-ok|wt-sub|wt-origin)\$'"
 chk "A5 末尾に「削除した N 本」" has '^# 削除した [0-9]+ 本'

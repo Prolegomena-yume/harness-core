@@ -127,6 +127,8 @@ setsid nohup codex-makabe --log "$RUN/makabe-a.log" -C "$WT" -f "$RUN/makabe-a.m
 
 ランチャに分岐は入れない。担保は契約(本節)に焼く。
 
+**便の worktree の片付けは、鷹野が便を merge した後に `scripts/wt-sweep.sh --only <worktree> --apply` を手で呼ぶ。**溜まりは引数なしの dry-run(何も消さない)で見て、一覧を検収してから `--apply` する。消すのは「HEAD が main(または origin/main)に merge 済み」「`git status --porcelain` が空(submodule 込み)」「cwd・引数にその worktree を持つプロセスが無い」「`.git/worktrees/<name>/HEAD` が 12 時間より古い」を全部満たす木だけで、reflog と index の mtime は判定に使わない(全 worktree が同時刻に書き換わる / `git status` が書く)。リポ本体・locked・`*/.claude/worktrees/*`(Claude のアプリが持つ木)・`~/.codex` などは対象外。ランチャの終端には入れない ── ランチャの cwd が worktree の中にあり、自分を使用中と判定して必ず残すか、判定を緩めて走る真壁・柏木の木を巻き込むかになるため。
+
 ## 1 巡 = 1 session ── 贄川の文脈を巡ごとに捨てる
 
 **贄川は 1 session で 1 巡だけを担う。**巡 = 真壁を起こす → 待つ → diff と実ファイルで検収 → `verdict.md` を書く。ランチャが `<run_dir>/verdict.md` の 1 行目を読み、`verdict: 継続` なら**新しい session** で次の巡を起こす(前巡までの `plan.md` / `findings.md` / 前巡の `verdict.md` をプロンプト末尾に写す)。`verdict: 承認` / `verdict: エスカレーション` で終端。verdict が無い・不正なら exit 4、巡数上限(既定 12)で exit 5。巡ごとの prompt / log / last-message / session_id は `<run_dir>/rounds/r<N>/` に残る。
