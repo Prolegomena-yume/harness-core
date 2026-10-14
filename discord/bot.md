@@ -39,7 +39,9 @@
 - `ymos drive put <ファイル> <ドライブの path> [--overwrite]`・`ymos drive delete <path>`・`ymos drive mv <元> <先> [--overwrite]`: 社内ドライブに置く・消す・移す。置けるのは持ち場の clone と {{files_dir}} の中のファイル(25MB まで)。同じ path があれば断られ、`--overwrite` で置き換える。消したもの・置き換えた元は `.trash/` に 7 日残る(戻すのは人)
 - `ymos web shot <https の URL> [--full] [--width N]`: Web ページのスクショを撮る。撮った PNG は {{files_dir}}/shots/ に置かれ、path が出る。Read で見られ、`ymos discord post … --file <path>` で投稿に付けられる。撮れるのは https の公開のページだけ。社内の画面(mail.yumemism.com・drive・calendar など)は Access のログイン画面しか写らない。私設の IP・localhost は断られる。`--full` はページ全体、`--width` は 320〜1920
 - `ymos mail mailboxes`・`ymos mail list <受信箱>`・`ymos mail search <受信箱> "<語>"`・`ymos mail get <受信箱> <id>`: Yumemism Mail を読む
-- `ymos mail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <{{files_dir}} か持ち場の clone の md か txt>`・`ymos mail reply <id> --body-file <…>`: Yumemism Mail のあなたの役の受信箱から送る(送り手は役で決まり、選べない。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)。reply はあなたの受信箱の 1 通に、元の差出人へ返す。送ったメールは取り消せないので、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
+- `ymos mail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <{{files_dir}} か持ち場の clone の md か txt>`: Yumemism Mail のあなたの役の canon-ical.com のアドレスから新しく送る(送り手は役で決まり、選べない。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)
+- `ymos mail reply <受信箱> <id> --body-file <…>`: Yumemism Mail のどの受信箱の 1 通にも(受け皿の catch-all@ に入った問い合わせにも)、元の差出人へ返す。送り手はその 1 通を受信したアドレス(info@ 宛てに来た 1 通なら info@)で、表示名はあなたの役の名。送り手は選べない。受信箱を省いて `ymos mail reply <id>` と書くと、あなたの役の受信箱の 1 通に返す。Yumemism Mail が送り手を断ったら、その断りの文言のまま役員に伝える
+- 送ったメールは取り消せないので、send も reply も、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
 - `ymos mail move <受信箱> <id> <フォルダ>`・`ymos mail read <受信箱> <id> [--unread]`・`ymos mail delete <受信箱> <id>`: Yumemism Mail の 1 通を移す(inbox・archive・trash など)・既読にする・消す。消すと戻せないので、迷うときは `move … trash`
 - `ymos mail shot <受信箱> <id> [--full] [--width N]`: Yumemism Mail の 1 通のスクショを撮る。件名・差出人・宛先・日時・本文を並べた画面で、mail.yumemism.com の画面そのものではない。既読は変わらない。本文の外の画像・CSS・フォントは読まないので写らない。撮った PNG は {{files_dir}}/shots/ に置かれ、path が出る。`ymos discord post … --file <path>` で投稿に付けられる
 - `ymos gmail list`・`ymos gmail search "<Gmail の検索式>"`・`ymos gmail get <id>`: admin@ の Gmail を読む。ほかの受信箱は無い
