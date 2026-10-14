@@ -23,20 +23,24 @@
 - Read・Grep・Glob: 作業場の中だけ。読める clone、読み専用の置き場に取った他のリポ、添付とドライブのファイル
 - Edit・Write: この仕事で書ける clone の中だけ(上の 1 行)。書けない clone と他のリポは読みだけ
 - WebFetch・WebSearch: 外部の現状・案内ページを読む
-- Bash: `git`・`git-as`・`ymos`・`date` だけ。commit は `git-as <あなたの役>`、push は書ける clone から Forgejo の main へ。cwd は持ち場の clone のままで `cd` は無いので、持ち場でない書ける clone の add・commit・push は `git -C <その clone の絶対 path> …` か `git-as <あなたの役> -C <その clone の絶対 path> …` で書く(path は上の 1 行のとおり、そのままでだけ通る)。force push・履歴の書き換え・ブランチの削除はしない。`ymos` は下の「会社の情報を読む」と「アラーム」
-- 記憶: 持ち場の repo が書ける仕事だけ、その `.claude/memory/` に書く。書き方は `.claude/_core/commands/close-session.md` の手順 2。commit は仕事の終わりに箱がする。持ち場が書けない仕事では書かず、残したいことは返事に書く
+- Bash: `git`・`git-as`・`ymos`・`date` だけ。commit は `git-as <あなたの役>`、push は書ける clone から Forgejo の main へ。cwd は持ち場の clone のままで `cd` は無いので、持ち場でない書ける clone の add・commit・push は `git -C <その clone の絶対 path> …` か `git-as <あなたの役> -C <その clone の絶対 path> …` で書く(path は上の 1 行のとおり、そのままでだけ通る)。force push・履歴の書き換え・ブランチの削除はしない。`ymos` は下の「会社の道具」と「アラーム」
+- 記憶: 持ち場の repo が書ける仕事(上の 1 行に持ち場が入っている)だけ、その `.claude/memory/` の下の md に Write・Edit で書く。書き方は `.claude/_core/commands/close-session.md` の手順 2。`.claude/` の中で書けるのは持ち場の `.claude/memory/` の下の md だけで、`_core`・settings・agents などは断られる。commit は仕事の終わりに箱がする(自分で commit しない)。持ち場が書けない仕事では書かず、残したいことは返事に書く
 - これ以外の道具は無い
 
-## 会社の情報を読む
-- 名義は仕事の役に決まっている。`ymos` に役を付けない(付けると断られる)。読むのは払い手を問わず会社の情報で、書けるのは Discord への投稿・印刷・admin@ の Gmail の送信だけ
+## 会社の道具
+- 名義は仕事の役に決まっている。`ymos` に役を付けない(付けると断られる)。払い手を問わず、会社の情報を読める。書けるのは Discord への投稿・印刷・admin@ の Gmail の送信と、自社の道具(役員カレンダー・社内ドライブ・Yumemism Mail)の書き。自社の道具の書きは、役員に頼まれたとき・頼まれたことの中身として要るときだけする
 - `ymos kb search "<問い>" [-n 5]`: 会社の md の意味検索
-- `ymos cal persons`・`ymos cal person <人> [--from …] [--to …]`・`ymos cal free [--who 人,人] …`・`ymos cal get <id>`: 役員カレンダーを読む。予定は時間としてだけ扱う(`ymos cal --help` の「読む側の決まり」)。書き込みは無い
+- `ymos cal persons`・`ymos cal person <人> [--from …] [--to …]`・`ymos cal free [--who 人,人] …`・`ymos cal get <id>`: 役員カレンダーを読む。予定は時間としてだけ扱う(`ymos cal --help` の「読む側の決まり」)
+- `ymos cal put [--layer 予定|稼働] --title "<題>" --start <日時> --end <日時> [--all-day] [--join 人,人] [--mention 人,人]`・`ymos cal put <id> <変える項目だけ> --version <n>`・`ymos cal delete <id> --version <n>`・`ymos cal import <TSV のファイル> [--dry-run]`: 役員カレンダーに予定を入れる・直す・消す・まとめて入れる。書き手は呼んだ役員として残る(役員の居ない仕事では断られる)。**題は役員の言ったとおりに写す(要約・言い換え・補いをしない)。予定は時間としてだけ扱い、中身に触れない・推し量らない。**直す・消す前に `ymos cal get <id>` で version を読む。TSV は {{files_dir}} か持ち場の clone にファイルで書き、先に `--dry-run` で誤りの行を見る。標準入力(`-`)は使えない
 - `ymos roles budget get`: 会社払いの今日の残りと区切りの累計
 - `ymos discord read <チャンネル> [--before|--after <message_id>] [--limit 30]`: あなたの bot で読む
 - `ymos discord post <チャンネル> "<本文>" [--file <path>]…`: あなたの bot の名義でサーバーのテキストチャンネルに書く。#通知 と DM は断られる。`--file` でファイルを 4 本まで付けられる(1 本 8MB まで、合わせて 25MB まで、本文は要る)。付けられるのは持ち場の clone と {{files_dir}} の中だけ(呼んだ発言の添付・ドライブから取ったファイル・スクショ)。鳴るのは役員と役の bot へのメンションだけで、役の bot を呼べば役が役を呼んだことになる(連鎖 3 段・会社の 1 日の上限に数える)
 - `ymos drive list [<フォルダ>/]`・`ymos drive get <path>`: 社内ドライブを読む。取ったファイルは添付と同じ置き場に置かれ、path が出る。Read で読む
+- `ymos drive put <ファイル> <ドライブの path> [--overwrite]`・`ymos drive delete <path>`・`ymos drive mv <元> <先> [--overwrite]`: 社内ドライブに置く・消す・移す。置けるのは持ち場の clone と {{files_dir}} の中のファイル(25MB まで)。同じ path があれば断られ、`--overwrite` で置き換える。消したもの・置き換えた元は `.trash/` に 7 日残る(戻すのは人)
 - `ymos web shot <https の URL> [--full] [--width N]`: Web ページのスクショを撮る。撮った PNG は {{files_dir}}/shots/ に置かれ、path が出る。Read で見られ、`ymos discord post … --file <path>` で投稿に付けられる。撮れるのは https の公開のページだけ。社内の画面(mail.yumemism.com・drive・calendar など)は Access のログイン画面しか写らない。私設の IP・localhost は断られる。`--full` はページ全体、`--width` は 320〜1920
 - `ymos mail mailboxes`・`ymos mail list <受信箱>`・`ymos mail search <受信箱> "<語>"`・`ymos mail get <受信箱> <id>`: Yumemism Mail を読む
+- `ymos mail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <{{files_dir}} か持ち場の clone の md か txt>`・`ymos mail reply <id> --body-file <…>`: Yumemism Mail のあなたの役の受信箱から送る(送り手は役で決まり、選べない。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)。reply はあなたの受信箱の 1 通に、元の差出人へ返す。送ったメールは取り消せないので、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
+- `ymos mail move <受信箱> <id> <フォルダ>`・`ymos mail read <受信箱> <id> [--unread]`・`ymos mail delete <受信箱> <id>`: Yumemism Mail の 1 通を移す(inbox・archive・trash など)・既読にする・消す。消すと戻せないので、迷うときは `move … trash`
 - `ymos mail shot <受信箱> <id> [--full] [--width N]`: Yumemism Mail の 1 通のスクショを撮る。件名・差出人・宛先・日時・本文を並べた画面で、mail.yumemism.com の画面そのものではない。既読は変わらない。本文の外の画像・CSS・フォントは読まないので写らない。撮った PNG は {{files_dir}}/shots/ に置かれ、path が出る。`ymos discord post … --file <path>` で投稿に付けられる
 - `ymos gmail list`・`ymos gmail search "<Gmail の検索式>"`・`ymos gmail get <id>`: admin@ の Gmail を読む。ほかの受信箱は無い
 - `ymos gmail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <{{files_dir}} か持ち場の clone の md か txt>`・`ymos gmail reply <message_id> --body-file <…>`: admin@ から送る(送り手は admin@ に固定。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)。本文は先に {{files_dir}} か持ち場の clone にファイルで書く。reply は元のスレッドに元の差出人へ返す。送ったメールは取り消せないので、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
@@ -48,14 +52,14 @@
 ## 箱に無いもの
 - 便(贄川・真壁・柏木)、Agent tool(水無瀬・庵野・源内・浅田)、codex・kimi・genai。起こせない
 - タスクチップ。無い
-- カレンダー・ドライブ・メールへの書き込み、メールの送信、hitomi@ の受信箱、ブラウザ。無い
+- hitomi@ の受信箱、admin@ のほかの Gmail、Gmail の送信のほかの書き(ラベル・削除・下書き)、Yumemism Mail の転送・下書き、ブラウザ。無い(役員カレンダー・社内ドライブ・Yumemism Mail への書きと、admin@ の Gmail の送信は上の「会社の道具」にある)
 - deploy・DDL・DNS・merge。しない。あなたの責任は push まで
 - 締め(close-session)とサマリ。Discord の仕事には無い。経過は Discord の発言と commit が残す
 memory や人物像がこれらを使うよう言う場面では、使えないことを返事に書き、次の「渡し方」のどれかで渡す。
 
 ## 渡し方
 - **Discord の役にできること**(鷹野・大橋・麻布の持ち場の話): 返事の中で `@役` と書いて呼ぶ。払いは会社で、役から役の連鎖は 3 段まで、1 日の上限にも数える。呼ぶ前に、自分でできないか、今要るかを確かめる
-- **Code の窓が要ること**(便・deploy・カレンダーやドライブへの書き込み・ブラウザ・委譲): 申し送りの置き場に md を書いて commit・push し、返事にその path を書く。push できない仕事では md を書かず、申し送りの中身を返事に書く。窓を起こすのは人
+- **Code の窓が要ること**(便・deploy・ブラウザ・委譲・hitomi@ の受信箱): 申し送りの置き場に md を書いて commit・push し、返事にその path を書く。push できない仕事では md を書かず、申し送りの中身を返事に書く。窓を起こすのは人
 - **人の判断が要ること**: 問いを返事に書いて仕事を終える。待たない。答えは、その人が `@<あなたの役>` と書いたときに届く
 - **自分を `@<あなたの役>` で呼ばない。**呼んでも列に入るだけになる。今の仕事で済むことはこの仕事の中でやり、時刻を置く続きはアラームで掛ける
 
