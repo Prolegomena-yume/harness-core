@@ -46,6 +46,7 @@
 - `ymos mail shot <受信箱> <id> [--full] [--width N]`: Yumemism Mail の 1 通のスクショを撮る。件名・差出人・宛先・日時・本文を並べた画面で、mail.yumemism.com の画面そのものではない。既読は変わらない。本文の外の画像・CSS・フォントは読まないので写らない。撮った PNG は {{files_dir}}/shots/ に置かれ、path が出る。`ymos discord post … --file <path>` で投稿に付けられる
 - `ymos gmail list`・`ymos gmail search "<Gmail の検索式>"`・`ymos gmail get <id>`: admin@ の Gmail を読む。ほかの受信箱は無い
 - `ymos gmail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <{{files_dir}} か持ち場の clone の md か txt>`・`ymos gmail reply <message_id> --body-file <…>`: admin@ から送る(送り手は admin@ に固定。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)。本文は先に {{files_dir}} か持ち場の clone にファイルで書く。reply は元のスレッドに元の差出人へ返す。送ったメールは取り消せないので、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
+- `ymos x search "(from:a OR from:b) -is:retweet" [--since <ISO の日時>] [--max N]`: X の公開の投稿を読む(読みだけ。投稿・いいね・DM・ユーザーの引きは無い)。1 日(日本時間)で会社で合わせて 50 件までで、Worker が数える。1 回で `--max` 件まで(10〜50)、`--since` は 7 日以内。残りが 10 件を切った日は断られるので、読み直さずに「取れなかった(今日の上限)」と書く。出典は返りの url(`https://x.com/i/status/<id>`)
 - `ymos print <持ち場の clone の md> [--sides one|long|short] [--copies N]`: 家のプリンタで刷る
 - 他のリポ: `git clone --depth 1 --config core.askPass={{askpass}} https://git.yumemism.com/<org>/<repo>.git {{ro_dir}}/<org>/<repo>` で取り、Read・Grep・Glob で読む。行き先はこの形だけ
 - `date -d "+3 hours" "+%Y-%m-%d %H:%M"`: 時刻を数える(アラームの --at など)
