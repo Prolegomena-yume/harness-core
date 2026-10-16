@@ -7,7 +7,7 @@
 | 鷹野[PDM] | Claude(GUI) | Fable | 人見との要件定義、BRIEF 起草、真壁と柏木の起動、検収、merge / push | ── |
 | 水無瀬[PL] | Claude | `claude-opus-5-5` | 調査、設計案、影響範囲。鷹野直属 | Agent tool `subagent_type: minase` |
 | 柏木[CM] | **Claude opus(effort xhigh)= 実行経路 C、既定** / Codex `gpt-6.1-sol`(`KASHIWAGI_ROUTE=codex`、astra は既定から退役、役員 人見 2026-09-24) | レビュー・監査・助言。ゲート 2(便の終端)を便に 1 回。作業木の中だけ書ける(P2 の自己 commit) | 鷹野が `KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <作業木> --gate 2 -f gate2-<便>.md` ── 役員 人見 2026-09-21 23:55(PoC:Opus 5 / 5、K3 2 / 5、`_sessions/2026-09-21_09`)。cloud セッションでは鷹野が Agent tool `subagent_type: kashiwagi`(1 便 1 回、読み取り専用、cloud 専用) |
-| 真壁[IM] | **Claude sonnet(effort high)= 既定、ゲート 2 の P0 を直す巡は opus(high)** / Opus の上書き(`MAKABE_CLAUDE_MODEL=claude-opus-5-5`)/ K3(`kimi-makabe`)/ Codex `gpt-6-luna`(`MAKABE_ROUTE=codex`、effort max)。既定にしたのは 役員 人見 2026-10-11、根拠は tech の `_drafts/bench/luna-max-vs-haiku-xhigh/results.md` | `claude-sonnet-5-5` | 実装、テスト、実測 | 鷹野が `claude-makabe -C <作業木> -f <BRIEF>` を bg で。どの model で起こすかは下の「真壁の model は便で選ぶ」。cloud セッションでは鷹野が Agent tool `subagent_type: makabe`(Sonnet 5.5、cloud 専用、[cloud-session.md](cloud-session.md)。役員 人見 2026-09-30) |
+| 真壁[IM] | **Claude sonnet(effort high)= 既定、ゲート 2 の P0 を直す巡は opus(high)** / Opus の上書き(`MAKABE_CLAUDE_MODEL=claude-opus-5-5`)/ Codex `gpt-6-luna`(`MAKABE_ROUTE=codex`、effort max)。既定にしたのは 役員 人見 2026-10-11、根拠は tech の `_drafts/bench/luna-max-vs-haiku-xhigh/results.md` | `claude-sonnet-5-5` | 実装、テスト、実測 | 鷹野が `claude-makabe -C <作業木> -f <BRIEF>` を bg で。どの model で起こすかは下の「真壁の model は便で選ぶ」。cloud セッションでは鷹野が Agent tool `subagent_type: makabe`(Sonnet 5.5、cloud 専用、[cloud-session.md](cloud-session.md)。役員 人見 2026-09-30) |
 | 庵野[EXP] | Claude | `claude-sonnet-5-5` | 道具作り、Playwright、PoC、検証しながらの実装。鷹野直属 | Agent tool `subagent_type: anno` |
 | 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(枠切れは `--k3`) |
 
@@ -19,7 +19,7 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 
 ## BRIEF ── 「現在地」「どこまで」「失敗例」の 3 節と止め線
 
-**BRIEF は段取りの専任がいない前提で書く。**真壁が BRIEF 1 本で作業域・完了条件・検収の手を読み取れること。長さは真壁の model で変える ── Sonnet と K3 には 1〜2 画面に刻み、api と画面を分ける(Sonnet は戻りが多かった、09-25)。Opus には刻まず、親の設計書と「どこまで」を渡して細かい設計を任せる(役員 人見 2026-10-12)。
+**BRIEF は段取りの専任がいない前提で書く。**真壁が BRIEF 1 本で作業域・完了条件・検収の手を読み取れること。長さは真壁の model で変える ── Sonnet には 1〜2 画面に刻み、api と画面を分ける(Sonnet は戻りが多かった、09-25)。Opus には刻まず、親の設計書と「どこまで」を渡して細かい設計を任せる(役員 人見 2026-10-12)。
 
 | 節 | 何を書くか |
 |---|---|
@@ -28,14 +28,14 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 | 現在地 | 動いているもの(sha)、未完のもの、正典の所在、既に決まった裁定 |
 | どこまで | 完了の定義(外から見える状態で番号付き)、しないこと、触らない領域 |
 | 失敗例 | 過去に踏んだ穴、同型の作業で出た誤り |
-| 止め線 | 経過時間で書く。大きい便で 2 時間、面だけなら 1 時間が上限(実測:便 V 86 分、面だけ約 25 分。役員 人見 2026-10-13)。K3 は 45 分〜1 時間で、撮る page は 4〜6 枚に絞る |
+| 止め線 | 経過時間で書く。大きい便で 2 時間、面だけなら 1 時間が上限(実測:便 V 86 分、面だけ約 25 分。役員 人見 2026-10-13)。撮る page は 4〜6 枚に絞り、全 page の見た目は鷹野が撮る |
 
 ## 真壁の model は便で選ぶ
 
-**既定は Sonnet 5.5(`claude-makabe` を上書きなしで)。**枠の規則で替えるほか、便の性格で選ぶ。
+**既定は Sonnet 5.5(`claude-makabe` を上書きなしで)。前面(フロント)の便も Sonnet。**枠の規則で替えるほか、便の性格で選ぶ。**K3(`kimi-makabe`)は当面使わない**(役員 人見 2026-10-17)。
 
-- **Opus 5.5** ── 設計を真壁に任せる便、構造を割った直後の前面の便(`MAKABE_CLAUDE_MODEL=claude-opus-5-5 claude-makabe …`。models.env の既定は触らない。役員 人見 2026-10-12・10-13)
-- **K3** ── 前面の見た目の便で Claude の weekly を温存したいとき(`kimi-makabe -C <作業木> -f <BRIEF>`、同時 2 本まで。役員 人見 2026-09-29)。30 分 commit 0 なら止め線で、書きかけを `git-as 真壁` で commit に残し、Opus の真壁に「読んで、合っていれば使い、違えば直す」の引き継ぎ BRIEF で渡す(10-13)
+- **Opus 5.5** ── 設計を真壁に任せる便(`MAKABE_CLAUDE_MODEL=claude-opus-5-5 claude-makabe …`。models.env の既定は触らない。役員 人見 2026-10-12)
+- **止め線で止まった便の引き継ぎ** ── 書きかけを `git-as 真壁` で commit に残し、Opus の真壁に「読んで、合っていれば使い、違えば直す」の引き継ぎ BRIEF で渡す(10-13)
 - **ゲート 2 の P0 を直す巡** ── `claude-makabe --p0`(opus high、値は models.env の `MAKABE_CLAUDE_P0_MODEL` / `_EFFORT`。役員 人見 2026-10-11)
 
 ## 1 便の流れ ── ゲートは 1 回、検収は鷹野
@@ -60,7 +60,7 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 - **終端:** ランチャが無いので、真壁は最終応答の末尾に footer(`persona:` / `verdict:` / `変更ファイル数:` / `makabe_commit_sha:`)を自分で書き、鷹野が `git -C <作業木> log` で独立に検算する
 - **ゲートは便に 1 回:** 柏木(Opus、読み取り専用)をプロンプト 1 行目 `便: <id>` で呼ぶ。P2 も所見として返り、直すのは鷹野が起こす新しい真壁。P0 のときも柏木は呼び直さず、新しい真壁を所見のパス付きで 1 回
 - **枠:** サブエージェントも同じアカウントの weekly を食う。`rates` は cloud で動かない見込みなので、起こす前に鷹野が `/usage` を見る(cloud で使えるかは未測)
-- **母艦に残る:** K3・codex の経路、源内、DDL・deploy・DNS・印刷・Discord・メールなど母艦の secrets が要る作業
+- **母艦に残る:** codex の経路、源内、DDL・deploy・DNS・印刷・Discord・メールなど母艦の secrets が要る作業
 
 ## 起動コマンド
 
@@ -70,7 +70,6 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 claude-makabe -C <worktree> -f <BRIEF>                                   # 真壁(Sonnet、既定)
 MAKABE_CLAUDE_MODEL=claude-opus-5-5 claude-makabe -C <worktree> -f <BRIEF> # 真壁(Opus に上書き)
 claude-makabe --p0 -C <worktree> -f <BRIEF-r2>                           # ゲート 2 の P0 を直す巡(opus)
-kimi-makabe -C <worktree> -f <BRIEF>                                     # 真壁(K3)。同時 2 本まで
 KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 -f <scratchpad>/gate2-<便>.md   # 柏木のゲート 2
 makabe-send <run_dir> "<本文>"                                            # 走っている真壁に訂正を送る
 genai draft.md out.md                                                    # 源内。--k3 で Kimi フォールバック
@@ -88,8 +87,7 @@ harness-route                                                            # 今�
 | 条件(`verdict.weekly`) | 切替 |
 |---|---|
 | agy が減りすぎ | 源内を K3 で動かす(`genai --k3`) |
-| kimi が減りすぎ | 真壁を K3 で起こさない |
-| claude が減りすぎ | Claude は鷹野の窓と柏木だけに絞る。庵野を使わず真壁へ ── 真壁は K3(`kimi-makabe`)か codex 経路(`MAKABE_ROUTE=codex`、luna max)で起こす |
+| claude が減りすぎ | Claude は鷹野の窓と柏木だけに絞る。庵野を使わず真壁へ ── 真壁は codex 経路(`MAKABE_ROUTE=codex`、luna max)で起こす |
 | codex が減りすぎ | 真壁の経路は替えない(既定の claude のまま、`MAKABE_ROUTE=codex` を渡さない) |
 
 **Claude の weekly か Fable のどちらかが 3% 以下になったら、新しい便を起こさない。**走っている便の終端で記録して閉じる(役員 人見 2026-09-22)。
