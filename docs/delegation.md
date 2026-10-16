@@ -9,7 +9,7 @@
 | 柏木[CM] | **Claude opus(effort xhigh)= 実行経路 C、既定** / Codex `gpt-6.1-sol`(`KASHIWAGI_ROUTE=codex`、astra は既定から退役、役員 人見 2026-09-24) | レビュー・監査・助言。ゲート 2(便の終端)を便に 1 回。作業木の中だけ書ける(P2 の自己 commit) | 鷹野が `KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <作業木> --gate 2 -f gate2-<便>.md` ── 役員 人見 2026-09-21 23:55(PoC:Opus 5 / 5、K3 2 / 5、`_sessions/2026-09-21_09`)。cloud セッションでは鷹野が Agent tool `subagent_type: kashiwagi`(1 便 1 回、読み取り専用、cloud 専用) |
 | 真壁[IM] | **Claude sonnet(effort high)= 既定、ゲート 2 の P0 を直す巡は opus(high)** / Opus の上書き(`MAKABE_CLAUDE_MODEL=claude-opus-5-5`)/ Codex `gpt-6-luna`(`MAKABE_ROUTE=codex`、effort max)。既定にしたのは 役員 人見 2026-10-11、根拠は tech の `_drafts/bench/luna-max-vs-haiku-xhigh/results.md` | `claude-sonnet-5-5` | 実装、テスト、実測 | 鷹野が `claude-makabe -C <作業木> -f <BRIEF>` を bg で。どの model で起こすかは下の「真壁の model は便で選ぶ」。cloud セッションでは鷹野が Agent tool `subagent_type: makabe`(Sonnet 5.5、cloud 専用、[cloud-session.md](cloud-session.md)。役員 人見 2026-09-30) |
 | 庵野[EXP] | Claude | `claude-sonnet-5-5` | 道具作り、Playwright、PoC、検証しながらの実装。鷹野直属 | Agent tool `subagent_type: anno` |
-| 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(枠切れは `--k3`) |
+| 源内[WT] | Gemini 3.8 Flash (High) | `gemini-3.8-flash-high` | 納品物の日本語調整・リライト。commit しない | `genai <in.md> <out.md>`(K3 の控えは使わない) |
 
 model と effort の値は `scripts/models.env`、モデルの特性と配役の理由、プロンプトの書き方は [models.md](models.md)。
 
@@ -72,7 +72,7 @@ MAKABE_CLAUDE_MODEL=claude-opus-5-5 claude-makabe -C <worktree> -f <BRIEF> # 真
 claude-makabe --p0 -C <worktree> -f <BRIEF-r2>                           # ゲート 2 の P0 を直す巡(opus)
 KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 -f <scratchpad>/gate2-<便>.md   # 柏木のゲート 2
 makabe-send <run_dir> "<本文>"                                            # 走っている真壁に訂正を送る
-genai draft.md out.md                                                    # 源内。--k3 で Kimi フォールバック
+genai draft.md out.md                                                    # 源内。--k3 の控えは使わない
 harness-route                                                            # 今日の配役表(read-only、起動しない)
 ```
 
@@ -86,7 +86,7 @@ harness-route                                                            # 今�
 
 | 条件(`verdict.weekly`) | 切替 |
 |---|---|
-| agy が減りすぎ | 源内を K3 で動かす(`genai --k3`) |
+| agy が減りすぎ | 源内を止める。日本語の調整は待たせる(K3 の控えは使わない、役員 人見 2026-10-17) |
 | claude が減りすぎ | Claude は鷹野の窓と柏木だけに絞る。庵野を使わず真壁へ ── 真壁は codex 経路(`MAKABE_ROUTE=codex`、luna max)で起こす |
 | codex が減りすぎ | 真壁の経路は替えない(既定の claude のまま、`MAKABE_ROUTE=codex` を渡さない) |
 
