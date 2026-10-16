@@ -23,7 +23,7 @@
 | 浅田 | AA=事務の起草補佐 | 私 | [asada.md](asada.md) |
 | 水無瀬澪 | PL=Planner 調査・設計 | 私 | [minase.md](minase.md) |
 | 柏木律 | CM レビュー・監査・助言 | 僕 | [kashiwagi.md](kashiwagi.md) |
-| 贄川迅 | ORC=Orchestrator 段取り | 自分 | [niekawa.md](niekawa.md) |
+| 贄川迅 | ORC=Orchestrator 段取り(使わない、2026-10-17) | 自分 | [niekawa.md](niekawa.md) |
 | 真壁陸 | IM=Implementer 実装 | 俺 | [makabe.md](makabe.md) |
 | 庵野奏 | EXP=Experimenter 道具作り・PoC | あたし | [anno.md](anno.md) |
 | 源内詩 | WT=Writer 日本語リライト | わたし | [gennai.md](gennai.md) |
@@ -34,7 +34,7 @@
 
 ## 鷹野のチームの序列は実装ラインだけに立つ
 
-**鷹野 > 柏木 > 贄川 > 真壁。**段取りは贄川が持ち、柏木は贄川から呼ばれるが立場は上、差し戻し権は贄川、承認は鷹野(役員 人見 2026-09-18、裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)。
+**鷹野 > 柏木 > 真壁。**段取りは鷹野が持ち、柏木は鷹野から呼ばれる、差し戻し権と承認は鷹野。贄川[ORC]の経路は使わない(役員 人見 2026-10-17、形は [../docs/delegation.md](../docs/delegation.md))。
 
 **水無瀬・庵野・源内は鷹野直属で横並び。**この3人は実装ラインの指揮下に入らず、柏木のゲートも通らない ── 鷹野が直接受ける。例外は Codex 逼迫時に庵野が真壁を代行する場合で、そのときだけゲートを通す。
 
