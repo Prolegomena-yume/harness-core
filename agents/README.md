@@ -1,6 +1,6 @@
 # 委譲人格の Claude Agent tool 定義
 
-**Claude Agent tool の人格は 6 人** ── 鷹野配下の水無瀬(opus)と庵野(sonnet)、大橋配下の浅田(opus)、麻布配下の芦屋(opus)と赤坂(opus)、麻布と鷹野の両方の配下の梅田(opus)。柏木と真壁はランチャ(`claude-kashiwagi` / `codex-kashiwagi`、`codex-makabe`)でだけ起こし(実体のモデルは [../docs/models.md](../docs/models.md))、Agent tool 版は 2026-09-18 に削除した(役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)── 同じ役が 2 つのモデルに跨がると、どちらが正か決まらないため。配線と使い方は [../codex/README.md](../codex/README.md) と [../docs/delegation.md](../docs/delegation.md)。
+**Claude Agent tool の人格は 6 人** ── 鷹野配下の水無瀬(opus)と庵野(sonnet)、大橋配下の浅田(opus)、麻布配下の芦屋(opus)と赤坂(opus)、大橋・麻布・鷹野の三つの配下の梅田(opus)。柏木と真壁はランチャ(`claude-kashiwagi` / `codex-kashiwagi`、`codex-makabe`)でだけ起こし(実体のモデルは [../docs/models.md](../docs/models.md))、Agent tool 版は 2026-09-18 に削除した(役員 人見。裁定の正典は `company/tech/_sessions/2026-09-18_01.md`)── 同じ役が 2 つのモデルに跨がると、どちらが正か決まらないため。配線と使い方は [../codex/README.md](../codex/README.md) と [../docs/delegation.md](../docs/delegation.md)。
 
 **例外: cloud セッション(`CLAUDE_CODE_REMOTE=true`)に限り、真壁と柏木を Claude のサブエージェントとして起こす**(役員 人見 2026-09-30「ローカルなら今まで通り、cloud の規則」)。定義は [../cloud/agents/](../cloud/agents/) に置き、本ディレクトリには置かない ── 母艦の探索に入れないため。cloud では SessionStart hook が `~/.claude/agents/` へ symlink を張り、母艦では PreToolUse の `Agent` hook が呼び出しを止める([../docs/cloud-session.md](../docs/cloud-session.md))。
 
@@ -17,7 +17,7 @@
 
 **浅田は大橋(PJM)直属で、鷹野のチームの外にいる**(役員 人見 2026-09-25)。技術の調査は水無瀬、事務の起草は浅田と持ち場を分ける。浅田のモデルは仮置きで、配役表([../docs/models.md](../docs/models.md))への記載は鷹野の確認待ち。
 
-**芦屋・赤坂・梅田は麻布直属で横並び**(役員 人見 2026-10-17)。調べと「何を言うか」は芦屋、数字は赤坂、版面と見た目は梅田と持ち場を分ける。**梅田は鷹野の配下も兼ね**、鷹野からは UX・ブランドの提案と UI の意匠の叩き台を受ける(意匠の決定は鷹野)。3 人のモデルは鷹野の仮置き。
+**芦屋・赤坂・梅田は麻布直属で横並び**(役員 人見 2026-10-17)。調べと「何を言うか」は芦屋、数字は赤坂、版面と見た目は梅田と持ち場を分ける。**梅田は大橋と鷹野の配下も兼ね**、大橋からは組織図や役員に刷る資料の版面を、鷹野からは UX・ブランドの提案と UI の意匠の叩き台を受ける(意匠の決定は鷹野)。3 人のモデルは鷹野の仮置き。
 
 **水無瀬と庵野は鷹野直属で横並び**(源内も同列だが Agent tool を持たず `genai` で呼ぶ)。実装ラインの序列は 鷹野 > 柏木 > 贄川 > 真壁 で、この 2 人はその指揮下に入らない。**Claude 側の実装の手は庵野、Claude 側の第二の目は水無瀬。**再帰委譲(Agent tool の入れ子呼び出し)は tools に含めていない。
 
