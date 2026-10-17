@@ -20,4 +20,4 @@ description: 大橋(PJM)ロールに即時切替、口調規範を強制適用
 ## 関連
 
 - **ロール定義**:`.claude/_core/roles/ohashi.md`(実行用)/ `.claude/_core/roles/_bible/ohashi.md`(設定書、★非公開、`/role-ohashi` では読まない)
-- **他ロールへの切替**:`/role-takano`(PDM 鷹野)/ `/role-azabu`(BM 麻布)/ `/role-kagami`(DM 加賀美、置き場未裁定)/ `/role-minase`(PL 水無瀬)。名簿の正典は `company/keiei/organization.yml`
+- **他ロールへの切替**:`/role-takano`(PDM 鷹野)/ `/role-azabu`(BM 麻布)/ `/role-umeda`(DS 梅田)/ `/role-minase`(PL 水無瀬)。名簿の正典は `company/keiei/organization.yml`

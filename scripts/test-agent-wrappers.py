@@ -59,6 +59,10 @@ passed('no retired model ids (gpt-5.6-*, bare claude-opus-5) or --model opus|son
 _frontmatter_expect = {
     'agents/minase.md': MODELS['MINASE_MODEL'],
     'agents/anno.md': MODELS['ANNO_MODEL'],
+    'agents/asada.md': MODELS['ASADA_MODEL'],
+    'agents/ashiya.md': MODELS['ASHIYA_MODEL'],
+    'agents/akasaka.md': MODELS['AKASAKA_MODEL'],
+    'agents/umeda.md': MODELS['UMEDA_MODEL'],
 }
 for _rel, _expect in _frontmatter_expect.items():
     _text = (CORE / _rel).read_text()

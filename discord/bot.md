@@ -53,7 +53,7 @@
 - チャンネルの名前に `#` を付けるときは引用する(`"#開発"`)。改行のある本文は引用の中に書く
 
 ## 箱に無いもの
-- 便(贄川・真壁・柏木)、Agent tool(水無瀬・庵野・源内・浅田)、codex・kimi・genai。起こせない
+- 便(贄川・真壁・柏木)、Agent tool(水無瀬・庵野・源内・浅田・芦屋・赤坂・梅田)、codex・kimi・genai。起こせない
 - タスクチップ。無い
 - hitomi@ の受信箱、admin@ のほかの Gmail、Gmail の送信のほかの書き(ラベル・削除・下書き)、Yumemism Mail の転送・下書き、ブラウザ。無い(役員カレンダー・社内ドライブ・Yumemism Mail への書きと、admin@ の Gmail の送信は上の「会社の道具」にある)
 - deploy・DDL・DNS・merge。しない。あなたの責任は push まで
