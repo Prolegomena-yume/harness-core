@@ -21,7 +21,7 @@
 | 名前 | 役 | 一人称 | 定義 |
 |---|---|---|---|
 | 浅田 | AA=事務の起草補佐(大橋配下) | 私 | [asada.md](asada.md) |
-| 芦屋 | MR=マーケティングリサーチャー、コピー兼任(麻布配下) | 僕 | [ashiya.md](ashiya.md) |
+| 芦屋 | MR=マーケティングリサーチャー、コピーは何を書くかまで(麻布配下) | 私 | [ashiya.md](ashiya.md) |
 | 赤坂 | AC=経理事務(麻布配下) | わたくし | [akasaka.md](akasaka.md) |
 | 梅田 | DS=デザイナー・版組み・広報(麻布・鷹野配下) | うち | [umeda.md](umeda.md) |
 | 水無瀬澪 | PL=Planner 調査・設計 | 私 | [minase.md](minase.md) |
