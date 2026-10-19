@@ -9,30 +9,30 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - `git-as` と `cloud-pr` を PATH に置く(`/usr/local/bin`、書けなければ `~/.local/bin`)
 - `~/canonical/tech` を clone への symlink にする ── tech の `autoMemoryDirectory` と commit guard の母艦の絶対パスを、設定を書き換えずに生かすため。clone の名前は起動経路で変わる(CLI は `repo`、GUI はリポ名)ので、`$CLAUDE_PROJECT_DIR` を指す
 - `~/.claude/agents/{makabe,kashiwagi}.md` を [../cloud/agents/](../cloud/agents/) への symlink にする(母艦の `.claude/agents` からは見えない)
-- keiei を `~/canonical/keiei` へ浅く clone する(MEMORY.md を文脈に入れるため、下の節)。終わりに `bootstrap-done` の印を置く。memory の同期の起点を置いて 1 回走らせる(下の節)
+- keiei を `~/canonical/keiei` へ浅く clone する(MEMORY.md を文脈に入れるため、下の節)。終わりに `bootstrap-done` のフラグを置く。memory の同期の起点を置いて 1 回走らせる(下の節)
 - musearch を `~/yumemism_repo/musearch` へ clone する。**母艦の置き場と同じパスにしたのは、BRIEF や docs の絶対パスと「tech の兄弟」という形をそのまま通すため。**clone は hook の中でする ── setup script には API credential が付かず、Forgejo の private が取れない
 
-- yumemi を `~/yumemism_repo/yumemi` へ Forgejo の `satellite/yumemi` から clone する(musearch の兄弟、framework の正本を読む口)。`cloud-bridge` は yumemi に read。**GitHub の写し `canon-ical/yumemi` は手動 push で遅れることがあり(2026-09-30 に 0.11.6 で止まっていた)、使わない**
+- yumemi を `~/yumemism_repo/yumemi` へ Forgejo の `satellite/yumemi` から clone する(musearch の兄弟、framework の正典を読む口)。`cloud-bridge` は yumemi に read。**GitHub のミラー `canon-ical/yumemi` は手動 push で遅れることがあり(2026-09-30 に 0.11.6 で止まっていた)、使わない**
 - **yumemi 0.12 から生成器は本体の module `yumemi/gen` で Hex に載り、app の lock の版が走る。**musearch が 0.12 系に上がった後は `cd api && gleam run -m yumemi/gen -- . ..` で起こし、yumemi の clone も旧 package `yumemi_gen` も要らない。musearch が 0.11 系の間(段 D の merge まで)は、従来どおり clone の tag から起こす(2026-10-12、0.12.0 の publish)
-- **tech と musearch の作業木に Forgejo の remote `forgejo`(`https://git.yumemism.com/company/tech.git`、`business/musearch.git`)を足す(fetch はしない、冪等、push 先は変えない ── cloud-pr は URL を直に指す)。**cloud の tech の origin は GitHub の写しで、`discord/session-post` が git.yumemism.com の remote を見て #session の URL の repo path を決めるため、無いと `Prolegomena-yume/tech` に崩れる(2026-10-01 実機)
+- **tech と musearch の worktree に Forgejo の remote `forgejo`(`https://git.yumemism.com/company/tech.git`、`business/musearch.git`)を足す(fetch はしない、冪等、push 先は変えない ── cloud-pr は URL を直に指す)。**cloud の tech の origin は GitHub のミラーで、`discord/session-post` が git.yumemism.com の remote を見て #session の URL の repo path を決めるため、無いと `Prolegomena-yume/tech` に崩れる(2026-10-01 実機)
 - **`CLAUDE_ENV_FILE` に `export TZ=Asia/Tokyo` を足す**(zoneinfo が無い VM では `JST-9`)。cloud の VM は TZ が UTC で、締めのサマリ名の日付が JST とずれる(JST 10-01 02:16 が `2026-09-30_08` になった)。**効くのは Claude の Bash tool の各コマンドだけで、hook と MCP には渡らない(公式)**が、日付を決めるのは close-session の Bash で、hook の `date` は epoch と `-u` だけ。母艦では `CLAUDE_CODE_REMOTE` が真のときしか走らないので何も変わらない
-- 最後に、完了の印を置いてから [../cloud/setup.sh](../cloud/setup.sh) を走らせる(下の節)
+- 最後に、完了のフラグを置いてから [../cloud/setup.sh](../cloud/setup.sh) を走らせる(下の節)
 
 ## 道具と分類器の文脈は cloud/setup.sh が入れ、setup script にも同じ本文を貼る
 
 **cloud の既定のイメージには gleam も Erlang も無い。[../cloud/setup.sh](../cloud/setup.sh) が gleam(版を固定、release の sha256 を照合)と Erlang(apt の `erlang-nox`、Ubuntu 24.04 で OTP 25)を入れ、`~/.claude/settings.json` の `autoMode.environment` に自社の source control と `ymos` を書く**(役員 人見 2026-09-30)。冪等で、揃っていれば数十 ms で抜ける。
 
-- **入口は 2 つで中身は同じ。**cloud 環境の setup script に本文をそのまま貼る(スナップショットに道具が載り、次回から入れ直さない)。貼っていない環境・古いスナップショットの環境では、cloud-bootstrap.sh の最後が同じ本文を走らせる(apt が走ると数十秒。完了の印の後なので memory の注入は待たない)
+- **入口は 2 つで中身は同じ。**cloud 環境の setup script に本文をそのまま貼る(スナップショットに道具が載り、次回から入れ直さない)。貼っていない環境・古いスナップショットの環境では、cloud-bootstrap.sh の最後が同じ本文を走らせる(apt が走ると数十秒。完了のフラグの後なので memory の注入は待たない)
 - **setup script に置くのは clone の中身に依存しないものだけ。**道具と設定の文面は置く。clone の中身のコピーや symlink は置かない(スナップショットで古い中身が固まるため)。setup script はこのファイルを取りに行かない ── setup script には API credential が付かず Forgejo が読めない。本文を変えたら画面の setup script も貼り直す
 - **分類器の文脈は `~/.claude/settings.json` にしか書けない。**auto mode の分類器は project の `.claude/settings.json` の `autoMode` を読まない(公式)。書くのは `$defaults` の後ろに、自社の source control(git.yumemism.com の全リポ、GitHub の Prolegomena-yume・canon-ical)、Hex の `yumemi` が自社のものであること、Forgejo へは AGit だけで押すこと。書く前は yumemi の clone が「信頼できない依存」で止まった。分類器は CLAUDE.md も読むので、tech の CLAUDE.md にも同じ旨を 1 行置く
 
 ## ymos は cloud/setup.sh が入れ、認証は API credential で agent proxy が VM の外で付ける
 
-**cloud でも `ymos cal` / `ymos discord` / `ymos kb` ほか口を叩く動詞が使え、close-session の `discord/session-post` も `#session` に流れる。秘密は VM に入らない**(役員 人見 2026-10-01。設計は `company/tech` の `_drafts/claude-remote/02-ymos-cloud.v0.md`)。cloud 環境の API credential に service token を置き、agent proxy が `dispatch.yumemism.com` 行きの要求にだけ付ける。値は Claude にもコマンドにも環境変数にも出ない。
+**cloud でも `ymos cal` / `ymos discord` / `ymos kb` ほか API を叩く動詞が使え、close-session の `discord/session-post` も `#session` に流れる。秘密は VM に入らない**(役員 人見 2026-10-01。設計は `company/tech` の `_drafts/claude-remote/02-ymos-cloud.v0.md`)。cloud 環境の API credential に service token を置き、agent proxy が `dispatch.yumemism.com` 行きの要求にだけ付ける。値は Claude にもコマンドにも環境変数にも出ない。
 
 - **[../cloud/setup.sh](../cloud/setup.sh) の 4 段目が入れる。**`CLAUDE_CODE_REMOTE=true` のときだけ ── Forgejo の `satellite/yumemism-os` を `~/yumemism_repo/yumemism-os` へ浅く clone(あれば pull)、`cli/` を `npm ci && npm run build`、PATH 上の `ymos` に wrapper を置く(`/usr/local/bin`、書けなければ `~/.local/bin`)。wrapper は `YMOS_CREDENTIAL=proxy` を export して `cli/dist/index.js` を exec するだけで、CLI は認証ヘッダを一切付けない。母艦では何もしない。同じ rev のときは build を飛ばす(`.git/cloud-built-rev`)
 - **入口は bootstrap 経由の 1 つ。**setup script には API credential が付かず Forgejo の private が clone できないので、setup script に本文を貼っても 4 段目は clone が落ちて飛ばされる(害は無い)。clone の中身をスナップショットに固めないので、それでよい。`cloud-bridge` は `satellite/yumemism-os` に read
-- **Node の fetch は `HTTPS_PROXY` を読まず、proxy を通らないのでヘッダが付かず Access が 401 を返す(2026-10-01 実機、ymos はそれを `response.invalid` と読んだ)。**wrapper が `NODE_USE_ENV_PROXY=1` を立てて読ませ、出る `UNDICI-EHPA` の警告だけ `node --disable-warning=UNDICI-EHPA` で消す(`--no-warnings` にはしない、`NODE_OPTIONS` は触らない)。CA は既存の `NODE_EXTRA_CA_CERTS` で足り、`--use-system-ca` は要らない。wrapper は build の印に関わらず毎回書き直す
+- **Node の fetch は `HTTPS_PROXY` を読まず、proxy を通らないのでヘッダが付かず Access が 401 を返す(2026-10-01 実機、ymos はそれを `response.invalid` と読んだ)。**wrapper が `NODE_USE_ENV_PROXY=1` を立てて読ませ、出る `UNDICI-EHPA` の警告だけ `node --disable-warning=UNDICI-EHPA` で消す(`--no-warnings` にはしない、`NODE_OPTIONS` は触らない)。CA は既存の `NODE_EXTRA_CA_CERTS` で足り、`--use-system-ca` は要らない。wrapper は build のフラグに関わらず毎回書き直す
 - **この CLI は `YMOS_CREDENTIAL=proxy` を解する版(便 ymos-cloud-1、`satellite/yumemism-os` の main)が要る。**main に入る前は wrapper を置いても CLI が `auth.json` を探して落ちる
 - **`discord/discord-as` は `.discord-tokens/<役>` が無く `ymos` があるとき、`ymos discord <役> <動詞> ...` に委ねる**(`company/tech` の `discord.md`)。cloud の VM に bot の token は無い
 - **cloud の VM は使い捨てで、`~/.config/harness/discord/session-posted.tsv`(二重防止)も VM ごとに空から始まる**
@@ -53,17 +53,17 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - tech と musearch の両方に変更が出る便は、**同じ便名で 2 本**立て、各本文に相手の PR の URL を書く。束ねる仕組みは無いので、merge の順は BRIEF に書く
 - commit は `git-as <役> commit`。作者が職能の顔になるのは、Forgejo が作者のメールで顔を決めるため(push した主体は `cloud-bridge`)
 - 認証は cloud 環境の API credential で、URL にも引数にも資格情報を書かない。**書くと母艦の credential store に混ざる事故がある**
-- musearch の作業木は `git -C ~/yumemism_repo/musearch worktree add ../musearch-<便> -b <便>`、cloud-pr は `-C` でその木を指す
+- musearch の worktree は `git -C ~/yumemism_repo/musearch worktree add ../musearch-<便> -b <便>`、cloud-pr は `-C` でその worktree を指す
 - merge は主管が Forgejo の Web でする。cloud の鷹野は merge しない
 
 ## memory は Forgejo の main で母艦と cloud を同じにする
 
-**tech の Stop hook が [../hooks/memory-sync.sh](../hooks/memory-sync.sh) を走らせ、`.claude/memory/` の差分(cloud はそれに `_sessions/` のサマリ、次の節)だけを Forgejo の main へ直接 push し、Forgejo 側の差分を手元へ取り込む**(役員 人見 2026-09-30)。母艦と cloud は同じ処理で、違いは取り先の URL と作業木のつなぎ方だけ。
+**tech の Stop hook が [../hooks/memory-sync.sh](../hooks/memory-sync.sh) を走らせ、`.claude/memory/` の差分(cloud はそれに `_sessions/` のサマリ、次の節)だけを Forgejo の main へ直接 push し、Forgejo 側の差分を手元へ取り込む**(役員 人見 2026-09-30)。母艦と cloud は同じ処理で、違いは取り先の URL と worktree のつなぎ方だけ。
 
-- **memory 以外に触れない。**作業木の index・HEAD・他のファイルは触らず、一時 index と plumbing で「Forgejo の main の tree の memory だけを差し替えた commit」を作って push する。tech の main の保護は `unprotected_file_patterns: .claude/memory/**` があり、write 権限のある `cloud-bridge` でも memory だけの commit しか通らない(satellite/cloud-poc に同じ保護を張って実測: memory だけ○、memory と他の混在×、他だけ×)。session の branch の他の変更は載らない
-- **母艦は追加条件つき。**作業木が `main` で、HEAD が今回の commit の祖先で、差分が memory だけのときだけ push し、HEAD と memory の index だけを進める。未 push の commit が有る・main 以外・HEAD が他の path で遅れているときは push せず次回に回す(作業木は壊さない)
+- **memory 以外に触れない。**worktree の index・HEAD・他のファイルは触らず、一時 index と plumbing で「Forgejo の main の tree の memory だけを差し替えた commit」を作って push する。tech の main の保護は `unprotected_file_patterns: .claude/memory/**` があり、write 権限のある `cloud-bridge` でも memory だけの commit しか通らない(satellite/cloud-poc に同じ保護を張って実測: memory だけ○、memory と他の混在×、他だけ×)。session の branch の他の変更は載らない
+- **母艦は追加条件つき。**worktree が `main` で、HEAD が今回の commit の祖先で、差分が memory だけのときだけ push し、HEAD と memory の index だけを進める。未 push の commit が有る・main 以外・HEAD が他の path で遅れているときは push せず次回に回す(worktree は壊さない)
 - **遅くしない。**前景は「memory に新しいファイルが有るか・前回の fetch から 10 分たったか」を見るだけ(約 10 ms)。有れば worker を切り離す(母艦)。cloud は VM が消えるので前景で timeout 付き。同時に走るのは flock で 1 本、取れなければ黙って次回。index.lock で落ちたら次回
-- **cloud は起動時にも同じ処理を 1 回走らせる**(cloud-bootstrap.sh)。cloud の clone は GitHub の写しで古いことがあるため、Forgejo の main の memory を先に取り込む。`refs/memory-sync/base` に「前回同期した commit」を持ち、これが 3 者比較の base になる
+- **cloud は起動時にも同じ処理を 1 回走らせる**(cloud-bootstrap.sh)。cloud の clone は GitHub のミラーで古いことがあるため、Forgejo の main の memory を先に取り込む。`refs/memory-sync/base` に「前回同期した commit」を持ち、これが 3 者比較の base になる
 
 **衝突はファイル単位の 3 者比較(base / 手元 / Forgejo)で決める。**片側だけが変えたファイルはそのまま採り、両側が違う中身に変えたファイルだけが衝突。`MEMORY.md`(索引)は行の和集合(`git merge-file --union`)、それ以外の topic file は**同期を打った側の後勝ち**。負けた版は Forgejo の履歴に残り、commit message に衝突した path を書く。手元の memory が空なのに base に有るときは、消えたのではなく取り違えを疑って何もしない。
 
@@ -72,9 +72,9 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 **cloud の `_sessions/` のサマリは memory と同じ `memory-sync.sh` が Forgejo の tech の main へ直接 push し、PR にしない**(役員 人見 2026-10-01「A で」)。tech の main の `unprotected_file_patterns` は `.claude/memory/**;_sessions/**` で、`cloud-bridge` でサマリだけ・サマリ+memory は通り、サマリ+他の path は弾かれることを cloud-poc で実測済み(鷹野)。母艦の対象は今までどおり memory だけ(サマリは鷹野が push する)。
 
 - **足すだけで、上書きしない。**手元に無いサマリの削除は流さない。同じ名前(連番 NN)を別の中身で並行セッションが先に上げていたら、Forgejo の版も手元の版も上書きせず、`~/.cache/harness-memory-sync/sync.log` に `conflict: _sessions/...` を残す(close-session は NN を決める前に Forgejo の main を見る)。混在の commit は作らない(対象の path しか載せない)
-- **Anthropic の Stop の git 検査の実物**(2026-10-01、鷹野が cloud の VM の `~/.claude/stop-hook-git-check.sh` を読んだ)。`stop_hook_active=true` なら素通り、git 管理外・remote 無しも素通り。**exit 2 で止める条件は、未 commit の差分・未追跡ファイル・`origin/<branch>`(無ければ `origin/HEAD`)に対する未 push の commit。**`commit.gpgsign=true`(cloud は true)のときだけ、未 push の commit の署名・committer(`noreply@anthropic.com`)も見る。**cloud の session の branch は GitHub に在り**(`claude/<名前>` が `origin/claude/<名前>` を追跡、push 済み)、origin は GitHub の写しなので、Forgejo の main への push では検査は通らない。起動直後から `M .claude/memory/...` が出るのは、起動時の取り込みが Forgejo の memory を作業木に降ろして commit しないため
-- **Stop の hook は並列に走る**(公式「All matching hooks run in parallel」)。うちの memory-sync と Anthropic の検査に順序は付かず、Stop で初めて push すると、その回の検査は push 前の作業木を見る。**なので close-session の中で `memory-sync.sh` を前景で先に走らせる**(commands/close-session.md)。memory だけを書いた普通の turn の Stop では 1 回止まりうる(push 済みになった次の Stop から通る)
-- **Forgejo の main への push が済んだ後、`memory-sync.sh` の `branch_push_cloud` が検査の要求にそのまま応える**(鷹野の裁定 2026-10-01。作業木を Forgejo の main へ揃える案は、session の branch が GitHub に在って `origin/<branch>` が古い commit を指すため効かず、やめた)。差分・未追跡・未 push の commit が**全部**対象の path(`.claude/memory/**`・`_sessions/**`)のときだけ、その path を session の branch に `git-as 鷹野` で commit し(message は Forgejo への commit と同じ形 `memory: cloud から N 件(...)` / `sessions: ...`)、`git push origin HEAD:<branch>` する。**対象外の path が 1 つでもあれば何もせず、警告も残す**(本物の作業を隠さない)。force はしない。non-FF・commit の失敗(署名・hook)・push の失敗は `sync.log` に `branch: ...` で残して止める(次の worker で同じ手順をもう一度する)。`main` / `master` の上では動かない。起動時の取り込み(cloud-bootstrap、`MEMSYNC_NO_BRANCH=1`)では動かさず、降りた memory は Stop の worker が拾う(対象の path に commit していない差分があれば、fetch 間隔に関わらず worker が走る)
+- **Anthropic の Stop の git 検査の実物**(2026-10-01、鷹野が cloud の VM の `~/.claude/stop-hook-git-check.sh` を読んだ)。`stop_hook_active=true` なら素通り、git 管理外・remote 無しも素通り。**exit 2 で止める条件は、未 commit の差分・未追跡ファイル・`origin/<branch>`(無ければ `origin/HEAD`)に対する未 push の commit。**`commit.gpgsign=true`(cloud は true)のときだけ、未 push の commit の署名・committer(`noreply@anthropic.com`)も見る。**cloud の session の branch は GitHub に在り**(`claude/<名前>` が `origin/claude/<名前>` を追跡、push 済み)、origin は GitHub のミラーなので、Forgejo の main への push では検査は通らない。起動直後から `M .claude/memory/...` が出るのは、起動時の取り込みが Forgejo の memory を worktree に降ろして commit しないため
+- **Stop の hook は並列に走る**(公式「All matching hooks run in parallel」)。うちの memory-sync と Anthropic の検査に順序は付かず、Stop で初めて push すると、その回の検査は push 前の worktree を見る。**なので close-session の中で `memory-sync.sh` を前景で先に走らせる**(commands/close-session.md)。memory だけを書いた普通の turn の Stop では 1 回止まりうる(push 済みになった次の Stop から通る)
+- **Forgejo の main への push が済んだ後、`memory-sync.sh` の `branch_push_cloud` が検査の要求にそのまま応える**(鷹野の裁定 2026-10-01。worktree を Forgejo の main へ揃える案は、session の branch が GitHub に在って `origin/<branch>` が古い commit を指すため効かず、やめた)。差分・未追跡・未 push の commit が**全部**対象の path(`.claude/memory/**`・`_sessions/**`)のときだけ、その path を session の branch に `git-as 鷹野` で commit し(message は Forgejo への commit と同じ形 `memory: cloud から N 件(...)` / `sessions: ...`)、`git push origin HEAD:<branch>` する。**対象外の path が 1 つでもあれば何もせず、警告も残す**(本物の作業を隠さない)。force はしない。non-FF・commit の失敗(署名・hook)・push の失敗は `sync.log` に `branch: ...` で残して止める(次の worker で同じ手順をもう一度する)。`main` / `master` の上では動かない。起動時の取り込み(cloud-bootstrap、`MEMSYNC_NO_BRANCH=1`)では動かさず、降りた memory は Stop の worker が拾う(対象の path に commit していない差分があれば、fetch 間隔に関わらず worker が走る)
 - **GitHub の session の branch への push は、検査のための副産物で、正典は Forgejo の main。**GitHub に PR は立てない(方針は不変、PR は `cloud-pr` で Forgejo へ)。**ただし `cloud-pr` は HEAD を Forgejo へ押すので、session の branch に積まれた memory・サマリの commit も PR に載る。**中身は main に既にあるものと同じだが、main の memory が先へ進むと、同じ path を両側が変えたことになり merge で衝突しうる(特に `MEMORY.md`)。cloud-pr でこれらの commit を除く手は未実装
 - **母艦は pull するまで memory も上げない。**cloud が上げたサマリが main に入ると、HEAD..main に memory 以外の path が入り、母艦の既存の条件(差分が memory だけ)で止まる。鷹野の「セッション開始時 pull」で解ける
 
@@ -87,7 +87,7 @@ tech の `.claude/settings.json` の SessionStart の最初の command が、`CL
 - **SessionStart の hook は 5 本。**(a) 今までの cloud 分岐(submodule 取得 → cloud-bootstrap.sh → session-init.sh。memory は足さない)、session-install.sh、(b1) `cloud-memory-inject.sh tech-1`、(b2) `tech-2`、(c) `keiei`。母艦では (b)(c) は `CLAUDE_CODE_REMOTE` を見て何も出さず exit 0(約 1 ms)
 - **tech の索引は 1 本で 9,500 字を超えうる(増える)ので、行単位で前半・後半に割る。**割れ目は `## ` 見出しのうち前半と後半の長い方が最短になるもの。見出しで収まらなければ任意の行で割る。枠の半分に収まる小さな索引なら前半 1 本に全部入れて後半は空。割り方は決定的で、tech-1 と tech-2 は同じ入力から同じ割れ目を計算する(2026-09-30 の実物は 4,759 字 / 4,749 字)
 - **3 本目が要る大きさ**(どちらかの hook の枠を超える)になったら、両方の頭に「索引が大きすぎる、整理が要る」を出し、枠に収まらない行は載せずに「N 行を載せていない」と書く。そのときは MEMORY.md を整理する(古い項目を畳む)
-- **`cloud-memory-inject.sh` は待つ。**同じ matcher の hook は並列に走るので、(1) `_core` が現れるまで(submodule 取得は (a) の中)を settings の command が最長 60 秒(`# END` の行が読めるまで。書きかけを実行しない)、(2) cloud-bootstrap.sh の完了を最長 90 秒待つ。完了は bootstrap が終わりに置く `~/.cache/harness-cloud/bootstrap-done` の mtime が、この hook の起動時刻以降であることで読む(resume / compact で前回の印が残っていても素通りしない)。**keiei を自分で clone せず待つ方を採ったのは、bootstrap の clone と同じ dir に 2 本走ると半端な clone を読みうるため、また tech の索引を Forgejo の main の memory を取り込んだ後で読むためにも同じ印が使えるため。**待ちきれなければ「間に合わなかった」旨を 1 行添え、手元にあるものだけを出す(exit 0)
+- **`cloud-memory-inject.sh` は待つ。**同じ matcher の hook は並列に走るので、(1) `_core` が現れるまで(submodule 取得は (a) の中)を settings の command が最長 60 秒(`# END` の行が読めるまで。書きかけを実行しない)、(2) cloud-bootstrap.sh の完了を最長 90 秒待つ。完了は bootstrap が終わりに置く `~/.cache/harness-cloud/bootstrap-done` の mtime が、この hook の起動時刻以降であることで読む(resume / compact で前回のフラグが残っていても素通りしない)。**keiei を自分で clone せず待つ方を採ったのは、bootstrap の clone と同じ dir に 2 本走ると半端な clone を読みうるため、また tech の索引を Forgejo の main の memory を取り込んだ後で読むためにも同じフラグが使えるため。**待ちきれなければ「間に合わなかった」旨を 1 行添え、手元にあるものだけを出す(exit 0)
 - 書き込み先は tech 側(`~/canonical/tech/.claude/memory`、clone への symlink 経由)。keiei の memory は cloud から書かない
 - **cloud のセッションは自分では branch に `.claude/memory` や `_sessions/` を commit しない**(Stop の memory-sync が Forgejo の main へ直接上げ、Anthropic の Stop 検査のための branch への commit・push も memory-sync が打つ。前の節)
 
