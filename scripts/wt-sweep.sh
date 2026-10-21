@@ -5,7 +5,9 @@
 #   wt-sweep.sh [--apply] --only <worktree のパス>                   # 1 本だけ判定・削除(便の締めから)
 #
 # 消す条件(全部満たすものだけ。迷えば残す):
-#   [1] HEAD が main(または origin/main)に merge 済み     ── どちらで判定したかを base 列に出す
+#   [1] HEAD が基点のどれかに merge 済み                    ── どれで判定したかを base 列に出す
+#       基点 = main・origin/main、リポの既定ブランチ(origin/HEAD の指す先)、staging・canon(ローカルと origin/ の両方)のうち存在するもの。
+#       main・origin/main が無いリポは master・origin/master も基点に入れる。main だけのリポの判定は従来と同じ
 #   [2] git status --porcelain が空(submodule も含む)。submodule は clean かつ HEAD が remote にあること
 #   [3] cwd がその worktree の中のプロセス、または引数にそのパスを含むプロセスが無い(見るだけで kill しない)
 #   [4] <repo>/.git/worktrees/<name>/HEAD の mtime が MIN_AGE(既定 12 時間)より古い
@@ -113,6 +115,17 @@ proc_use() {
   done
 }
 
+# add_cands <repo> <ref 名>... : 存在する ref(refs/heads/<名> か refs/remotes/<名>)を、重複なしで cands に足す(evaluate の中から呼ぶ)
+add_cands() {
+  local repo="$1" ref c dup; shift
+  for ref in "$@"; do
+    dup=0; for c in "${cands[@]+"${cands[@]}"}"; do [ "$c" = "$ref" ] && dup=1; done
+    [ "$dup" = 0 ] || continue
+    if git -C "$repo" rev-parse --verify -q "refs/heads/$ref^{commit}" >/dev/null 2>&1 \
+       || git -C "$repo" rev-parse --verify -q "refs/remotes/$ref^{commit}" >/dev/null 2>&1; then cands+=("$ref"); fi
+  done
+}
+
 # ---- 1 本の判定 ----
 # evaluate <repo> <wt> <head_sha> <branch|detached> <locked 0/1> <missing 0/1>
 # 結果: V(消す|残す)  BASE_USED  REASONS(; 区切り)  HAS_SUB(force が要るか)
@@ -144,19 +157,17 @@ evaluate() {
   if [ -z "$head" ]; then
     add "[1] HEAD が無い(unborn)" "[1] 未 merge"
   else
-    local cands=() found=""
-    for ref in main origin/main; do
-      git -C "$repo" rev-parse --verify -q "refs/heads/$ref^{commit}" >/dev/null 2>&1 && cands+=("$ref") && continue
-      git -C "$repo" rev-parse --verify -q "refs/remotes/$ref^{commit}" >/dev/null 2>&1 && cands+=("$ref")
-    done
+    local cands=() found="" names=() dh dn
+    # 基点の候補: main(無ければ master)→ 既定ブランチ(origin/HEAD の指す先)→ staging → canon。それぞれローカルの後に origin/ 側も。
+    dh="$(git -C "$repo" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || true)"; dn="${dh#refs/remotes/origin/}"
+    add_cands "$repo" main origin/main
+    [ "${#cands[@]}" -gt 0 ] || add_cands "$repo" master origin/master   # main 系が無いときだけ master 系
+    names=()
+    [ -z "$dh" ] || [ "$dn" = "$dh" ] || names+=("$dn" "origin/$dn")
+    names+=(staging origin/staging canon origin/canon)
+    add_cands "$repo" "${names[@]}"
     if [ "${#cands[@]}" -eq 0 ]; then
-      for ref in master origin/master; do
-        git -C "$repo" rev-parse --verify -q "refs/heads/$ref^{commit}" >/dev/null 2>&1 && cands+=("$ref") && continue
-        git -C "$repo" rev-parse --verify -q "refs/remotes/$ref^{commit}" >/dev/null 2>&1 && cands+=("$ref")
-      done
-    fi
-    if [ "${#cands[@]}" -eq 0 ]; then
-      add "[1] main / origin/main が無い" "[1] 未 merge"
+      add "[1] 基点(main・既定ブランチ・staging・canon)が無い" "[1] 未 merge"
     else
       for ref in "${cands[@]}"; do
         if git -C "$repo" merge-base --is-ancestor "$head" "$ref" 2>/dev/null; then found="$ref"; break; fi

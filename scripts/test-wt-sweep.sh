@@ -159,6 +159,49 @@ chk "A4 消した分の管理領域は prune されている" bash -c "! ls '$R/
 chk "A5 末尾に「削除した N 本」" has '^# 削除した [0-9]+ 本'
 chk "A6 二度目の dry-run は消す 0 本(冪等)" bash -c "'$SWEEP' 2>&1 | grep -qP '^# 消す 0 本'"
 
+# ---- main が無く staging / canon だけのリポ(musearch の形: 既定ブランチ = staging、hotfix は canon と staging) ----
+ROOT2="$sbx/root2"; S="$ROOT2/s"; mkdir -p "$ROOT2"
+gs() { "$GAS" anno -C "$S" "$@"; }
+git init -q -b staging "$S"; echo s >"$S/s.txt"; git -C "$S" add -A; gs commit -q -m init
+gs branch canon
+init_sha="$(git -C "$S" rev-parse HEAD)"
+git -C "$S" update-ref refs/remotes/origin/staging "$init_sha"
+git -C "$S" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/staging
+mk2() { # <name> <起点の枝> : 起点から枝を切って worktree(HEAD ファイルは古い)
+  gs worktree add -q -b "br-$1" "$ROOT2/$1" "$2" 2>/dev/null; old "$ROOT2/$1"
+}
+cm2() { echo "$2" >"$ROOT2/$1/$2.txt"; gw "$ROOT2/$1" add -A; gw "$ROOT2/$1" commit -q -m "$2"; }
+mk2 wt-stg staging; cm2 wt-stg f1; git -C "$S" update-ref refs/heads/staging "$(git -C "$ROOT2/wt-stg" rev-parse HEAD)"; old "$ROOT2/wt-stg"   # staging にだけ入った便
+mk2 wt-can canon;   cm2 wt-can h1; git -C "$S" update-ref refs/heads/canon "$(git -C "$ROOT2/wt-can" rev-parse HEAD)"; old "$ROOT2/wt-can"      # canon にだけ入った hotfix
+mk2 wt-ostg staging; cm2 wt-ostg o1; git -C "$S" update-ref refs/remotes/origin/staging "$(git -C "$ROOT2/wt-ostg" rev-parse HEAD)"; old "$ROOT2/wt-ostg"   # origin/staging にだけ入った
+mk2 wt-ocan canon;  cm2 wt-ocan o2; git -C "$S" update-ref refs/remotes/origin/canon "$(git -C "$ROOT2/wt-ocan" rev-parse HEAD)"; old "$ROOT2/wt-ocan"      # origin/canon にだけ入った
+mk2 wt-un staging;  cm2 wt-un u1; old "$ROOT2/wt-un"                                                                  # どこにも入っていない
+mk2 wt-un-dirty staging; echo x >>"$ROOT2/wt-un-dirty/s.txt"                                                          # merge 済みでも dirty は残す
+mk2 wt-init staging                                                                                                    # init(両方の祖先)→ 先に見つかる staging
+# 既定ブランチが main でも staging でもないリポ d(develop)
+D="$ROOT2/d"; git init -q -b develop "$D"; echo d >"$D/d.txt"; git -C "$D" add -A; "$GAS" anno -C "$D" commit -q -m init
+git -C "$D" update-ref refs/remotes/origin/develop "$(git -C "$D" rev-parse HEAD)"; git -C "$D" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/develop
+"$GAS" anno -C "$D" worktree add -q -b br-wt-dev "$ROOT2/wt-dev" develop 2>/dev/null; old "$ROOT2/wt-dev"
+
+out="$(WT_SWEEP_ROOT="$ROOT2" "$SWEEP" 2>&1)"; rc=$?
+col2() { grep -P "\t$ROOT2/$1\t" <<<"$out" | head -1 | cut -f"$2"; }
+chk "S0 main 無しのリポの dry-run は exit 0" test "$rc" = 0
+chk "S1 staging にだけ入った便は「消す」・base は staging" test "$(col2 wt-stg 1)/$(col2 wt-stg 6)" = 消す/staging
+chk "S2 canon にだけ入った hotfix は「消す」・base は canon" test "$(col2 wt-can 1)/$(col2 wt-can 6)" = 消す/canon
+chk "S3 origin/staging にだけ入った便は base が origin/staging" test "$(col2 wt-ostg 1)/$(col2 wt-ostg 6)" = 消す/origin/staging
+chk "S4 origin/canon にだけ入った hotfix は base が origin/canon" test "$(col2 wt-ocan 1)/$(col2 wt-ocan 6)" = 消す/origin/canon
+chk "S5 どこにも入っていなければ残す(理由は [1] 未 merge で、見た基点を並べる)" bash -c "grep -qP '^残す\t.*\t$ROOT2/wt-un\t.*\[1\] staging origin/staging canon origin/canon に未 merge' <<<\"\$0\"" "$out"
+chk "S6 merge 済みでも dirty なら残す(base 列には staging が出る)" test "$(col2 wt-un-dirty 1)/$(col2 wt-un-dirty 6)" = 残す/staging
+chk "S7 既定ブランチ(origin/HEAD)が develop のリポは develop で判定する" test "$(col2 wt-dev 1)/$(col2 wt-dev 6)" = 消す/develop
+chk "S8 main が無くても基点が無いとは言わない" bash -c "! grep -q '基点.*が無い' <<<\"\$0\"" "$out"
+# main 系が一つも無く、基点になりそうな枝も無いリポは従来どおり「残す」
+git init -q -b feat "$ROOT2/nb"; echo n >"$ROOT2/nb/n.txt"; git -C "$ROOT2/nb" add -A; "$GAS" anno -C "$ROOT2/nb" commit -q -m init
+"$GAS" anno -C "$ROOT2/nb" worktree add -q -b br-wt-nb "$ROOT2/wt-nb" feat 2>/dev/null; old "$ROOT2/wt-nb"
+out="$(WT_SWEEP_ROOT="$ROOT2" "$SWEEP" nb 2>&1)"
+chk "S9 基点が一つも無いリポは「残す」(理由に基点が無いと出る)" bash -c "grep -qP '^残す\t.*\t$ROOT2/wt-nb\t.*基点.*が無い' <<<\"\$0\"" "$out"
+out="$(WT_SWEEP_ROOT="$ROOT2" "$SWEEP" --apply s 2>&1)"
+chk "S10 --apply で staging / canon 側に入った 4 本だけ消え、未 merge と dirty は残る" bash -c "[ ! -e '$ROOT2/wt-stg' ] && [ ! -e '$ROOT2/wt-can' ] && [ ! -e '$ROOT2/wt-ostg' ] && [ ! -e '$ROOT2/wt-ocan' ] && [ -d '$ROOT2/wt-un' ] && [ -d '$ROOT2/wt-un-dirty' ]"
+
 echo "---"
 echo "$n tests, $([ "$fail" = 0 ] && echo 'all ok' || echo 'FAILED')"
 exit "$fail"
