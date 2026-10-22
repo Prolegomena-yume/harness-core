@@ -167,14 +167,30 @@ PY
 
 GIT_OPTS=(-c i18n.logOutputEncoding=UTF-8 -c i18n.commitEncoding=UTF-8 -c core.quotePath=false)
 
-git_branch=$(git "${GIT_OPTS[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(unknown)")
-git_log=$(git "${GIT_OPTS[@]}" log -5 --oneline --no-decorate 2>/dev/null || echo "(git log unavailable)")
-git_status=$(git "${GIT_OPTS[@]}" status --short 2>/dev/null || echo "(git status unavailable)")
-if [ -z "$git_status" ]; then
-  git_status="(clean working tree)"
+# Claude アプリの worktree(.claude/worktrees/*)で起こすと CLAUDE_PROJECT_DIR は本体の checkout を指す。
+# hook の stdin の cwd が同じリポの別の作業ツリーなら、branch・status・log・_sessions はそちらから引く。
+# .harness.json・mirror の状態ファイル・_core は本体のまま(worktree の _core は submodule が空)。
+GIT_ROOT="$REPO_ROOT"
+hook_cwd=""
+if [ ! -t 0 ]; then
+  hook_cwd="$(timeout 2 cat 2>/dev/null | "$PY" -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("cwd") or "")
+except Exception:
+    pass' 2>/dev/null)"
+fi
+if [ -n "$hook_cwd" ] && [ -d "$hook_cwd" ]; then
+  cwd_top="$(git -C "$hook_cwd" rev-parse --show-toplevel 2>/dev/null)"
+  cwd_common="$(git -C "$hook_cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  repo_common="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  if [ -n "$cwd_top" ] && [ -n "$cwd_common" ] && [ "$cwd_common" = "$repo_common" ]; then
+    GIT_ROOT="$cwd_top"
+  fi
 fi
 
-"$PY" - "$config_b64" "$IS_CLOUD" "$REPO_ROOT" "$git_branch" <<'PY'
+git_branch=$(git "${GIT_OPTS[@]}" -C "$GIT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(unknown)")
+
+"$PY" - "$config_b64" "$IS_CLOUD" "$REPO_ROOT" "$git_branch" "$GIT_ROOT" <<'PY'
 import base64
 import json
 import os
@@ -186,12 +202,13 @@ cfg = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
 is_cloud = sys.argv[2] == "true"
 repo_root = sys.argv[3]
 git_branch = sys.argv[4]
+git_root = sys.argv[5]
 
 def run_git(args, fallback):
     try:
         return subprocess.check_output(
             ["git", "-c", "i18n.logOutputEncoding=UTF-8", "-c", "i18n.commitEncoding=UTF-8", "-c", "core.quotePath=false"] + args,
-            cwd=repo_root,
+            cwd=git_root,
             stderr=subprocess.DEVNULL,
         ).decode("utf-8", errors="replace").rstrip() or fallback
     except Exception:
@@ -209,7 +226,7 @@ import re
 SESSION_FILE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d+\.md$")
 sessions_dir = cfg["sessions_dir"]
 latest_session_line = ""
-session_abs = os.path.join(repo_root, sessions_dir)
+session_abs = os.path.join(git_root, sessions_dir)
 if os.path.isdir(session_abs):
     candidates = sorted(
         (name for name in os.listdir(session_abs) if SESSION_FILE_RE.match(name)),

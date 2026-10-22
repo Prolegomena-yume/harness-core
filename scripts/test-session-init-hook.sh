@@ -85,5 +85,33 @@ else
 fi
 rm -rf "$tmp"
 
+# Claude アプリの worktree:CLAUDE_PROJECT_DIR は本体、stdin の cwd が同じリポの worktree。
+# branch・status・log はその worktree から、cwd が別のリポなら本体のまま。
+wt="$(mktemp -d)"
+git init -q -b main "$wt/main"
+printf '{"mirror":{"enabled":false}}\n' > "$wt/main/.harness.json"
+git -C "$wt/main" add .harness.json
+git -C "$wt/main" -c user.name=t -c user.email=t@t commit -q -m base
+git -C "$wt/main" worktree add -q -b claude/wt-test "$wt/main/.claude/worktrees/wt-test"
+git -C "$wt/main/.claude/worktrees/wt-test" -c user.name=t -c user.email=t@t commit -q --allow-empty -m wt-only
+touch "$wt/main/dirty"
+git init -q -b other "$wt/other"
+ctx_of() { python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])'; }
+wt_ctx="$(printf '{"cwd":"%s"}' "$wt/main/.claude/worktrees/wt-test" | CLAUDE_PROJECT_DIR="$wt/main" bash "$hook" 2>/dev/null | ctx_of)"
+if printf '%s' "$wt_ctx" | grep -q 'branch: `claude/wt-test`; working tree: clean' && printf '%s' "$wt_ctx" | grep -q ' wt-only$'; then
+  ok "worktree の cwd では branch・status・log が worktree のもの"
+else
+  not_ok "worktree の cwd で本体の branch・status・log が出る"
+fi
+main_ctx="$(printf '{"cwd":"%s"}' "$wt/main" | CLAUDE_PROJECT_DIR="$wt/main" bash "$hook" 2>/dev/null | ctx_of)"
+other_ctx="$(printf '{"cwd":"%s"}' "$wt/other" | CLAUDE_PROJECT_DIR="$wt/main" bash "$hook" 2>/dev/null | ctx_of)"
+none_ctx="$(CLAUDE_PROJECT_DIR="$wt/main" bash "$hook" </dev/null 2>/dev/null | ctx_of)"
+if printf '%s\n%s\n%s' "$main_ctx" "$other_ctx" "$none_ctx" | grep -c 'branch: `main`; working tree: .*?? dirty' | grep -qx 3; then
+  ok "本体の cwd・別リポの cwd・stdin 無しでは本体のまま"
+else
+  not_ok "本体の cwd・別リポの cwd・stdin 無しで本体の状態にならない"
+fi
+rm -rf "$wt"
+
 echo "1..$count"
 exit $fail
