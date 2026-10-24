@@ -403,7 +403,7 @@ trap on_term TERM INT
 
 # 標準入力を stream-json で開いたまま持つ(lib/makabe-stream.py)。最初の発言は prompt、途中の発言は inbox.fifo から。
 # --replay-user-messages: 流した発言(最初の prompt も makabe-send の訂正も)を stream.jsonl に user 行として残す(証拠)。
-# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(exec が子の env に CLAUDE_CONFIG_DIR=~/.claude-b を入れる。b の資格の更新は Claude Code 自身に任せる)
+# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(exec が ymos secret exec 経由で B の 1 年 token を子の env にだけ入れる。argv には載らない。~/.claude-b は枠を読むだけ)
 claude_args=("${acct_prefix[@]}" claude -p --model "$model" --effort "$effort" --dangerously-skip-permissions)
 claude_args+=(--input-format stream-json --output-format stream-json --verbose --replay-user-messages)
 claude_args+=(--append-system-prompt "$system_prompt" --settings "$settings_path")

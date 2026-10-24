@@ -102,7 +102,7 @@ forbidden_prefixes = [
     os.path.realpath(os.path.expanduser("~/canonical")),
     os.path.realpath(os.path.expanduser("~/.claude")),
     os.path.realpath(os.path.expanduser("~/.claude-b")),  # Claude Max 2 枚目の資格(claude-acct、念のため)
-    os.path.realpath(os.path.expanduser("~/.config/claude-accounts")),  # 旧案(env の token)の置き場。今は使わないが書き込み禁止は残す
+    os.path.realpath(os.path.expanduser("~/.config/claude-accounts")),  # 旧案の b.token の置き場。今は使わないが書き込み禁止は残す
     os.path.realpath(os.path.expanduser("~/.codex")),
     os.path.realpath(os.path.expanduser("~/bin")),
 ]

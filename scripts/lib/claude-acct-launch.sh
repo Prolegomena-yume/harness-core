@@ -8,7 +8,7 @@
 #   acct_prefix   claude_args の先頭に付ける配列。a は空、b は (claude-acct.sh exec b --)
 #   acct_exhausted  1 = 両方尽きた(pick が exit 75)。呼び出し側が dry-run でなければ exit 75 で終える
 #   acct_summary  dry-run / ログ用の 1 行(資格の値は含まない)
-# 書くもの: <run_dir>/account.json(label・email・reason・各枠の残り・線。資格の値は書かない)と、
+# 書くもの: <run_dir>/account.json(label・email・reason・各枠の残り・線・b の secret 名。token の値は書かない)と、
 #   選んだ側の dir で取った <run_dir>/rates.json(取れなければ作らない ── 従来の `rates claude` と同じ)。
 # CLAUDE_ACCT_DISABLE=1 なら pick を呼ばず、従来どおり既定の `rates claude` を 1 回叩く。
 

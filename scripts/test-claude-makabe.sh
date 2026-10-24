@@ -265,24 +265,35 @@ launch "$sbx/c-main" --dry-run
 chk "14g detached HEAD は kimi-makabe と同じく通る" exit_c_is 0
 
 # ---- 15. Claude Max 2 枚の選択(claude-acct.sh、親ゴール: a の枠が尽きても人見の手なしで b で起きる)----
-# 偽 rates は CLAUDE_CONFIG_DIR の下の rates.json を返す。偽 claude が見た CLAUDE_CONFIG_DIR・CLAUDE_CODE_OAUTH_TOKEN・account 情報を $FAKE_SEEN に書く。b は env の token ではなく CLAUDE_CONFIG_DIR=<b の dir>。
+# 偽 rates は CLAUDE_CONFIG_DIR の下の rates.json を返す。偽 claude が見た CLAUDE_CODE_OAUTH_TOKEN・_B・CLAUDE_CONFIG_DIR・account 情報を $FAKE_SEEN に書く。b は B の 1 年 token(偽 ymos の secret CLAUDE_CODE_OAUTH_TOKEN_B)を CLAUDE_CODE_OAUTH_TOKEN で受ける。
 cat >"$sbx/bin/rates-acct" <<'S'
 #!/usr/bin/env bash
 cat "${CLAUDE_CONFIG_DIR:?}/rates.json"
 S
 chmod +x "$sbx/bin/rates-acct"
-ACCT_SECRET="SECRET-IN-CRED-LAUNCHER-ZZZ"   # b の資格ファイルの中身の代わり。run_dir・log・stdout・stderr に出てはいけない
+ACCT_SECRET="sk-ant-oat01-$(printf 'L%.0s' $(seq 1 80))"   # 偽の B の token(偽 ymos の store の中身)。run_dir・log・stdout・stderr に出てはいけない
+cat >"$sbx/bin/ymos" <<'S'
+#!/usr/bin/env bash
+# 偽の ymos: `ymos secret exec -n NAME -- cmd...` を $YMOS_STORE/NAME の中身を env に入れて子として動かす
+[ "$1 $2 $3" = "secret exec -n" ] || exit 64
+name="$4"; shift 5; [ "$1" = "--" ] && shift
+[ -f "${YMOS_STORE:?}/$name" ] || { echo "ymos: secret.not_found" >&2; exit 66; }
+export "$name=$(cat "$YMOS_STORE/$name")"
+"$@" <&0 &
+wait $!
+S
+chmod +x "$sbx/bin/ymos"
 acct_rates() { printf '{"email":"%s","remaining":{"5h":%s,"weekly":%s,"monthly":null}}\n' "$2" "$3" "$4" >"$1/rates.json"; }
 # run_acct <name> <a_5h> <a_weekly> <b_5h> <b_weekly> [launcher args...]
 run_acct() {
   local d; d="$(new_case "$1")"; local a5="$2" aw="$3" b5="$4" bw="$5"; shift 5
   mkdir -p "$d/acct-a" "$d/acct-b"; acct_rates "$d/acct-a" a@example.com "$a5" "$aw"; acct_rates "$d/acct-b" b@example.com "$b5" "$bw"
-  printf '{"claudeAiOauth":{"accessToken":"%s"}}' "$ACCT_SECRET" >"$d/acct-b/.credentials.json"; chmod 600 "$d/acct-b/.credentials.json"
+  mkdir -p "$d/ymos-store"; printf '%s\n' "$ACCT_SECRET" >"$d/ymos-store/CLAUDE_CODE_OAUTH_TOKEN_B"
   cat >"$d/scenario.sh" <<SC
-printf '%s|%s|%s' "\${CLAUDE_CONFIG_DIR-unset}" "\${CLAUDE_CODE_OAUTH_TOKEN-unset}" "\${CLAUDE_CODE_USER_EMAIL-unset}" >"$d/seen.txt"
+printf '%s|%s|%s|%s' "\${CLAUDE_CODE_OAUTH_TOKEN-unset}" "\${CLAUDE_CODE_OAUTH_TOKEN_B-unset}" "\${CLAUDE_CONFIG_DIR-unset}" "\${CLAUDE_CODE_USER_EMAIL-unset}" >"$d/seen.txt"
 SC
   ( cd "$d/ext" && env CODEX_AGENT_STATE_DIR="$d/state" FAKE_CLAUDE_SCENARIO="$d/scenario.sh" CLAUDE_CODE_USER_EMAIL=gui@example.com \
-      CLAUDE_ACCT_RATES="$sbx/bin/rates-acct" CLAUDE_ACCT_A_DIR="$d/acct-a" CLAUDE_ACCT_B_DIR="$d/acct-b" \
+      CLAUDE_ACCT_RATES="$sbx/bin/rates-acct" CLAUDE_ACCT_A_DIR="$d/acct-a" CLAUDE_ACCT_B_DIR="$d/acct-b" CLAUDE_ACCT_YMOS="$sbx/bin/ymos" YMOS_STORE="$d/ymos-store" \
       bash "$LAUNCHER" -C "$d/wt" --log "$d/run.log" -f "$d/ext/BRIEF.md" "$@" >"$d/launcher.out" 2>"$d/launcher.err"; echo $? >"$d/exit" )
   echo "$d"
 }
@@ -292,15 +303,15 @@ no_token_in_run() { local f=("$(run_dir_of "$1")"); for x in run.log launcher.ou
 d="$(run_acct acct-a-ok 50 50 60 60)"
 chk "15a a に余裕 → a で exit 0" exit_is "$d" 0
 chk "15b account.json は label a・rates.json は a の dir の値" test "$(acct_json "$d" label)" = a -a "$(grep -c a@example.com "$(run_dir_of "$d")/rates.json")" = 1
-chk "15c 偽 claude に CLAUDE_CONFIG_DIR も token も足されない(a は何も足さず、account 情報もそのまま)" test "$(cat "$d/seen.txt")" = "unset|unset|gui@example.com"
+chk "15c 偽 claude に token も CLAUDE_CONFIG_DIR も足されない(a は何も足さず、account 情報もそのまま)" test "$(cat "$d/seen.txt")" = "unset|unset|unset|gui@example.com"
 chk "15d footer に account: a a@example.com" grep -qx 'account: a a@example.com' "$d/launcher.out"
 
 d="$(run_acct acct-b 4 50 60 60)"
 chk "15e a の 5h が 4 → b で exit 0" exit_is "$d" 0
 chk "15f account.json は label b、rates.json は b の dir の値" test "$(acct_json "$d" label)" = b -a "$(grep -c b@example.com "$(run_dir_of "$d")/rates.json")" = 1
-chk "15g 偽 claude は CLAUDE_CONFIG_DIR=b の dir を受け、OAUTH_TOKEN は無く、GUI の account 情報も持ち込まれない" test "$(cat "$d/seen.txt")" = "$d/acct-b|unset|unset"
+chk "15g 偽 claude は B の token を CLAUDE_CODE_OAUTH_TOKEN で受け、_B・CLAUDE_CONFIG_DIR・GUI の account 情報は持ち込まれない" test "$(cat "$d/seen.txt")" = "$ACCT_SECRET|unset|unset|unset"
 chk "15h footer に account: b b@example.com" grep -qx 'account: b b@example.com' "$d/launcher.out"
-chk "15i b の資格ファイルの中身は run_dir・log・stdout・stderr のどこにも無い" no_token_in_run "$d"
+chk "15i B の token の値は run_dir・log・stdout・stderr のどこにも無い" no_token_in_run "$d"
 
 d="$(run_acct acct-none 4 50 2 60)"
 chk "15j 両方尽きた → 起動せず exit 75" exit_is "$d" 75
@@ -310,7 +321,7 @@ chk "15l account.json は label null・reason both-exhausted" test "$(acct_json 
 d="$(run_acct acct-dry 4 50 60 60 --dry-run)"
 chk "15m --dry-run は pick の結果とコマンド前置きを出して exit 0・claude は起動しない" bash -c 'grep -q "account: b b@example.com" "$1/launcher.out" && grep -q "command prefix: .*claude-acct.sh exec b --" "$1/launcher.out" && [ ! -e "$1/seen.txt" ]' _ "$d"
 chk "15n --dry-run で exit 0" exit_is "$d" 0
-chk "15o dry-run の出力にも資格の中身は無い" no_token_in_run "$d"
+chk "15o dry-run の出力にも token の値は無い" no_token_in_run "$d"
 d="$(run_acct acct-dry-none 4 50 2 60 --dry-run)"
 chk "15p 両方尽きでも --dry-run は結果を出して exit 0" exit_is "$d" 0
 
