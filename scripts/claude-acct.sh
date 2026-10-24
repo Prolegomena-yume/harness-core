@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Claude Max 2 枚(a / b)のうち、便を起こす側を起動時に選ぶ道具 ── 本体は lib/claude-acct.py(使い方・env はその docstring)。
-#   claude-acct.sh pick [--model <id>] [--policy primary]   JSON 1 行を stdout へ(token の値は出さない)。exit 75 = 両方尽きた
-#   claude-acct.sh exec <a|b> -- <cmd...>                    b なら token を子の env にだけ入れて exec
+#   claude-acct.sh pick [--model <id>] [--policy primary]   JSON 1 行を stdout へ(資格の値は出さない)。exit 75 = 両方尽きた
+#   claude-acct.sh exec <a|b> -- <cmd...>                    b なら CLAUDE_CONFIG_DIR=~/.claude-b を子の env に入れて exec(a は CLAUDE_CONFIG_DIR を外すだけ)
 #   claude-acct.sh is-limit <result.json> [stream.jsonl]      枠切れで終わった run か(exit 0 = 枠切れ)
 # stdin はそのまま子に渡る(makabe-stream.py が claude の標準入力を持つため、python を stdin 読みにしない)。
 # 親ゴール: claude-makabe / claude-kashiwagi の便が、1 枚目の枠が尽きても人見の手なしで 2 枚目で起きる。

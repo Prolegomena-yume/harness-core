@@ -442,7 +442,7 @@ on_term() {
 }
 trap on_term TERM INT
 
-# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(token は exec が子の env にだけ入れる。argv には載らない)
+# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(exec が子の env に CLAUDE_CONFIG_DIR=~/.claude-b を入れる。b の資格の更新は Claude Code 自身に任せる)
 claude_args=("${acct_prefix[@]}" claude -p --model "$model" --effort "$effort")
 claude_args+=("${permission_mode_args[@]}")
 claude_args+=(--output-format json --append-system-prompt "$system_prompt" --settings "$settings_path" -- "$prompt_arg")

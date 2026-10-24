@@ -241,7 +241,7 @@ if [ "$log_path_was_default" -eq 1 ]; then
 fi
 
 # Claude Max 2 枚の選択(scripts/claude-acct.sh)。a の枠(5h・週・この model の系統の週)が残り 5% 以下なら b を選ぶ。
-# 選んだ側と枠を <run_dir>/account.json に、その側の dir で取った rates を <run_dir>/rates.json に残す(token の値は書かない)。
+# 選んだ側と枠を <run_dir>/account.json に、その側の dir で取った rates を <run_dir>/rates.json に残す(資格の値は書かない)。
 # 両方尽きたら起動せず exit 75(--dry-run は結果を出して通す)。CLAUDE_ACCT_DISABLE=1 で従来どおり(既定の rates だけ)。
 acct_select "$run_dir" "$model" "makabe/claude"
 echo "[makabe/claude] $acct_summary"
@@ -403,7 +403,7 @@ trap on_term TERM INT
 
 # 標準入力を stream-json で開いたまま持つ(lib/makabe-stream.py)。最初の発言は prompt、途中の発言は inbox.fifo から。
 # --replay-user-messages: 流した発言(最初の prompt も makabe-send の訂正も)を stream.jsonl に user 行として残す(証拠)。
-# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(token は exec が子の env にだけ入れる。argv には載らない)
+# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(exec が子の env に CLAUDE_CONFIG_DIR=~/.claude-b を入れる。b の資格の更新は Claude Code 自身に任せる)
 claude_args=("${acct_prefix[@]}" claude -p --model "$model" --effort "$effort" --dangerously-skip-permissions)
 claude_args+=(--input-format stream-json --output-format stream-json --verbose --replay-user-messages)
 claude_args+=(--append-system-prompt "$system_prompt" --settings "$settings_path")

@@ -1,45 +1,50 @@
 #!/usr/bin/env python3
 """claude-acct.sh の本体 ── Claude Max 2 枚(a / b)のうち、便を起こす側を起動時に選ぶ。
 
-親ゴール: claude-makabe / claude-kashiwagi の便が、1 枚目(a)の枠が尽きても人見の手なしで 2 枚目(b)で起きる。
-設計の正典は company/tech の _drafts/claude-acct/01-research.v0.md「4. うちの形に当てる」(案 A)。
+親ゴール: claude-makabe / claude-kashiwagi の便が、1 枚目(a)の枠が尽きたら人見の手なしで 2 枚目(b)で起き、
+b の資格の更新は Claude Code 自身に任せる(1 年 token も自前の refresh も持たない)。
+設計の正典は company/tech の _drafts/claude-acct/01-research.v0.md「4. うちの形に当てる」。ただし b の渡し方は
+env の token(案 A の初版)から CLAUDE_CONFIG_DIR 方式に替えた(b.token の貼り付けが崩れた事故があり、自前 refresh も採らないため。鷹野 2026-10-25)。
 
-  pick [--model ID] [--policy primary]   各枠の残りを読み、a / b を JSON 1 行で stdout に出す。token の値は出さない
+  pick [--model ID] [--policy primary]   各枠の残りを読み、a / b を JSON 1 行で stdout に出す。資格の値は出さない
                                           exit 0 = 選んだ / 75 = 両方尽きた(label は null) / 2 = 使い方の誤り
-  exec <a|b> -- cmd...                    b なら CLAUDE_CODE_OAUTH_TOKEN を子の env にだけ入れて exec。a は何も足さない
+  exec <a|b> -- cmd...                    b なら CLAUDE_CONFIG_DIR=<b の dir> を子の env に入れて exec。a は何も足さず、CLAUDE_CONFIG_DIR だけ外す
   is-limit <result.json> [stream.jsonl]   枠切れで終わった run か(exit 0 = 枠切れ / 1 = 違う)。launcher の終端にはまだ繋がない
 
-秘密の扱い:
-  - token の値は stdout / stderr / ファイル / argv のどこにも出さない(出すのは長さと出どころの名前だけ)
-  - b の token は exec が env に入れて os.execvpe する(argv に載せない。`ps` の引数に出ない)
-  - a の資格(<a_dir>/.credentials.json)は読むだけで書かない。b の資格(<b_dir>/.credentials.json)も、書くのは rates だけ
+b の形:
+  - b の dir(~/.claude-b)は b で `claude auth login` した設定ディレクトリ。資格(.credentials.json)と .claude.json だけが b のもので、
+    settings.json・settings.local.json・skills・plugins・projects は ../.claude/ への symlink(人見・鷹野が張る)。
+    そのため b の便も hook・plugin・transcript・--resume は a と同じものを使う
+  - b の資格の更新は、b の dir で動く Claude Code 本体と rates(期限の 60 秒前に更新)に任せる。claude-acct は b の資格を読みも書きもしない
+  - b を選べる条件は「b の dir の `rates claude` が読めること」(読めればその時点で資格は生きている)。token の出どころ・期限の判定は持たない
+
+資格の扱い:
+  - a の資格(<a_dir>/.credentials.json)も b の資格(<b_dir>/.credentials.json)も、claude-acct は開かない
+  - env の CLAUDE_CODE_OAUTH_TOKEN・GUI 由来の account 情報は b の子に持ち込まない(a の資格や token が b の dir の資格に勝たないように)
+  - ANTHROPIC_API_KEY など優先順位が資格より上の env があれば、b を選ばず exec b も止める
 
 env(全部省略可):
-  CLAUDE_ACCT_A_DIR           a の設定ディレクトリ(既定 $CLAUDE_CONFIG_DIR か ~/.claude)
-  CLAUDE_ACCT_B_DIR           b の設定ディレクトリ(既定 ~/.claude-b、b で `claude auth login` した枠を読む用)
-  CLAUDE_ACCT_B_TOKEN_FILE    b の `claude setup-token`(1 年)を 1 行で置いたファイル(既定 ~/.config/claude-accounts/b.token)
+  CLAUDE_ACCT_A_DIR           a の設定ディレクトリ(既定 ~/.claude。env の CLAUDE_CONFIG_DIR は見ない ── exec a が外すため)
+  CLAUDE_ACCT_B_DIR           b の設定ディレクトリ(既定 ~/.claude-b)
   CLAUDE_ACCT_SWITCH_AT       a のどれかの枠の残りがこの値以下なら b を見る(既定 5)
   CLAUDE_ACCT_STOP_AT         b のどれかの枠の残りがこの値以下なら b は尽きた扱い(既定 3)
-  CLAUDE_ACCT_TOKEN_MARGIN_SEC  b の accessToken の期限までこの秒数を切っていたら先に rates で更新させる(既定 7200)
   CLAUDE_ACCT_RATES           rates の実行ファイル(既定 rates、test で stub に替える)
   CLAUDE_ACCT_DISABLE=1       pick は常に a(従来の挙動)
 """
 import json
 import os
 import re
-import stat
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 EX_TEMPFAIL = 75
 HOME = Path.home()
 
-# env の token より優先順位が上の資格(authentication.md の 1〜3 段)。あると token を足しても黙って負ける
+# 資格(CLAUDE_CONFIG_DIR の .credentials.json)より優先順位が上の資格(authentication.md の 1〜3 段)。あると b の dir を向けても黙って負ける
 BLOCKING_ENV = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
                 "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
-# GUI のセッションが子に渡す「どのアカウントか」の情報。b の便には持ち込まない(a の情報を b の token に添えない)
+# GUI のセッションが子に渡す「どのアカウントか」の情報。b の便には持ち込まない(a の情報を b の資格に添えない)
 ACCOUNT_HINT_ENV = ("CLAUDE_CODE_ACCOUNT_UUID", "CLAUDE_CODE_ORGANIZATION_UUID", "CLAUDE_CODE_USER_EMAIL")
 
 LIMIT_RE = re.compile(r"hit your .* limit", re.IGNORECASE)
@@ -47,14 +52,11 @@ LIMIT_RE = re.compile(r"hit your .* limit", re.IGNORECASE)
 
 def cfg():
     env = os.environ
-    a_default = env.get("CLAUDE_CONFIG_DIR") or str(HOME / ".claude")
     return {
-        "a_dir": env.get("CLAUDE_ACCT_A_DIR") or a_default,
+        "a_dir": env.get("CLAUDE_ACCT_A_DIR") or str(HOME / ".claude"),
         "b_dir": env.get("CLAUDE_ACCT_B_DIR") or str(HOME / ".claude-b"),
-        "b_token_file": env.get("CLAUDE_ACCT_B_TOKEN_FILE") or str(HOME / ".config/claude-accounts/b.token"),
         "switch_at": float(env.get("CLAUDE_ACCT_SWITCH_AT") or 5),
         "stop_at": float(env.get("CLAUDE_ACCT_STOP_AT") or 3),
-        "margin": float(env.get("CLAUDE_ACCT_TOKEN_MARGIN_SEC") or 7200),
         "rates": env.get("CLAUDE_ACCT_RATES") or "rates",
         "disable": env.get("CLAUDE_ACCT_DISABLE") == "1",
     }
@@ -110,49 +112,6 @@ def below(remaining, model, line):
 def has_value(remaining, model):
     return any(isinstance(remaining.get(k), (int, float)) and not isinstance(remaining.get(k), bool)
                for k in model_keys(remaining, model))
-
-
-# ---------------------------------------------------------------- b の token
-
-def read_cred(b_dir):
-    try:
-        d = json.loads((Path(b_dir) / ".credentials.json").read_text())
-        o = d.get("claudeAiOauth") or {}
-        at = o.get("accessToken")
-        exp = o.get("expiresAt")
-        if isinstance(at, str) and at and isinstance(exp, (int, float)):
-            return at, float(exp) / 1000.0
-    except (OSError, ValueError, AttributeError):
-        pass
-    return None, None
-
-
-def b_token(c):
-    """b の token と出どころ。値は呼び出し側が env にだけ入れる。出どころ: file / oauth / none / oauth-expiring。
-
-    1. b.token(setup-token、1 年)があればそれ
-    2. 無ければ <b_dir>/.credentials.json の accessToken。期限まで margin を切っていたら、先に rates を 1 回叩いて
-       更新させてから読み直す。それでも切っていれば使わない(便の途中で 401 になるため)
-    """
-    path = Path(c["b_token_file"])
-    try:
-        tok = path.read_text().strip()
-    except OSError:
-        tok = ""
-    if tok:
-        mode = stat.S_IMODE(path.stat().st_mode)
-        if mode & 0o077:
-            warn(f"{path} の権限が {oct(mode)}(0600 にしてください)")
-        return tok, "file"
-    at, exp = read_cred(c["b_dir"])
-    if not at:
-        return None, "none"
-    if exp - time.time() < c["margin"]:
-        run_rates(c, c["b_dir"])  # rates が期限の近い accessToken を更新して書き戻す(結果は捨てる)
-        at, exp = read_cred(c["b_dir"])
-        if not at or exp - time.time() < c["margin"]:
-            return None, "oauth-expiring"
-    return at, "oauth"
 
 
 def blocking_env():
@@ -216,21 +175,15 @@ def cmd_pick(argv):
             if blk:
                 unavailable = "b-blocked-by-env"
                 out["candidates"]["b"]["blocked_by_env"] = blk
-                warn("b を選べない: " + ", ".join(blk) + " が env にある(優先順位が CLAUDE_CODE_OAUTH_TOKEN より上)")
+                warn("b を選べない: " + ", ".join(blk) + " が env にある(優先順位が b の dir の資格より上)")
             else:
-                tok, source = b_token(c)
-                out["candidates"]["b"]["token_source"] = source
-                if tok is None:
-                    unavailable = "b-no-token"
-                    warn(f"b を選べない: token の出どころが無い({source})")
-                else:
-                    return finish("b", "a-below-switch-line")
+                return finish("b", "a-below-switch-line")
         else:
             out["candidates"]["b"]["exhausted"] = True
     if unavailable is None:
         # a は線以下、b も止める線以下 ── 両方尽きた
         return finish(None, "both-exhausted", EX_TEMPFAIL)
-    # b が使えない(尽きたのではなく、読めない・token が無い・env が塞ぐ)。a が止める線より上なら a で続ける(従来の挙動)
+    # b が使えない(尽きたのではなく、rates が読めない・env が塞ぐ)。a が止める線より上なら a で続ける(従来の挙動)
     if not below(a["remaining"], model, c["stop_at"]):
         return finish("a", unavailable + "-stay-a")
     return finish(None, "both-exhausted:" + unavailable, EX_TEMPFAIL)
@@ -253,19 +206,20 @@ def cmd_exec(argv):
     if label == "b":
         blk = blocking_env()
         if blk:
-            print("エラー: b の token を足せない ── " + ", ".join(blk) + " が env にある。優先順位が "
-                  "CLAUDE_CODE_OAUTH_TOKEN より上で、黙って別の資格で動いてしまう。unset してから起こす", file=sys.stderr)
+            print("エラー: b の dir を向けられない ── " + ", ".join(blk) + " が env にある。優先順位が "
+                  "CLAUDE_CONFIG_DIR の資格より上で、黙って別の資格で動いてしまう。unset してから起こす", file=sys.stderr)
             return 2
-        c = cfg()
-        tok, source = b_token(c)
-        if tok is None:
-            print(f"エラー: b の token の出どころが無い({source})── {c['b_token_file']} か "
-                  f"{c['b_dir']}/.credentials.json(期限まで {int(c['margin'])} 秒以上)が要る", file=sys.stderr)
+        b_dir = cfg()["b_dir"]
+        if not (Path(b_dir) / ".credentials.json").is_file():
+            print(f"エラー: b の資格が無い: {b_dir}/.credentials.json(b で `CLAUDE_CONFIG_DIR={b_dir} claude auth login` が要る)", file=sys.stderr)
             return 3
-        env["CLAUDE_CODE_OAUTH_TOKEN"] = tok
+        env["CLAUDE_CONFIG_DIR"] = b_dir
+        env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
         for k in ACCOUNT_HINT_ENV:
             env.pop(k, None)
-        print(f"[claude-acct] exec b: token source={source} len={len(tok)}", file=sys.stderr)
+        print(f"[claude-acct] exec b: CLAUDE_CONFIG_DIR={b_dir}", file=sys.stderr)
+    else:
+        env.pop("CLAUDE_CONFIG_DIR", None)  # a は既定の ~/.claude(pick の a_dir と同じ)
     try:
         os.execvpe(rest[0], rest, env)
     except OSError as e:
