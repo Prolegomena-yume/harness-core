@@ -65,7 +65,9 @@ task と --file が無い場合は標準入力からタスク本文を読む。
 走っている間は <run_dir>/inbox.fifo へ `makabe-send <run_dir|最新> "<本文>"` で途中の訂正を送れる
 (送った本文は <run_dir>/sent/ に残る。result 済みの run には送れない)。
 起動時の run_dir(${CODEX_AGENT_STATE_DIR:-~/.codex-agents}/runs/makabe-<ts>-<pid>-<rand>)を
-CODEX_AGENT_RUN_DIR で export する。起動時に `rates claude` を 1 回叩いて <run_dir>/rates.json に残す。
+CODEX_AGENT_RUN_DIR で export する。起動時に claude-acct.sh pick で Claude Max の a / b を選び(a が残り 5% 以下なら b)、
+選んだ側の dir で取った rates を <run_dir>/rates.json に、選んだ結果を <run_dir>/account.json に残す(両方尽きたら exit 75)。
+env: CLAUDE_ACCT_DISABLE=1 で従来どおり(a だけ)。詳細は scripts/lib/claude-acct.py の冒頭。
 USAGE
 }
 
@@ -98,6 +100,8 @@ source "$CORE/scripts/models.env"
 source "$CORE/scripts/lib/git-run-diff.sh"
 # shellcheck source=lib/batch-inbox.sh
 source "$CORE/scripts/lib/batch-inbox.sh"
+# shellcheck source=lib/claude-acct-launch.sh
+source "$CORE/scripts/lib/claude-acct-launch.sh"
 [ -f "$CORE/roles/makabe.md" ] || die "人物像の正典が見つからない: $CORE/roles/makabe.md"
 [ -f "$CORE/claude/makabe.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/makabe.md"
 
@@ -236,13 +240,18 @@ if [ "$log_path_was_default" -eq 1 ]; then
   : > "$log_path" 2>/dev/null || true
 fi
 
-if command -v rates >/dev/null 2>&1; then
-  if ! rates claude > "$run_dir/rates.json" 2>"$run_dir/rates.err"; then
-    echo "警告: rates claude の取得に失敗した(続行): $(tr '\n' ' ' < "$run_dir/rates.err")" >&2
-    rm -f "$run_dir/rates.json"
-  fi
-else
-  echo "警告: rates コマンドが見つからない(続行)" >&2
+# Claude Max 2 枚の選択(scripts/claude-acct.sh)。a の枠(5h・週・この model の系統の週)が残り 5% 以下なら b を選ぶ。
+# 選んだ側と枠を <run_dir>/account.json に、その側の dir で取った rates を <run_dir>/rates.json に残す(token の値は書かない)。
+# 両方尽きたら起動せず exit 75(--dry-run は結果を出して通す)。CLAUDE_ACCT_DISABLE=1 で従来どおり(既定の rates だけ)。
+acct_select "$run_dir" "$model" "makabe/claude"
+echo "[makabe/claude] $acct_summary"
+if [ "$acct_exhausted" -eq 1 ] && [ "$dry_run" -ne 1 ]; then
+  echo "persona: makabe"
+  echo "engine: claude"
+  echo "run_dir: $run_dir"
+  echo "account: 両方尽きた(a・b とも枠が線以下)"
+  echo "枠切れ: 両方尽きた(account.json 参照)── 起動しなかった。リセットを待つか枠を見て起こし直す"
+  exit 75
 fi
 
 export CODEX_AGENT_RUN_DIR="$run_dir"
@@ -355,6 +364,8 @@ fi
 if [ "$dry_run" -eq 1 ]; then
   echo "[makabe/claude] dry-run root=$root run_dir=$run_dir model=$model effort=$effort p0=$p0 model_requested=${model_requested:-(無し)}"
   echo "[makabe/claude] settings: $settings_path"
+  echo "[makabe/claude] account: ${acct_label} ${acct_email:-(email 不明)}(pick: $run_dir/account.json)"
+  echo "[makabe/claude] command prefix: ${acct_prefix[*]:-(無し、a は何も足さない)} claude -p ..."
   echo "[makabe/claude] input: stream-json(inbox: $run_dir/inbox.fifo、送り口 makabe-send)"
   echo "--- prompt ---"
   cat "$prompt_lines_path"
@@ -392,7 +403,8 @@ trap on_term TERM INT
 
 # 標準入力を stream-json で開いたまま持つ(lib/makabe-stream.py)。最初の発言は prompt、途中の発言は inbox.fifo から。
 # --replay-user-messages: 流した発言(最初の prompt も makabe-send の訂正も)を stream.jsonl に user 行として残す(証拠)。
-claude_args=(claude -p --model "$model" --effort "$effort" --dangerously-skip-permissions)
+# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(token は exec が子の env にだけ入れる。argv には載らない)
+claude_args=("${acct_prefix[@]}" claude -p --model "$model" --effort "$effort" --dangerously-skip-permissions)
 claude_args+=(--input-format stream-json --output-format stream-json --verbose --replay-user-messages)
 claude_args+=(--append-system-prompt "$system_prompt" --settings "$settings_path")
 
@@ -526,6 +538,7 @@ fi
 
 echo "persona: makabe"
 echo "engine: claude"
+echo "account: $acct_label ${acct_email:-(email 不明)}"
 echo "session_id: $session_id"
 echo "run_dir: $run_dir"
 echo "log: $log_path"

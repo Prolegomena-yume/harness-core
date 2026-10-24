@@ -69,7 +69,9 @@ task と --file が無い場合は標準入力からタスク本文を読む。
 --resume / --rounds は無い。
 
 起動時の run_dir(${CODEX_AGENT_STATE_DIR:-~/.codex-agents}/runs/kashiwagi-<ts>-<pid>-<rand>)を
-CODEX_AGENT_RUN_DIR で export する。起動時に `rates claude` を 1 回叩いて <run_dir>/rates.json に残す。
+CODEX_AGENT_RUN_DIR で export する。起動時に claude-acct.sh pick で Claude Max の a / b を選び(a が残り 5% 以下なら b)、
+選んだ側の dir で取った rates を <run_dir>/rates.json に、選んだ結果を <run_dir>/account.json に残す(両方尽きたら exit 75、
+便に 1 回のゲートの記録は戻す)。env: CLAUDE_ACCT_DISABLE=1 で従来どおり。詳細は scripts/lib/claude-acct.py の冒頭。
 
 NIEKAWA_INBOX が環境にあれば(贄川の子として起動された場合)、その dirname の gates.tsv で
 「ゲートは便に1回」を判定する。ゲート番号が決まっている(-f の名前か --gate)とき、該当ゲートが
@@ -103,6 +105,8 @@ script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 # shellcheck source=models.env
 source "$CORE/scripts/models.env"
+# shellcheck source=lib/claude-acct-launch.sh
+source "$CORE/scripts/lib/claude-acct-launch.sh"
 # shellcheck source=lib/git-run-diff.sh
 source "$CORE/scripts/lib/git-run-diff.sh"
 [ -f "$CORE/roles/kashiwagi.md" ] || die "人物像の正典が見つからない: $CORE/roles/kashiwagi.md"
@@ -283,13 +287,21 @@ if [ "$log_path_was_default" -eq 1 ]; then
   : > "$log_path" 2>/dev/null || true
 fi
 
-if command -v rates >/dev/null 2>&1; then
-  if ! rates claude > "$run_dir/rates.json" 2>"$run_dir/rates.err"; then
-    echo "警告: rates claude の取得に失敗した(続行): $(tr '\n' ' ' < "$run_dir/rates.err")" >&2
-    rm -f "$run_dir/rates.json"
+# Claude Max 2 枚の選択(scripts/claude-acct.sh)。claude-makabe.sh と同じ ── a が残り 5% 以下なら b、両方尽きたら exit 75。
+acct_select "$run_dir" "$model" "kashiwagi/claude"
+echo "[kashiwagi/claude] $acct_summary"
+if [ "$acct_exhausted" -eq 1 ] && [ "$dry_run" -ne 1 ]; then
+  # 先に積んだ gates.tsv の記録(便に 1 回)を戻す ── 起動しなかったゲートを使ったことにしない
+  if [ -n "$gate_batch_dir" ] && [ -n "$gate_num" ] && [ -f "$gate_gates_tsv" ]; then
+    grep -vF -- "$run_dir" "$gate_gates_tsv" > "$gate_gates_tsv.tmp.$$" || true
+    mv -f "$gate_gates_tsv.tmp.$$" "$gate_gates_tsv"
   fi
-else
-  echo "警告: rates コマンドが見つからない(続行)" >&2
+  echo "persona: kashiwagi"
+  echo "engine: claude"
+  echo "run_dir: $run_dir"
+  echo "account: 両方尽きた(a・b とも枠が線以下)"
+  echo "枠切れ: 両方尽きた(account.json 参照)── 起動しなかった。リセットを待つか枠を見て起こし直す"
+  exit 75
 fi
 
 export CODEX_AGENT_RUN_DIR="$run_dir"
@@ -397,6 +409,8 @@ if [ "$dry_run" -eq 1 ]; then
   echo "[kashiwagi/claude] gate_num=${gate_num:-(無し)} gates.tsv=${gate_gates_tsv:-(便の外)}"
   echo "[kashiwagi/claude] permission_mode_args=${permission_mode_args[*]:-(無し、書き込み不可)}"
   echo "[kashiwagi/claude] settings: $settings_path"
+  echo "[kashiwagi/claude] account: ${acct_label} ${acct_email:-(email 不明)}(pick: $run_dir/account.json)"
+  echo "[kashiwagi/claude] command prefix: ${acct_prefix[*]:-(無し、a は何も足さない)} claude -p ..."
   echo "--- prompt ---"
   cat "$run_dir/prompt.md"
   exit 0
@@ -428,7 +442,8 @@ on_term() {
 }
 trap on_term TERM INT
 
-claude_args=(claude -p --model "$model" --effort "$effort")
+# b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(token は exec が子の env にだけ入れる。argv には載らない)
+claude_args=("${acct_prefix[@]}" claude -p --model "$model" --effort "$effort")
 claude_args+=("${permission_mode_args[@]}")
 claude_args+=(--output-format json --append-system-prompt "$system_prompt" --settings "$settings_path" -- "$prompt_arg")
 
@@ -516,6 +531,7 @@ fi
 
 echo "persona: kashiwagi"
 echo "engine: claude"
+echo "account: $acct_label ${acct_email:-(email 不明)}"
 echo "session_id: $session_id"
 echo "run_dir: $run_dir"
 echo "巡数: 1"

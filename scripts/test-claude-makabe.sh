@@ -264,6 +264,56 @@ git -C "$sbx/c-main" checkout -q --detach
 launch "$sbx/c-main" --dry-run
 chk "14g detached HEAD は kimi-makabe と同じく通る" exit_c_is 0
 
+# ---- 15. Claude Max 2 枚の選択(claude-acct.sh、親ゴール: a の枠が尽きても人見の手なしで b で起きる)----
+# 偽 rates は CLAUDE_CONFIG_DIR の下の rates.json を返す。偽 claude が見た CLAUDE_CODE_OAUTH_TOKEN の長さと account 情報を $FAKE_SEEN に書く。
+cat >"$sbx/bin/rates-acct" <<'S'
+#!/usr/bin/env bash
+cat "${CLAUDE_CONFIG_DIR:?}/rates.json"
+S
+chmod +x "$sbx/bin/rates-acct"
+ACCT_TOKEN="sk-ant-oat01-LAUNCHERTOKENLAUNCHERTOKEN"
+acct_rates() { printf '{"email":"%s","remaining":{"5h":%s,"weekly":%s,"monthly":null}}\n' "$2" "$3" "$4" >"$1/rates.json"; }
+# run_acct <name> <a_5h> <a_weekly> <b_5h> <b_weekly> [launcher args...]
+run_acct() {
+  local d; d="$(new_case "$1")"; local a5="$2" aw="$3" b5="$4" bw="$5"; shift 5
+  mkdir -p "$d/acct-a" "$d/acct-b"; acct_rates "$d/acct-a" a@example.com "$a5" "$aw"; acct_rates "$d/acct-b" b@example.com "$b5" "$bw"
+  printf '%s\n' "$ACCT_TOKEN" >"$d/b.token"; chmod 600 "$d/b.token"
+  cat >"$d/scenario.sh" <<SC
+printf '%s' "\${#CLAUDE_CODE_OAUTH_TOKEN}:\${CLAUDE_CODE_USER_EMAIL-unset}" >"$d/seen.txt"
+SC
+  ( cd "$d/ext" && env CODEX_AGENT_STATE_DIR="$d/state" FAKE_CLAUDE_SCENARIO="$d/scenario.sh" CLAUDE_CODE_USER_EMAIL=gui@example.com \
+      CLAUDE_ACCT_RATES="$sbx/bin/rates-acct" CLAUDE_ACCT_A_DIR="$d/acct-a" CLAUDE_ACCT_B_DIR="$d/acct-b" CLAUDE_ACCT_B_TOKEN_FILE="$d/b.token" \
+      bash "$LAUNCHER" -C "$d/wt" --log "$d/run.log" -f "$d/ext/BRIEF.md" "$@" >"$d/launcher.out" 2>"$d/launcher.err"; echo $? >"$d/exit" )
+  echo "$d"
+}
+acct_json() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]+"/account.json"))[sys.argv[2]])' "$(run_dir_of "$1")" "$2"; }
+no_token_in_run() { local f=("$(run_dir_of "$1")"); for x in run.log launcher.out launcher.err; do [ -e "$1/$x" ] && f+=("$1/$x"); done; ! grep -rqF -- "$ACCT_TOKEN" "${f[@]}"; }
+
+d="$(run_acct acct-a-ok 50 50 60 60)"
+chk "15a a に余裕 → a で exit 0" exit_is "$d" 0
+chk "15b account.json は label a・rates.json は a の dir の値" test "$(acct_json "$d" label)" = a -a "$(grep -c a@example.com "$(run_dir_of "$d")/rates.json")" = 1
+chk "15c 偽 claude に token は渡らない(a は何も足さず、account 情報もそのまま)" test "$(cat "$d/seen.txt")" = "0:gui@example.com"
+chk "15d footer に account: a a@example.com" grep -qx 'account: a a@example.com' "$d/launcher.out"
+
+d="$(run_acct acct-b 4 50 60 60)"
+chk "15e a の 5h が 4 → b で exit 0" exit_is "$d" 0
+chk "15f account.json は label b、rates.json は b の dir の値" test "$(acct_json "$d" label)" = b -a "$(grep -c b@example.com "$(run_dir_of "$d")/rates.json")" = 1
+chk "15g 偽 claude は b の token(長さ一致)を env で受け、GUI の account 情報は持ち込まれない" test "$(cat "$d/seen.txt")" = "${#ACCT_TOKEN}:unset"
+chk "15h footer に account: b b@example.com" grep -qx 'account: b b@example.com' "$d/launcher.out"
+chk "15i token の値は run_dir・log・stdout・stderr のどこにも無い" no_token_in_run "$d"
+
+d="$(run_acct acct-none 4 50 2 60)"
+chk "15j 両方尽きた → 起動せず exit 75" exit_is "$d" 75
+chk "15k 枠切れの行が出て、claude は起動していない" bash -c 'grep -q "^枠切れ: 両方尽きた" "$1/launcher.out" && [ ! -e "$2/last.json" ] && [ ! -e "$1/seen.txt" ]' _ "$d" "$(run_dir_of "$d")"
+chk "15l account.json は label null・reason both-exhausted" test "$(acct_json "$d" label)" = None -a "$(acct_json "$d" reason)" = both-exhausted
+
+d="$(run_acct acct-dry 4 50 60 60 --dry-run)"
+chk "15m --dry-run は pick の結果とコマンド前置きを出して exit 0・claude は起動しない" bash -c 'grep -q "account: b b@example.com" "$1/launcher.out" && grep -q "command prefix: .*claude-acct.sh exec b --" "$1/launcher.out" && [ ! -e "$1/seen.txt" ]' _ "$d"
+chk "15n --dry-run で exit 0" exit_is "$d" 0
+chk "15o dry-run の出力にも token の値は無い" no_token_in_run "$d"
+d="$(run_acct acct-dry-none 4 50 2 60 --dry-run)"
+chk "15p 両方尽きでも --dry-run は結果を出して exit 0" exit_is "$d" 0
+
 echo "---"; echo "$n tests, fail=$fail"
 if [ "$fail" -eq 0 ]; then echo "ALL OK"; else
   echo "FAILED"; for f in "$sbx"/*/set.diff; do [ -s "$f" ] && { echo "== $f"; cat "$f"; }; done; exit 1

@@ -4,7 +4,7 @@
 # 真壁は `-C` に渡された作業ルート(worktree)の中では Write / Edit / NotebookEdit / Bash 経由の
 # 書き込み・commit を自由にできる(実装者なので当然)。**禁じるのは作業ルートの外への書き込みだけ**
 # ── `~/.codex-agents/**`(run_dir、贄川や柏木の checkpoint)・`~/canonical/**`(harness-core・tech)・
-# `~/.claude/**`・`~/.codex/**`・`~/bin/**`。
+# `~/.claude/**`・`~/.claude-b/**`・`~/.config/claude-accounts/**`(Claude Max 2 枚目の資格、claude-acct)・`~/.codex/**`・`~/bin/**`。
 #
 # claude-kashiwagi の worktree-guard-claude.sh と違い、この hook は Write/Edit/NotebookEdit も見る
 # (kashiwagi は --permission-mode acceptEdits の cwd スコープに任せていたが、makabe は
@@ -47,6 +47,8 @@ forbidden_prefixes = [
     os.path.realpath(os.path.expanduser("~/.codex-agents")),
     os.path.realpath(os.path.expanduser("~/canonical")),
     os.path.realpath(os.path.expanduser("~/.claude")),
+    os.path.realpath(os.path.expanduser("~/.claude-b")),  # Claude Max 2 枚目の資格(claude-acct、念のため)
+    os.path.realpath(os.path.expanduser("~/.config/claude-accounts")),  # b の setup-token
     os.path.realpath(os.path.expanduser("~/.codex")),
     os.path.realpath(os.path.expanduser("~/bin")),
 ]
@@ -132,6 +134,8 @@ forbidden_prefixes = [
     os.path.realpath(os.path.expanduser("~/.codex-agents")),
     os.path.realpath(os.path.expanduser("~/canonical")),
     os.path.realpath(os.path.expanduser("~/.claude")),
+    os.path.realpath(os.path.expanduser("~/.claude-b")),  # Claude Max 2 枚目の資格(claude-acct、念のため)
+    os.path.realpath(os.path.expanduser("~/.config/claude-accounts")),  # b の setup-token
     os.path.realpath(os.path.expanduser("~/.codex")),
     os.path.realpath(os.path.expanduser("~/bin")),
 ]
