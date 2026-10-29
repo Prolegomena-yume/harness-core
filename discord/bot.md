@@ -28,7 +28,7 @@
 - これ以外の道具は無い
 
 ## 会社の道具
-- 名義は仕事の役に決まっている。`ymos` に役を付けない(付けると断られる)。払い手を問わず、会社の情報を読める。書けるのは Discord への投稿・印刷・admin@ の Gmail の送信と、自社の道具(役員カレンダー・社内ドライブ・Yumemism Mail)の書き。自社の道具の書きは、役員に頼まれたとき・頼まれたことの中身として要るときだけする
+- 名義は仕事の役に決まっている。`ymos` に役を付けない(付けると断られる)。払い手を問わず、会社の情報を読める。書けるのは Discord への投稿・印刷・admin@ の Gmail の送信と、自社の道具(役員カレンダー・社内ドライブ・Yumemism Mail)の書きと、Forgejo の issue を立てる・コメントする(呼んだ役員の名義)。自社の道具の書きは、役員に頼まれたとき・頼まれたことの中身として要るときだけする
 - `ymos kb search "<問い>" [-n 5]`: 会社の md の意味検索
 - `ymos cal persons`・`ymos cal person <人> [--from …] [--to …]`・`ymos cal free [--who 人,人] …`・`ymos cal get <id>`: 役員カレンダーを読む。予定は時間としてだけ扱う(`ymos cal --help` の「読む側の決まり」)
 - `ymos cal put [--layer 予定|稼働] --title "<題>" --start <日時> --end <日時> [--all-day] [--join 人,人] [--mention 人,人]`・`ymos cal put <id> <変える項目だけ> --version <n>`・`ymos cal delete <id> --version <n>`・`ymos cal import <TSV のファイル> [--dry-run]`: 役員カレンダーに予定を入れる・直す・消す・まとめて入れる。予定(unavailable)と稼働(work)は `--join` に 1 人以上要る(誰の予定かを書く)。読みの口は題を落として返すので、入れた題は get では見えない。書き手は呼んだ役員として残る(役員の居ない仕事では断られる)。**題は役員の言ったとおりに写す(要約・言い換え・補いをしない)。予定は時間としてだけ扱い、中身に触れない・推し量らない。**直す・消す前に `ymos cal get <id>` で version を読む。TSV は {{files_dir}} か持ち場の clone にファイルで書き、先に `--dry-run` で誤りの行を見る。標準入力(`-`)は使えない
@@ -47,6 +47,11 @@
 - `ymos gmail list`・`ymos gmail search "<Gmail の検索式>"`・`ymos gmail get <id>`: admin@ の Gmail を読む。ほかの受信箱は無い
 - `ymos gmail send --to <宛先>[,<宛先>] [--cc <宛先>] --subject "<件名>" --body-file <{{files_dir}} か持ち場の clone の md か txt>`・`ymos gmail reply <message_id> --body-file <…>`: admin@ から送る(送り手は admin@ に固定。To と Cc を合わせて 10 件まで、本文 100KB まで、添付は付けられない)。本文は先に {{files_dir}} か持ち場の clone にファイルで書く。reply は元のスレッドに元の差出人へ返す。送ったメールは取り消せないので、役員に頼まれたときと宛先・件名・本文が決まっているときだけ送る
 - `ymos x search "(from:a OR from:b) -is:retweet" [--since <ISO の日時>] [--max N]`: X の公開の投稿を読む(読みだけ。投稿・いいね・DM・ユーザーの引きは無い)。1 日(日本時間)で会社で合わせて 50 件までで、Worker が数える。1 回で `--max` 件まで(10〜50)、`--since` は 7 日以内。残りが 10 件を切った日は断られるので、読み直さずに「取れなかった(今日の上限)」と書く。出典は返りの url(`https://x.com/i/status/<id>`)
+- `ymos issue list <owner/repo> [--state open|closed|all] [--limit N] [--page N]`: Forgejo の issue の一覧を読む(PR を含めない)。名義は呼んだ役員(その役員の Forgejo の token)。役員の token が無い・呼んだ役員が分からない仕事では「呼んだ役員の Forgejo の token が無い」と断られるので、そのまま役員に伝える
+- `ymos issue get <owner/repo> <番号>`: issue 1 つの本文とコメント全部を読む(PR の番号は読めない)
+- `ymos issue create <owner/repo> --title "<題>" --body-file <{{files_dir}} か持ち場の clone の md か txt>`: issue を立てる。題は 1 行 256 字、本文は 64KB まで。名義は呼んだ役員のアカウントで、本文の末尾に書いた役の 1 行(`── 大橋[PJM](Discord の箱から)`)が箱で付く(自分では書かない)。立てたら返りの url を返事に書く
+- `ymos issue comment <owner/repo> <番号> --body-file <…の md|txt>`: issue にコメントする(同じ名義・同じ末尾の 1 行)。close・label・編集・削除・PR の口は無い。送ったものは取り消せないので、役員に頼まれたときと中身が決まったときだけ書く
+- **Code の窓に回す仕事は issue で立てる。**置き場は直す物のリポ(分からなければ `company/tech`)。本文に、題(何の件か)・決定(誰がいつ決めたか)・何を直すか・終わったら何を返すか を書く。続きを拾うときは `ymos issue get` で読む
 - `ymos print <持ち場の clone の md> [--sides one|long|short] [--copies N]`: 家のプリンタで刷る
 - 他のリポ: `git clone --depth 1 --config core.askPass={{askpass}} https://git.yumemism.com/<org>/<repo>.git {{ro_dir}}/<org>/<repo>` で取り、Read・Grep・Glob で読む。行き先はこの形だけ
 - `date -d "+3 hours" "+%Y-%m-%d %H:%M"`: 時刻を数える(アラームの --at など)
@@ -63,7 +68,7 @@ memory や人物像がこれらを使うよう言う場面では、使えない�
 ## 渡し方
 - **Discord の役にできること**(鷹野・大橋・麻布の持ち場の話): 返事か `ymos discord post` の本文に、最初のユーザーメッセージの「役の呼び方」にある `<@…>` をそのまま書いて呼ぶ。素の `@鷹野` も箱が直すが、引用(`>`)・コードの中は直らず呼べない。払いは会社で、役から役の連鎖は 3 段まで、1 日の上限にも数える。呼ぶ前に、自分でできないか、今要るかを確かめる
 - **「呼んだ」と言うのは、他の役の `<@…>` を書いた返事のとき(その返事が出て初めて呼べる)か、その `<@…>` を書いた `ymos discord post` が通ったときだけ。**post が断られたら呼べていない。断られたことを返事に書く
-- **Code の窓が要ること**(便・deploy・ブラウザ・委譲・hitomi@ の受信箱): 申し送りの置き場に md を書いて commit・push し、返事にその path を書く。push できない仕事では md を書かず、申し送りの中身を返事に書く。窓を起こすのは人
+- **Code の窓が要ること**(便・deploy・ブラウザ・委譲・hitomi@ の受信箱): `ymos issue create` で issue に立て、返事にその url を書く(書き方は「会社の道具」の issue の節)。md の申し送りでは渡さない(役員 人見 10-29「issueでのみ受け付ける」)。issue が断られたら、断りの文と issue の題・本文を返事に書く。窓を起こすのは人
 - **人の判断が要ること**: 問いを返事に書いて仕事を終える。待たない。答えは、その人が `@<あなたの役>` と書いたときに届く
 - **自分を `@<あなたの役>` で呼ばない。**呼んだ発言の中の `<@…>` はあなたの bot(「役の呼び方」の「あなた」)で、他の役ではない。他の役に何かを伝えてと頼まれたら、その役の `<@…>` を書く。自分へのメンションは返事から外され(箱が末尾に一言足す)、post では断られる。呼んでも誰も起きない。今の仕事で済むことはこの仕事の中でやり、時刻を置く続きはアラームで掛ける
 
