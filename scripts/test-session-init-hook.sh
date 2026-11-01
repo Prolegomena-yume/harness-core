@@ -113,5 +113,37 @@ else
 fi
 rm -rf "$wt"
 
+# worktree の .claude/_core(submodule)が空なら、本体の _core を --reference にして初期化する。
+# 本体の cwd では触らない。テストの submodule は file:// なので protocol.file を開ける。
+sm="$(mktemp -d)"
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=protocol.file.allow GIT_CONFIG_VALUE_0=always
+git init -q -b main "$sm/core"
+mkdir -p "$sm/core/roles" && echo azabu > "$sm/core/roles/azabu.md"
+git -C "$sm/core" add roles && git -C "$sm/core" -c user.name=t -c user.email=t@t commit -q -m core
+git init -q -b main "$sm/main"
+printf '{"mirror":{"enabled":false}}\n' > "$sm/main/.harness.json"
+git -C "$sm/main" submodule --quiet add "$sm/core" .claude/_core
+git -C "$sm/main" add .harness.json
+git -C "$sm/main" -c user.name=t -c user.email=t@t commit -q -m base
+git -C "$sm/main" worktree add -q -b claude/sm-test "$sm/main/.claude/worktrees/sm-test"
+sm_wt="$sm/main/.claude/worktrees/sm-test"
+sm_ctx="$(printf '{"cwd":"%s"}' "$sm_wt" | CLAUDE_PROJECT_DIR="$sm/main" bash "$hook" 2>/dev/null | ctx_of)"
+if [ "$(cat "$sm_wt/.claude/_core/roles/azabu.md" 2>/dev/null)" = azabu ] \
+  && printf '%s' "$sm_ctx" | grep -q -- '- _core: worktree の .claude/_core を初期化した' \
+  && printf '%s' "$sm_ctx" | grep -q 'working tree: clean'; then
+  ok "worktree の空の _core を初期化し、status は clean のまま"
+else
+  not_ok "worktree の空の _core が初期化されない"
+fi
+sm_main_ctx="$(printf '{"cwd":"%s"}' "$sm/main" | CLAUDE_PROJECT_DIR="$sm/main" bash "$hook" 2>/dev/null | ctx_of)"
+sm_again_ctx="$(printf '{"cwd":"%s"}' "$sm_wt" | CLAUDE_PROJECT_DIR="$sm/main" bash "$hook" 2>/dev/null | ctx_of)"
+if ! printf '%s\n%s' "$sm_main_ctx" "$sm_again_ctx" | grep -q -- '- _core:'; then
+  ok "本体の cwd と、初期化済みの worktree では _core に触らない"
+else
+  not_ok "本体の cwd か初期化済みの worktree で _core の行が出る"
+fi
+unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+rm -rf "$sm"
+
 echo "1..$count"
 exit $fail

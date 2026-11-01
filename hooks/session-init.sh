@@ -169,7 +169,7 @@ GIT_OPTS=(-c i18n.logOutputEncoding=UTF-8 -c i18n.commitEncoding=UTF-8 -c core.q
 
 # Claude アプリの worktree(.claude/worktrees/*)で起こすと CLAUDE_PROJECT_DIR は本体の checkout を指す。
 # hook の stdin の cwd が同じリポの別の作業ツリーなら、branch・status・log・_sessions はそちらから引く。
-# .harness.json・mirror の状態ファイル・_core は本体のまま(worktree の _core は submodule が空)。
+# .harness.json・mirror の状態ファイル・hook の _core は本体のまま。
 GIT_ROOT="$REPO_ROOT"
 hook_cwd=""
 if [ ! -t 0 ]; then
@@ -188,9 +188,27 @@ if [ -n "$hook_cwd" ] && [ -d "$hook_cwd" ]; then
   fi
 fi
 
+# worktree の _core は submodule が空のまま作られ、ロール切替の @.claude/_core/roles/<役>.md が空を読む
+# (.claude/commands → _core/commands の symlink も切れる)。本体の _core を --reference にして、
+# worktree が指す版で初期化する。コマンドの @ は打った時に読まれるので、この hook の後なら効く。
+core_line=""
+if [ "$IS_CLOUD" != "true" ] && [ "$GIT_ROOT" != "$REPO_ROOT" ] \
+  && grep -q 'path = \.claude/_core$' "$GIT_ROOT/.gitmodules" 2>/dev/null \
+  && [ -z "$(ls -A "$GIT_ROOT/.claude/_core" 2>/dev/null)" ]; then
+  ref_args=()
+  if [ -e "$REPO_ROOT/.claude/_core/.git" ]; then
+    ref_args=(--reference "$REPO_ROOT/.claude/_core" --dissociate)
+  fi
+  if GIT_TERMINAL_PROMPT=0 timeout 12 git -C "$GIT_ROOT" submodule --quiet update --init "${ref_args[@]}" -- .claude/_core >/dev/null 2>&1; then
+    core_line="- _core: worktree の .claude/_core を初期化した($(git -C "$GIT_ROOT/.claude/_core" rev-parse --short HEAD 2>/dev/null))"
+  else
+    core_line="- _core: worktree の .claude/_core を初期化できなかった。ロール切替の人物像は本体の $REPO_ROOT/.claude/_core/roles/<役>.md を読んでから話す"
+  fi
+fi
+
 git_branch=$(git "${GIT_OPTS[@]}" -C "$GIT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(unknown)")
 
-"$PY" - "$config_b64" "$IS_CLOUD" "$REPO_ROOT" "$git_branch" "$GIT_ROOT" <<'PY'
+"$PY" - "$config_b64" "$IS_CLOUD" "$REPO_ROOT" "$git_branch" "$GIT_ROOT" "$core_line" <<'PY'
 import base64
 import json
 import os
@@ -203,6 +221,7 @@ is_cloud = sys.argv[2] == "true"
 repo_root = sys.argv[3]
 git_branch = sys.argv[4]
 git_root = sys.argv[5]
+core_line = sys.argv[6] + "\n" if sys.argv[6] else ""
 
 def run_git(args, fallback):
     try:
@@ -286,7 +305,7 @@ ctx = f"""## SessionStart context (auto-injected by hooks/session-init.sh)
 ```
 {git_log}
 ```
-{latest_session_line}{mirror_line}
+{latest_session_line}{mirror_line}{core_line}
 ### startup reminders
 - {canonical_md}
 """
