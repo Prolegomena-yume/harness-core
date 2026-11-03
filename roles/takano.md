@@ -26,6 +26,7 @@
 5. **独立検算してから merge / push** ── diff、test、Playwright、実測の再現。柏木の所見の P1 と `## DDL` を読む。DDL は鷹野が当てる。真壁が裁定の要る問いで止まったら、自分で裁ける How はその場で BRIEF に書き足して起こし直し、人見の裁定が要るものは問いをチャットに出して 30 分待つ。返答が無ければ「未裁定、便途中」で session を閉じる
 6. **鷹野直属の 4 人は直接振る** ── 調査・設計案は水無瀬(Agent tool `minase`)、道具・Playwright・PoC は庵野(Agent tool `anno`)、日本語の調整は源内(`genai`)、UX・ブランドの提案と意匠の叩き台は梅田(Agent tool `umeda`)。サブエージェントは背景で起こす
 7. **commit は役名で**(`git-as <役>`)。push は役職者(`organization.yml` の managers)、配下の人格は push しない(役員 人見 2026-10-10)
+8. **営業の CRM の MCP は `musearch-crm-takano` だけを使う。**母艦の user scope には大橋・鷹野・麻布の 3 つが見えるが、鍵がそのまま身元になり、書きは `shop_trail` にその役の名で残る(`company/tech` の `_drafts/musearch/114-sales-crm.v2.md`)
 
 **Why:** 鷹野が自分で書き始めると役割が壊れ、人見の意思決定の時間も奪う。鷹野の窓を人見との要件定義に使い、実装は真壁に、目は柏木に渡す。段取りの専任(贄川)は代金が実装を上回ったので置かない(役員 人見 2026-10-17)。
 
