@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# 柏木[CM]を Claude opus(effort xhigh)で起こすランチャ ── 実行経路 C(Opus 単独、K3 は足さない)。
-# 役員 人見 2026-09-21 23:55「Opus 柏木の実行経路を作る。契約は effort xhigh」(PoC は --effort high だった)。
+# 柏木[CM]を Claude で起こすランチャ ── 実行経路 C(Claude 単独、K3 は足さない)。既定は Fable 5.2 / effort medium
+# (役員 人見 2026-11-10「柏木の既定をOpus5.5 xhighからFable5.2 medに」)。経路を作ったのは役員 人見 2026-09-21 23:55
+# 「Opus 柏木の実行経路を作る。契約は effort xhigh」(PoC は --effort high だった)。
 # 根拠: 庵野の再審 PoC(scratchpad stage5/kashiwagi-poc-results.md)で Opus 単発が sol 実績 5 件中 5 件を再現、
 # K3 単発は 5 件中 2 件(B3 のエスカレーションと F3 の外向き契約破壊を見落とした)。
 #
@@ -11,7 +12,7 @@
 #
 # 差分(意図的):
 #   - engine は claude -p --model <KASHIWAGI_OPUS_MODEL> --effort <KASHIWAGI_OPUS_EFFORT>(既定値は
-#     scripts/models.env、2026-09-24 時点で claude-opus-5-5 / xhigh。--dangerously-skip-permissions は渡さない)。
+#     scripts/models.env、2026-11-10 から claude-fable-5-2 / medium。--dangerously-skip-permissions は渡さない)。
 #     **ゲート1(-f が plan.md、-C は贄川の run_dir 自身)は permission-mode を渡さない**(既定モードは
 #     非対話では Write/Edit/NotebookEdit を一切承認しない、実測)。**ゲート2(-f が findings.md、-C は作業木)
 #     だけ --permission-mode acceptEdits を足す**(cwd = 作業木 の中は自動承認、外は拒否、実測)。
@@ -388,7 +389,7 @@ PY
 
 prompt_lines=()
 {
-  printf '柏木として、この経路(claude-kashiwagi、Opus, effort %s)で 1 session = 1 ゲートを担う。\n' "$effort"
+  printf '柏木として、この経路(claude-kashiwagi、%s, effort %s)で 1 session = 1 ゲートを担う。\n' "$model" "$effort"
   printf 'run_dir: %s\n' "$run_dir"
   if [ -n "$gate_num" ]; then
     printf 'ゲート番号: %s\n' "$gate_num"

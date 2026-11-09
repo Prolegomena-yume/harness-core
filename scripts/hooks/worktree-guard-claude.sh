@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-kashiwagi.sh(Opus 柏木、実行経路C)専用の PreToolUse hook。
+# claude-kashiwagi.sh(claude 経路の柏木、実行経路C)専用の PreToolUse hook。
 #
 # 役員 人見 2026-09-22 00:0x の訂正: 「レビュアーは書き込み無し」は締めすぎ。
 # **柏木は作業木(cwd = 贄川が渡す -C の先)の中では Write / Edit / git commit ができる**

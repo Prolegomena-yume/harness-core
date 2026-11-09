@@ -46,7 +46,7 @@ options:
       --kashiwagi-model <id>  贄川が柏木を起こすときの model(既定は KASHIWAGI_ROUTE 別 ── opus なら opus、
                          codex なら sol(astra は既定から退役、役員 人見 2026-09-24)。env KASHIWAGI_MODEL でも指定できる)
                          柏木の実行経路は env KASHIWAGI_ROUTE(opus|codex、既定 opus)で切り替える。
-                         opus は claude-kashiwagi.sh(effort xhigh)、codex は従来の codex-kashiwagi
+                         opus は claude-kashiwagi.sh(model・effort は models.env)、codex は従来の codex-kashiwagi
       --makabe-model <id>     贄川が真壁を起こすときの model(codex 経路のときだけ効く、既定は persona 既定の luna、env
                          MAKABE_MODEL でも指定できる。ゲート 2 の P0 を直す巡は codex 経路なら既存の作法どおり sol)
                          真壁の実行経路は env MAKABE_ROUTE(claude|codex、既定は models.env の claude)で切り替える。
