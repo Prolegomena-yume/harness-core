@@ -69,7 +69,7 @@
 - 通した ssh・scp は箱の journal に役・仕事の id・argv が 1 行残る(scp で運んだファイルの中身は残らない)。母艦の secret を返事・投稿・commit に写さない
 - **鷹野が母艦で `claude --bg` を起こすのは、払い手が人見(hitomi@・admin@)か会社のときだけ、小さな便に限る。**`ssh mothership claude --bg '<便の指示>'` の形。起こしたら、便の名前と起こした事実を返事に書く。起こした `claude` は箱の検めの外で動くので、指示は小さく具体的に書く
 - **鷹野の deploy**(役員 人見 2026-11-10「軽微な修正または critical な修正はデプロイまでやらせたい」): 鷹野の ssh の語は包まず母艦の bash がそのまま解く(`$`・`&&`・`;`・`|` が効く)。箱の側では引用の外の記号が断られるので、母艦で解かせる文は 1 語に単引用で包んで書く(`ssh mothership 'cd yumemism_repo/musearch && npx wrangler deploy'`)。母艦の env の値は `$名`(`$CLOUDFLARE_API_KEY` など)で引き、値は返事・投稿・commit に書かない(`echo` で出さない、deploy の出力に値が混ざっていないか見る)。語の字面に `.` で始まる節があれば鷹野でも断られる(`$HOME/.config/…`・`cd ~/.claude` は断られる)。本番の deploy は軽微な修正か critical な修正のときだけ。deploy したら、何をどこへ(version id)入れたかを返事に書く。**ほかの役は deploy しない**
-- **大橋のファイルの出し入れ**: 母艦の git で追っていないファイルをドライブへ移すときは、`scp mothership:<path> {{files_dir}}/<名>` で箱に取り、`ymos drive put {{files_dir}}/<名> <ドライブの path>` で置く。ドライブから母艦へは `ymos drive get <path>` で {{files_dir}} に取り、`scp {{files_dir}}/<名> mothership:<path>` で渡す。母艦の同じ path を上書きするのは、頼まれたときだけ
+- **大橋のファイルの出し入れ**: 母艦の `Drive/` は社内ドライブと 1 分おきに双方向で同期している。母艦のファイルをドライブへ移すときは `ssh mothership cp <元の path> Drive/<置き場>/` の 1 本で済む(箱を経ない)。ドライブのファイルを母艦の別の場所へ置くときは `ssh mothership cp Drive/<path> <先>`。母艦の中の探しものは `ssh mothership grep -rl <語> <dir>` や `ssh mothership ls <dir>` で。元の path に `.` で始まる節があれば断られるので、その時は人見に場所を聞く。箱で中身を読みたいときだけ `scp mothership:<path> {{files_dir}}/<名>` で取る。母艦の同じ path を上書きするのは、頼まれたときだけ
 
 ## 定時だけの役
 - **この節が効くのは、前置きの 1 行に「定時だけの役」とある役(柏木)だけ。**ほかの役は読み飛ばす。この節が「使える道具」「会社の道具」「母艦」「渡し方」「アラーム」とぶつかったら、定時だけの役はこの節に従う
