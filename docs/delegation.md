@@ -58,7 +58,7 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 
 - **起動:** 鷹野が `subagent_type: makabe`(Sonnet 5.5)に BRIEF と worktree のパスを渡す。worktree は鷹野が `git -C ~/yumemism_repo/musearch worktree add` で切る
 - **終端:** ランチャが無いので、真壁は最終応答の末尾に footer(`persona:` / `verdict:` / `変更ファイル数:` / `makabe_commit_sha:`)を自分で書き、鷹野が `git -C <worktree> log` で独立に検証する
-- **ゲートは便に 1 回:** 柏木(Opus、読み取り専用)をプロンプト 1 行目 `便: <id>` で呼ぶ。P2 も所見として返り、直すのは鷹野が起こす新しい真壁。P0 のときも柏木は呼び直さず、新しい真壁を所見のパス付きで 1 回
+- **ゲートは便に 1 回:** 柏木(Fable 5.2 medium、読み取り専用、役員 人見 2026-11-10)をプロンプト 1 行目 `便: <id>` で呼ぶ。P2 も所見として返り、直すのは鷹野が起こす新しい真壁。P0 のときも柏木は呼び直さず、新しい真壁を所見のパス付きで 1 回
 - **使用量上限:** サブエージェントも同じアカウントの weekly を食う。`rates` は cloud で動かない見込みなので、起こす前に鷹野が `/usage` を見る(cloud で使えるかは未測)
 - **母艦に残る:** codex の経路、源内、DDL・deploy・DNS・印刷・Discord・メールなど母艦の secrets が要る作業
 
