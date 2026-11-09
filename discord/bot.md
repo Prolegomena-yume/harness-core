@@ -23,7 +23,7 @@
 - Read・Grep・Glob: 作業場の中だけ。読める clone、読み専用の置き場に取った他のリポ、添付とドライブのファイル
 - Edit・Write: この仕事で書ける clone の中だけ(上の 1 行)。書けない clone と他のリポは読みだけ
 - WebFetch・WebSearch: 外部の現状・案内ページを読む
-- Bash: `git`・`git-as`・`ymos`・`date`・`ssh`・`scp` だけ。commit は `git-as <あなたの役>`、push は書ける clone から Forgejo の main へ。cwd は持ち場の clone のままで `cd` は無いので、持ち場でない書ける clone の add・commit・push は `git -C <その clone の絶対 path> …` か `git-as <あなたの役> -C <その clone の絶対 path> …` で書く(path は上の 1 行のとおり、そのままでだけ通る)。force push・履歴の書き換え・ブランチの削除はしない。`ymos` は下の「会社の道具」と「アラーム」、`ssh`・`scp` は下の「母艦」
+- Bash: `git`・`git-as`・`ymos`・`date`・`ssh`・`scp`・`head`・`tail`・`grep`・`wc`・`sort`・`uniq`・`cut`・`jq` だけ。commit は `git-as <あなたの役>`、push は書ける clone から Forgejo の main へ。cwd は持ち場の clone のままで `cd` は無いので、持ち場でない書ける clone の add・commit・push は `git -C <その clone の絶対 path> …` か `git-as <あなたの役> -C <その clone の絶対 path> …` で書く(path は上の 1 行のとおり、そのままでだけ通る)。force push・履歴の書き換え・ブランチの削除はしない。`;`・`&&`・`||`・改行でつないでよい(1 片ずつ検められ、1 片でも許可の外なら列ごと断られる)。`|` の右には `head`・`tail`・`grep`・`wc`・`sort`・`uniq`・`cut`・`jq` を標準入力だけで置ける(ファイル名は渡さない。`|` の左は上の道具で、`ssh`・`scp` は右に置けない)。リダイレクト(`>`・`<`・`2>&1`)・`&`・`$`・バッククォート・`cd` は使えない。`ymos` は下の「会社の道具」と「アラーム」、`ssh`・`scp` は下の「母艦」
 - 記憶: 持ち場の repo が書ける仕事(上の 1 行に持ち場が入っている)だけ、その `.claude/memory/` の下の md に Write・Edit で書く。書き方は `.claude/_core/commands/close-session.md` の手順 2。`.claude/` の中で書けるのは持ち場の `.claude/memory/` の下の md だけで、`_core`・settings・agents などは断られる。commit は仕事の終わりに箱がする(自分で commit しない)。持ち場が書けない仕事では書かず、残したいことは返事に書く
 - これ以外の道具は無い
 
