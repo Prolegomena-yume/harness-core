@@ -3,8 +3,8 @@ name: kashiwagi
 description: cloud セッション専用。直書き便の終端のゲート(柏木、1 便 1 回)。読むだけ。プロンプト 1 行目に「便: <id>」が要る。母艦では呼ばない(呼ぶと PreToolUse で止まる)。
 tools: Read, Grep, Glob, Bash
 disallowedTools: Edit, Write, NotebookEdit
-model: claude-fable-5-2
-effort: medium
+model: claude-opus-5-5
+effort: xhigh
 background: true
 hooks:
   PreToolUse:
