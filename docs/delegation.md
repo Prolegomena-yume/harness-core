@@ -24,6 +24,8 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 - **CI はデリバリーの時に 1 回だけ。**便を branch に分けるのは、壁時計を稼ぐためとドメインを分けるため。便を鷹野の卓(統合の枝:Dleam は `main`、musearch は `staging`)へ merge するときは、その便の test だけを見る。全段 CI は、鷹野がデリバリーするとき(統合の枝 → 本番の枝・publish)に 1 回流す。全段 CI が赤なら、直しの便を起こす
 - **便を起こす前に、人見の GOAL に効くかを見る。**GOAL の便が全部卓に載ったら、次の手はデリバリーにする。揺れの縛り直し・P1 の受け皿・CI の鍵の番を GOAL より先に回さない(Dleam は 11-12 11:10 に GOAL の便が全部 main に入り、00:50 に全段 CI も通ったのに、親は揺れの便を起こし続けた)
 - **親は長く回さない。**状態はバトンの md だけに置く。最初の圧縮が来たとき、または 24 時間経ったときのどちらか早いほうで、新しい枠へ渡す。圧縮された親は GOAL と裁定を落とす
+- **手を離す turn は、timer を張るか締める。**bg の便を見るなら `scripts/timer.sh 1800 <label> <log>`、人見の答えを待つなら `scripts/timer.sh 3000 wait-hitomi` を run_in_background で張る。50 分鳴って答えが無ければ close-session で締める。会話だけの turn も同じ。tech では Stop hook `hooks/turn-end-guard.sh` が、子孫に timer.sh が無く、その turn に close-session も無い turn end を 1 回弾く(`claude -p` は外す)。元の形は 30 分で起き、裁定が返らなければ自分を閉じた段のバトン(tech `_drafts/plan/59-stage-baton.md` の 9・14・33 行、2026-09-21)
+- **idle compaction は切ってある**(母艦の `~/.claude/settings.json` の `"idleCompaction": false`)。1 時間 idle の後に再開しても、勝手には圧縮されない
 
 ## BRIEF ── 「現在地」「どこまで」「失敗例」の 3 節と止め線
 
