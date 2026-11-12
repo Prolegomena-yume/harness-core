@@ -36,10 +36,18 @@
 #     run_dir にも効くため、2026-10-07)。hook は Bash の相対パスを cwd から解決して見る(worktree-guard-claude.sh)
 #   - --resume / --rounds は受けない(kashiwagi は元々巡ループを持たない。1 session = 1 ゲート)
 #
+# 契約モード(--contract <dir> --batch <名>、庵野 2026-11-13、役員 人見): 依頼文は契約の MCP(lib/contract-mcp.py)の
+#   `brief_get` で読み、所見は `gate_put`、最終メッセージに判定の一語。-f は付けなくてよく、ゲート番号は既定で 2
+#   (作業木のレビュー。--gate 1 も受けるが、契約モードの想定は 2)。run_dir に MCP の設定を書いて --mcp-config /
+#   --strict-mcp-config で渡し、brief_get・result_get・gate_put だけを --allowedTools で許す(acceptEdits は MCP を自動承認しない)。
+#   **Write / Edit / NotebookEdit は作業ルートの外を一律に block**(scripts/hooks/write-guard-claude.py、真壁と同じ縛り。
+#   柏木は P2 を自分で直すので、worktree の中には書く)。-f の今の形は従来のまま。
+#
 # env:
 #   KASHIWAGI_MODEL(既定は models.env の KASHIWAGI_OPUS_MODEL) / KASHIWAGI_EFFORT(既定は同 KASHIWAGI_OPUS_EFFORT)
 #
 # 使い方: claude-kashiwagi.sh --no-loop [-C dir] -f <path> [--gate 1|2] [--log path] [--model id] [--effort level] [--dry-run]
+#         claude-kashiwagi.sh --no-loop [-C dir] --contract <契約のフォルダ> --batch <便名> [...]   ← 契約モード(下)
 # -f は複数可(codex-agent.sh と同じ、末尾のファイル名でゲート番号を判定)。task 引数(-f 以外)も付けられる。
 # ゲート番号は plan.md=1、findings.md / gate2-*.md=2、他は --gate で明示(無ければ不明 = 書き込み不可 + 警告)。
 # 依頼文の名が findings.md でないと不明になり、acceptEdits が付かず Edit / Write が全拒否になる
@@ -62,6 +70,9 @@ options:
       --log <path>     ログ出力先
       --model <id>     Claude model(既定は models.env の KASHIWAGI_OPUS_MODEL、env KASHIWAGI_MODEL でも指定可)
       --effort <level> reasoning effort(既定は models.env の KASHIWAGI_OPUS_EFFORT、env KASHIWAGI_EFFORT でも指定可)
+      --contract <dir> 契約のフォルダ(tech の _contract/yyyy-mm-dd_NN/)。--batch と一緒に付ける契約モード。
+                       <dir>/<便名>/brief.md が無ければ die。-f は付けなくてよく、ゲート番号は既定で 2
+      --batch <名>     便名(/ \ : 空白 .. を含まない)。brief_get / gate_put の対象
       --no-loop        受理するが no-op(この経路は常に 1 session)
       --dry-run        起動コマンドを組み立てて stdout に出し、claude を起動せず exit 0(検算用)
   -h, --help           この usage を表示
@@ -110,6 +121,8 @@ source "$CORE/scripts/models.env"
 source "$CORE/scripts/lib/claude-acct-launch.sh"
 # shellcheck source=lib/git-run-diff.sh
 source "$CORE/scripts/lib/git-run-diff.sh"
+# shellcheck source=lib/contract-launch.sh
+source "$CORE/scripts/lib/contract-launch.sh"
 [ -f "$CORE/roles/kashiwagi.md" ] || die "人物像の正典が見つからない: $CORE/roles/kashiwagi.md"
 [ -f "$CORE/claude/kashiwagi.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/kashiwagi.md"
 
@@ -131,6 +144,8 @@ task_files=()
 task_args=()
 dry_run=0
 gate_opt=""
+contract_dir=""
+batch_name=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -165,6 +180,16 @@ while [ "$#" -gt 0 ]; do
         1|2) gate_opt="$2" ;;
         *) die "--gate は 1 か 2: $2" ;;
       esac
+      shift 2
+      ;;
+    --contract)
+      [ "$#" -ge 2 ] || die "$1 には dir が必要"
+      contract_dir="$2"
+      shift 2
+      ;;
+    --batch)
+      [ "$#" -ge 2 ] || die "$1 には便名が必要"
+      batch_name="$2"
       shift 2
       ;;
     --no-loop)
@@ -205,6 +230,14 @@ if git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)"; then
   git_repo=1
 fi
 
+# 契約モードの検査(run_dir を作る前)。--contract と --batch は対、便名は path に使えない形を断り、brief.md が無ければ die。
+contract_mode=0
+if [ -n "$contract_dir" ] || [ -n "$batch_name" ]; then
+  [ -n "$contract_dir" ] && [ -n "$batch_name" ] || die "--contract と --batch は一緒に付ける"
+  contract_check_args "$contract_dir" "$batch_name"
+  contract_mode=1
+fi
+
 for task_file in "${task_files[@]}"; do
   [ -f "$task_file" ] || die "タスクファイルが見つからない: $task_file"
   [ -r "$task_file" ] || die "タスクファイルを読めない: $task_file"
@@ -238,6 +271,10 @@ if [ -n "$gate_opt" ]; then
     die "--gate $gate_opt は -f の名前($gate_target = ゲート $gate_num)と食い違う"
   fi
   gate_num="$gate_opt"
+fi
+# 契約モードは作業木のレビュー(ゲート 2)が既定。-f の名前も --gate も無いときだけ 2 にする(名前が決めたゲートは動かさない)。
+if [ "$contract_mode" -eq 1 ] && [ -z "$gate_num" ]; then
+  gate_num=2
 fi
 if [ -z "$gate_num" ]; then
   echo "警告: ゲート番号を判定できない(-f の名前: ${gate_target:-無し})── 書き込み不可で起動する(Edit / Write は全拒否)。ゲート2なら -f を findings.md か gate2-*.md にするか --gate 2 を付ける" >&2
@@ -308,7 +345,18 @@ fi
 export CODEX_AGENT_RUN_DIR="$run_dir"
 
 task_path="$run_dir/task.md"
-if [ "${#task_files[@]}" -eq 0 ] && [ "${#task_args[@]}" -eq 0 ]; then
+if [ "$contract_mode" -eq 1 ]; then
+  {
+    contract_task_text kashiwagi "$batch_name"
+    for task_file in "${task_files[@]}"; do
+      cat "$task_file"
+      printf '\n'
+    done
+    if [ "${#task_args[@]}" -gt 0 ]; then
+      printf '%s\n' "${task_args[*]}"
+    fi
+  } > "$task_path"
+elif [ "${#task_files[@]}" -eq 0 ] && [ "${#task_args[@]}" -eq 0 ]; then
   if [ -t 0 ]; then
     usage >&2
     exit 2
@@ -365,11 +413,12 @@ export CLAUDE_KASHIWAGI_ROOT="$root"
 export CLAUDE_KASHIWAGI_GATE="$gate_num"
 hooks_dir="$CORE/scripts/hooks"
 settings_path="$run_dir/settings.json"
-python3 - "$hooks_dir" "$settings_path" <<'PY'
+python3 - "$hooks_dir" "$settings_path" "$contract_mode" "$root" <<'PY'
 import json
+import shlex
 import sys
 
-hooks_dir, out_path = sys.argv[1], sys.argv[2]
+hooks_dir, out_path, contract_mode, root = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
 settings = {
     "hooks": {
         "PreToolUse": [
@@ -383,9 +432,22 @@ settings = {
         ],
     }
 }
+if contract_mode:
+    # 契約モード: 作業ルートの外への Write/Edit/NotebookEdit を一律に block(真壁と同じ縛り)。Bash は従来の guard のまま。
+    wg = f"{hooks_dir}/write-guard-claude.py {shlex.quote(root)}"
+    settings["hooks"]["PreToolUse"].insert(
+        0, {"matcher": "Write|Edit|MultiEdit|NotebookEdit", "hooks": [{"type": "command", "command": wg, "timeout": 10}]}
+    )
 with open(out_path, "w") as f:
     json.dump(settings, f, ensure_ascii=False, indent=2)
 PY
+
+# 契約モードの MCP 設定(path を持つのは MCP のプロセスだけ。柏木に出す道具は brief_get・result_get・gate_put)
+mcp_config_path=""
+if [ "$contract_mode" -eq 1 ]; then
+  mcp_config_path="$run_dir/mcp.json"
+  write_contract_mcp_config "$mcp_config_path" "$CORE" "$contract_dir" "$batch_name" "brief_get,result_get,gate_put"
+fi
 
 prompt_lines=()
 {
@@ -410,6 +472,9 @@ if [ "$dry_run" -eq 1 ]; then
   echo "[kashiwagi/claude] gate_num=${gate_num:-(無し)} gates.tsv=${gate_gates_tsv:-(便の外)}"
   echo "[kashiwagi/claude] permission_mode_args=${permission_mode_args[*]:-(無し、書き込み不可)}"
   echo "[kashiwagi/claude] settings: $settings_path"
+  if [ "$contract_mode" -eq 1 ]; then
+    echo "[kashiwagi/claude] contract: dir=$contract_dir batch=$batch_name mcp-config=$mcp_config_path(Write/Edit/NotebookEdit は作業ルートの外を block)"
+  fi
   echo "[kashiwagi/claude] account: ${acct_label} ${acct_email:-(email 不明)}(pick: $run_dir/account.json)"
   echo "[kashiwagi/claude] command prefix: ${acct_prefix[*]:-(無し、a は何も足さない)} claude -p ..."
   echo "--- prompt ---"
@@ -446,6 +511,9 @@ trap on_term TERM INT
 # b を選んだときだけ先頭に `claude-acct.sh exec b --` を付ける(exec が ymos secret exec 経由で B の 1 年 token を子の env にだけ入れる。argv には載らない。~/.claude-b は枠を読むだけ)
 claude_args=("${acct_prefix[@]}" claude -p --model "$model" --effort "$effort")
 claude_args+=("${permission_mode_args[@]}")
+if [ "$contract_mode" -eq 1 ]; then
+  claude_args+=(--mcp-config "$mcp_config_path" --strict-mcp-config --allowedTools "mcp__contract__brief_get,mcp__contract__result_get,mcp__contract__gate_put")
+fi
 claude_args+=(--output-format json --append-system-prompt "$system_prompt" --settings "$settings_path" -- "$prompt_arg")
 
 set +e
