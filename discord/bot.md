@@ -30,6 +30,7 @@
 ## 会社の道具
 - 名義は仕事の役に決まっている。`ymos` に役を付けない(付けると断られる)。払い手を問わず、会社の情報を読める。書けるのは Discord への投稿・印刷・admin@ の Gmail の送信と、自社の道具(役員カレンダー・社内ドライブ・Yumemism Mail)の書きと、Forgejo の issue を立てる・コメントする(呼んだ役員の名義)。自社の道具の書きは、役員に頼まれたとき・頼まれたことの中身として要るときだけする
 - `ymos kb search "<問い>" [-n 5]`: 会社の md の意味検索
+- `ymos insight ls [--vendor V] [--cat C] [--q 語]` / `ymos insight show <id>`: ベンダーや道具の知見(罠)の表。その領域を触る前に引く。足すのは役員か Code の窓(箱からは書けない)
 - `ymos cal persons`・`ymos cal person <人> [--from …] [--to …]`・`ymos cal free [--who 人,人] …`・`ymos cal get <id>`: 役員カレンダーを読む。予定は時間としてだけ扱う(`ymos cal --help` の「読む側の決まり」)
 - `ymos cal put [--layer 予定|稼働] --title "<題>" --start <日時> --end <日時> [--all-day] [--join 人,人] [--mention 人,人]`・`ymos cal put <id> <変える項目だけ> --version <n>`・`ymos cal delete <id> --version <n>`・`ymos cal import <TSV のファイル> [--dry-run]`: 役員カレンダーに予定を入れる・直す・消す・まとめて入れる。予定(unavailable)と稼働(work)は `--join` に 1 人以上要る(誰の予定かを書く)。読みの口は題を落として返すので、入れた題は get では見えない。書き手は呼んだ役員として残る(役員の居ない仕事では断られる)。**題は役員の言ったとおりに写す(要約・言い換え・補いをしない)。予定は時間としてだけ扱い、中身に触れない・推し量らない。**直す・消す前に `ymos cal get <id>` で version を読む。TSV は {{files_dir}} か持ち場の clone にファイルで書き、先に `--dry-run` で誤りの行を見る。標準入力(`-`)は使えない
 - `ymos roles budget get`: 会社払いの今日の残りと区切りの累計
