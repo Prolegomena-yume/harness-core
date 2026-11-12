@@ -23,8 +23,11 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 
 - **CI はデリバリーの時に 1 回だけ。**便を branch に分けるのは、壁時計を稼ぐためとドメインを分けるため。便を鷹野の卓(統合の枝:Dleam は `main`、musearch は `staging`)へ merge するときは、その便の test だけを見る。全段 CI は、鷹野がデリバリーするとき(統合の枝 → 本番の枝・publish)に 1 回流す。全段 CI が赤なら、直しの便を起こす
 - **便を起こす前に、人見の GOAL に効くかを見る。**GOAL の便が全部卓に載ったら、次の手はデリバリーにする。揺れの縛り直し・P1 の受け皿・CI の鍵の番を GOAL より先に回さない(Dleam は 11-12 11:10 に GOAL の便が全部 main に入り、00:50 に全段 CI も通ったのに、親は揺れの便を起こし続けた)
+- **本番へ入れる「次は人見の一声」を書く前に、台で効くまでの手(設定 1 行の便・infra の配線・deb の入れ替え)を全部並べる。**一声の後に穴が出たら、直しの便を重ねず、穴の大きさ(幅・頻度・止まるか消えるか)と締め切りを並べて「入れて後で直す」か「止める」かを 1 行で出す(役員 人見 2026-11-01)
+- **直す道が一つで人見の What が要らない不具合(publish を塞ぐもの)は、聞いて止めずに BRIEF を書いて起こし、動いてから報告する**(役員 人見 2026-11-12「止めないで。やって。」)
+- **未完の feature を分割して完了にしない。**閉じない理由(別待ち)を明示して未完のまま持つ。切り出しが要るなら先に人見の裁定を取る(役員 人見 2026-08-27、裁定 #79)
 - **親は長く回さない。**状態はバトンの md だけに置く。最初の圧縮が来たとき、または 24 時間経ったときのどちらか早いほうで、新しい枠へ渡す。圧縮された親は GOAL と裁定を落とす
-- **手を離す turn は、timer を張るか締める。**bg の便を見るなら `scripts/timer.sh 1800 <label> <log>`、人見の答えを待つなら `scripts/timer.sh 3000 wait-hitomi` を run_in_background で張る。50 分鳴って答えが無ければ close-session で締める。会話だけの turn も同じ。tech では Stop hook `hooks/turn-end-guard.sh` が、子孫に timer.sh が無く、その turn に close-session も無い turn end を 1 回弾く(`claude -p` は外す)。元の形は 30 分で起き、裁定が返らなければ自分を閉じた段のバトン(tech `_drafts/plan/59-stage-baton.md` の 9・14・33 行、2026-09-21)
+- **手を離す turn は、timer を張るか締める。**bg の便を見るなら `scripts/timer.sh 1800 <label> <log>`、人見の答えを待つなら `scripts/timer.sh 3000 wait-hitomi` を run_in_background で張る。50 分鳴って答えが無ければ close-session で締める。会話だけの turn も同じ。tech では Stop hook `hooks/turn-end-guard.sh` が、子孫に timer.sh が無く、その turn に close-session も無い turn end を 1 回弾く(`claude -p` は外す)。元の形は 30 分で起き、裁定が返らなければ自分を閉じた段のバトン(tech `_drafts/plan/59-stage-baton.md` の 9・14・33 行、2026-09-21)。起床に ScheduleWakeup は使わない(役員 人見 2026-09-17「timer.sh 1800 規定」)。サーバを落とす台本を背景で流すときは、終わりだけを待たず「最後の進みの行から N 分」でも起きて中を見る(2026-10-14、B・W を 45 分落としたままにした)
 - **idle compaction は切ってある**(母艦の `~/.claude/settings.json` の `"idleCompaction": false`)。1 時間 idle の後に再開しても、勝手には圧縮されない
 
 ## BRIEF ── 「現在地」「どこまで」「失敗例」の 3 節と止め線
@@ -40,6 +43,10 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 | 失敗例 | 過去に踏んだ穴、同型の作業で出た誤り |
 | 止め線 | 経過時間で書く。大きい便で 2 時間、面だけなら 1 時間が上限(実測:便 V 86 分、面だけ約 25 分。役員 人見 2026-10-13)。撮る page は 4〜6 枚に絞り、全 page の見た目は鷹野が撮る |
 
+- **完了条件に秒・ms・回数の上限を書かない。**性質は観測(待ちの数え・順の記録)で縛り、秒は results の測りの節に置いて合否に掛けない。新しい test は壊した build で落ちることを確かめる。揺れた test は閾値を緩めず性質で縛り直す。検収で秒の assert を見つけたら直してから merge(役員 人見 2026-11-13)
+- **Postgres・OS の仕組みを前提に書くときは、手元か lab で 1 回確かめてから書く。**確かめていなければ「違えば止めて返す」と書く(dleam-guard、2026-10-13)
+- **主語を書く ──「ゲート 2 は鷹野が起こす。真壁は柏木を起こさない」「真壁はサブエージェントを起こさない」。**BRIEF は真壁への指示書で、主語の無い「通す」は真壁の手と読まれる(yumemi-016-c2、2026-11-12)。Sonnet の真壁が Agent の子に振って turn を終え、子ごと消えた(2026-10-17)
+
 ## 真壁の model は便で選ぶ
 
 **既定は Sonnet 5.5(`claude-makabe` を上書きなしで)。前面(フロント)の便も Sonnet。**枠の規則で替えるほか、便の性格で選ぶ。**K3(`kimi-makabe`)は当面使わない**(役員 人見 2026-10-17)。
@@ -51,11 +58,11 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 ## 1 便の流れ ── ゲートは 1 回、検収は鷹野
 
 1. **鷹野が BRIEF を書く**(ファイル)。worktree は基点(多くは main)から鷹野が切る ── claude-makabe は main / master の上では起動しない
-2. **真壁を bg で起こす** ── `claude-makabe -C <worktree> -f <BRIEF>`。**真壁の便どうしは並べて起こす**(壁時計が一番貴重、役員 人見 2026-10-17)。走っている間の訂正は `makabe-send`(下の「走っている真壁に訂正を送る」)
+2. **真壁を bg で起こす** ── `claude-makabe -C <worktree> -f <BRIEF>`。**真壁の便どうしは並べて起こす**(壁時計が一番貴重、役員 人見 2026-10-17)。走っている間の訂正は `makabe-send`(下の「走っている真壁に訂正を送る」)。起こす**直前**に `ls -td ~/.codex-agents/runs/makabe-* | head` と、同じ件の生きているセッションの最新を見る。同じ範囲が起きていれば起こさず、渡した側に一問返す。起こしたセッションへの依頼文には「終わりは次の手を 1 行で」と書く(2026-10-22、同じ範囲の真壁が 8 本並んだ)
 3. **終端を受ける** ── footer の `makabe_commit_sha:` で commit まで届いたかを見る。`(無し)` なら同じ BRIEF で起こし直す
-4. **柏木のゲート 2** ── 依頼文 `gate2-<便>.md` を scratchpad に書き(run_dir の下に置かない)、`KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 -f <scratchpad>/gate2-<便>.md`。依頼文の file を渡さないと「タスク本文が空白のみ」で起きない(10-12)。所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。所要は 7〜10 分
-5. **P0 があれば真壁を新しい session で 1 回** ── `claude-makabe --p0 -C <worktree> -f <BRIEF-r2>`(所見のパスを BRIEF-r2 に書く)。**柏木は呼び直さない**(ゲートは便に 1 回、役員 人見 2026-09-18 / 09-20)。直ったかは鷹野の検収で閉じる
-6. **鷹野が検収する** ── 報告文でなく `git diff` と実ファイル、その便が触った所と足した所の test、Playwright。全段 CI は流さない(デリバリーの時に 1 回、上の「親の鷹野の GOAL」)。P1 は記録して後のリファクタリングへ、P2 は柏木が直している
+4. **柏木のゲート 2** ── 依頼文 `gate2-<便>.md` を scratchpad に書き(run_dir の下に置かない)、`KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 -f <scratchpad>/gate2-<便>.md`。依頼文の file を渡さないと「タスク本文が空白のみ」で起きない(10-12)。所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。所要は 7〜10 分。起こす前に、真壁が柏木を起こしていないか(`ls -t ~/.codex-agents/runs | grep kashiwagi` と results の「ゲート」)を見る。依頼文に「test は真壁の results の件数を使う。回すなら新しく足した test file だけ、全体は回さない」を入れる(2026-10-31、27 分かかった)
+5. **P0 があれば真壁を新しい session で 1 回** ── `claude-makabe --p0 -C <worktree> -f <BRIEF-r2>`(所見のパスを BRIEF-r2 に書く)。**柏木は呼び直さない**(ゲートは便に 1 回、役員 人見 2026-09-18 / 09-20)。直ったかは鷹野の検収で閉じる。ゲートの所見を直す便は、名を変えても同じ便。P0 でも P1 でも柏木をもう一度呼ばない(役員 人見 2026-11-10)
+6. **鷹野が検収する** ── 報告文でなく `git diff` と実ファイル、その便が触った所と足した所の test、Playwright。全段 CI は流さない(デリバリーの時に 1 回、上の「親の鷹野の GOAL」)。P1 は記録して後のリファクタリングへ、P2 は柏木が直している。検収の手は Playwright のスクリプト(庵野に振る)で、人見の手を前提に計画を書かない(役員 人見 2026-09-25)。秒の閾値の assert は上の「BRIEF」の行のとおり直してから
 7. **merge / push** ── 鷹野。worktree の片付けは「並列は worktree」の節の `wt-sweep`
 
 **ゲートの「便に 1 回」はランチャが縛らない。**ランチャの `gates.tsv` の判定は `NIEKAWA_INBOX`(贄川の子として起こされたとき)が無いと働かず、直書きでは鷹野の規律だけが担保になる。**ゲート 1(plan の監査)は既定で置かない。**設計の要る便だけ、BRIEF の前に柏木へ設計を見せる(musearch 2d-1 の例)。
@@ -100,6 +107,8 @@ harness-route                                                            # 今�
 | claude が減りすぎ | Claude は鷹野のセッションと柏木だけに絞る。庵野を使わず真壁へ ── 真壁は codex 経路(`MAKABE_ROUTE=codex`、luna max)で起こす |
 | codex が減りすぎ | 真壁の経路は替えない(既定の claude のまま、`MAKABE_ROUTE=codex` を渡さない) |
 
+**Claude Max は 2 枚 ── A = pax(20x、`~/.claude`)、B = hitomi@(5x、`~/.claude-b`)。B の残り × 0.6 で A に換算する**(20x の weekly は 5x の約 1.7 倍、人見 2026-10-25)。`harness-route` は A しか見ないので、B は `CLAUDE_CONFIG_DIR=$HOME/.claude-b rates claude` で見る。**真壁・柏木は既定で `CLAUDE_ACCT_SWITCH_AT=100` を付けて B に寄せ、codex の経路へ逃がすのは A も B も減りすぎのときだけ**(役員 人見 2026-11-12「B の max に投げれるものは以後そっちに」、10-25「かえるな」)。GUI の鷹野と Agent の庵野・水無瀬は B に寄せる口が無い。
+
 **Claude の weekly か Fable のどちらかが 3% 以下になったら、新しい便を起こさない。**走っている便の終端で記録して閉じる(役員 人見 2026-09-22)。
 
 **閾値の判定はランチャに入れない。**起こされた後のランチャに選択肢は無く、ランチャが別のランチャを起こす形は自己参照の事故に近づく。代わりに 2 つ ── 鷹野が起動前に `harness-route` を 1 回打って配役表を見る(read-only、起動しない)、各ランチャは起動時に自サービスの `rates` を 1 回だけ叩いて `<run_dir>/rates.json` に残す(失敗は警告だけで続行)。
@@ -119,6 +128,8 @@ harness-route                                                            # 今�
 **`main` / `master` への直接 commit と push は全員不可。**外へ出る境界は鷹野の merge と push で越える。事後ガードは真壁・水無瀬に既定 on(現 branch への commit は逸脱にしない ── `main` の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする)、柏木は既定 off(自分で worktree を動かすため)。
 
 **同じリポの他 worktree が動かしている作業 branch は「他 ref の移動」に数えない。**`git worktree list` で他 worktree の branch を除外してから判定する(BRIEF-inbox-limits、2026-09-21 ── 並列真壁が別 worktree で自分の branch に commit すると、もう一方の真壁の事後ガードが「権限逸脱: ref 変化」と誤記録した事故の再発防止)。`main` / `master` / remote-tracking の移動は worktree 経由でも引き続き逸脱。
+
+閉じた便の plan・findings・task を材料にレビュー・再審を回すときは、材料の中の「`<path>` に書け」の実パスの指示を剥がし、実の run_dir を read-only にする(役員 人見 2026-09-22、再審の Opus が本物の gate2.md を上書きした)。
 
 **claude-makabe・kimi-makabe の `main` / `master` の移動は reflog の名義で見分ける。**worktree は refs を共有し、別セッション(鷹野・人見)の `main` への commit・merge・pull でも値が動くため、run の間に積まれた reflog に真壁名義(launcher の `GIT_COMMITTER_EMAIL`)の更新があるときだけ逸脱にし、別名義だけなら警告で通す。reflog で見分けられなければ従来どおり逸脱。claude-makabe は `main` / `master` の上では起動しない(役員 人見 2026-10-03 の裁定 案 A+C、判定は `scripts/lib/git-run-diff.sh`)。**ゲートの間は main を動かさない** ── 柏木の終端が権限逸脱で落ちる(10-14)。
 
@@ -140,6 +151,10 @@ harness-route                                                            # 今�
 
 ランチャに分岐は入れない。担保は契約(本節)に焼く。
 
+- **同じ口(型・共通の検査)を触る便は、その型と検査を先に 1 便で決めてから並べる。**BRIEF の段で、同じ file の同じ関数・型を触るかを grep で見る(画像の Screen 2b・3・4、2026-10-25)
+- **真壁とゲートが走る間は、同じリポの統合の枝(musearch は `staging`)も fetch・merge・push しない。**並べた 2 便は、先に上がった便の merge も後の便のゲートの終端まで待つ(2026-10-14・10-18)
+- **孤児の真壁・柏木は run_dir・pid・自分が `--unit` で付けた名で名指しして止める。**広い `pgrep -f` や scope の中身では拾わない(別の便のゲートと Claude アプリを巻き添えにした、2026-09-21・10-22)。落ちた run の続きを起こす前に、その run の `claude -p` が残っていないかを見る
+
 **便の worktree の片付けは、鷹野が便を merge した後に `scripts/wt-sweep.sh --only <worktree> --apply` を手で呼ぶ。**溜まりは引数なしの dry-run(何も消さない)で見て、一覧を検収してから `--apply` する。消すのは「HEAD が main(または origin/main)に merge 済み」「`git status --porcelain` が空(submodule 込み)」「cwd・引数にその worktree を持つプロセスが無い」「`.git/worktrees/<name>/HEAD` が 12 時間より古い」を全部満たす worktree だけで、reflog と index の mtime は判定に使わない(全 worktree が同時刻に書き換わる / `git status` が書く)。リポ本体・locked・`*/.claude/worktrees/*`(Claude のアプリが持つ worktree)・`~/.codex` などは対象外。ランチャの終端には入れない ── ランチャの cwd が worktree の中にあり、自分を使用中と判定して必ず残すか、判定を緩めて走る真壁・柏木の worktree を巻き込むかになるため。
 
 ## 判定は P0 / P1 / P2 の 3 値
@@ -151,6 +166,8 @@ harness-route                                                            # 今�
 | **P2** | 不整合・追従漏れ ── 表現・命名・import・注記・件数・文面の揺れ・Doc の未更新 | **柏木が自分で直して commit する**。指摘として書き残さない |
 
 **根本的に崩れていて修正がレビュアーの範囲を越えるものは、柏木が直さずに指摘して戻す。**柏木の差し戻しは critical(P0)だけ(役員 人見 2026-09-18)。
+
+**P1 を r2・r3 で返さず、P1 の受け皿の便を足さない。**P1・P2 は設計の正典に残して先へ進む。例外は publish の後に変えられない外への契約(署名の字・本文の形)で、「後で破壊的に変える」が本当に起きるかを 1 行で言えるときだけ。ゲートの掛け直しは P0 を直したときだけ(役員 人見 2026-11-13、yumemi 0.16.0 で 20 便中 12 便が r2 になった)。
 
 技術的負債は借金でありキャッシュで、必ずしも悪くない(人見 2026-09-12)。**判定の物差しは BRIEF の「どこまで」で、完璧ではない。****レビューは報告文でなく `git diff` と実ファイルから始める** ── exit 0 と完了報告は根拠にしない。空レビュー(exec 0 本のまま判定を書く)は exec ブロック数で検出する。
 
@@ -196,6 +213,9 @@ Brief: <BRIEF のパス>
 ```
 
 `Co-Authored-By: Claude …` は書かない(人見 2026-09-13)。model は `Model:` の 1 本。
+
+- **外の OSS へ出す commit だけは `Prolegomena-yume <288781444+Prolegomena-yume@users.noreply.github.com>` 名義。**`git-as` には無いので、鷹野がコマンドを出し人見が自分の端末で打つ。ガードを黙って回避しない(役員 人見 2026-10-06)
+- **共有の checkout では commit の前に `git branch --show-current` を見る。**add は自分の file をパス指定で(`-A` を打たない)。自分の小さな commit は別の worktree から
 
 ## 起動の5点セット
 

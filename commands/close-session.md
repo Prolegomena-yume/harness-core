@@ -19,6 +19,11 @@ description: セッションを締める。同義語で自然発火(締めて/�
 3. **(母艦)`git-as <自ロール>` で commit。**サマリと、この回に書き換わった `.claude/memory/` を commit に含める ── memory は main checkout 側にあるので、worktree の回はそちらで別に commit する。author/committer は役名(例 `git-as 鷹野 commit ...`)。**push は役職者の職務** ── 役職者は `company/keiei` の `organization.yml` の `managers`(大橋・鷹野・麻布)。役職者のセッションなら push まで行う。配下の人格(`members`)のセッションなら commit で止め、push が要ることを親の役職者へ申し送る(役員 人見 2026-10-10。元は真壁に push させないための一文だった)
 4. **commit した直後に `discord/session-post <サマリの path>` を走らせる。**push の有無には依存しない ── 他ロールの回で push が無くても走らせる。#session への投稿はこの道具が持つ(設計は `company/tech` の `discord.md`)。**失敗しても締めは止めない。**失敗した場合はその旨を報告に書く
 
+## 注意
+
+- 締めの合図でも、走っている便・CI・委譲が残っていれば close-session を呼ばない。「n 本走っている、終わってから締める」と返す(2026-10-13、session-post-guard が止まるたびに block した)
+- 手順 1 の NN は、cloud でなくても書く直前に pull と ls で決める。Write の返りが created でなく updated なら他人のサマリを潰したと疑い、`git status` を見る(2026-10-25・11-10)
+
 ## cloud の締めは別の形
 
 **`CLAUDE_CODE_REMOTE=true` のときは、上の手順 1・3・4 を次のとおり読み替える**(役員 人見 2026-10-01「サマリも memory と同じく Forgejo の tech main に直接 push する、PR にしない」。形は `docs/cloud-session.md`「cloud の締め」):
