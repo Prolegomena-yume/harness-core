@@ -30,6 +30,17 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 - **手を離す turn は、timer を張るか締める。**bg の便を見るなら `scripts/timer.sh 1800 <label> <log>`、人見の答えを待つなら `scripts/timer.sh 3000 wait-hitomi` を run_in_background で張る。50 分鳴って答えが無ければ close-session で締める。会話だけの turn も同じ。tech では Stop hook `hooks/turn-end-guard.sh` が、子孫に timer.sh が無く、その turn に close-session も無い turn end を 1 回弾く(`claude -p` は外す)。元の形は 30 分で起き、裁定が返らなければ自分を閉じた段のバトン(tech `_drafts/plan/59-stage-baton.md` の 9・14・33 行、2026-09-21)。起床に ScheduleWakeup は使わない(役員 人見 2026-09-17「timer.sh 1800 規定」)。サーバを落とす台本を背景で流すときは、終わりだけを待たず「最後の進みの行から N 分」でも起きて中を見る(2026-10-14、B・W を 45 分落としたままにした)
 - **idle compaction は切ってある**(母艦の `~/.claude/settings.json` の `"idleCompaction": false`)。1 時間 idle の後に再開しても、勝手には圧縮されない
 
+## 契約の置き場 ── tech の `_contract/yyyy-mm-dd_NN/`
+
+**人見から GOAL を受けた親は、tech に `_contract/yyyy-mm-dd_NN/` を開き、契約と便を全部そこに置く**(役員 人見 2026-11-13。11-13 より後に開く契約から)。
+
+- `GOAL.md`:人見との契約(親ゴール・障害・デリバリーの定義)、便の配置、便ごとに 1 行の進捗。親の状態はここだけに置き、バトンの代わりにする。新しい親はまずこれを読む
+- 便ごとのフォルダ `<便名>/`:`brief.md`(鷹野)、`result.md`(真壁)、`gate.md`(柏木の所見)
+- NN は契約を開くときに取る。その日の `_sessions/` と `_contract/` の両方で重ならない番号にし、締めのサマリも同じ NN を使う。親が替わっても同じフォルダを引き継ぐ
+- 真壁は製品のリポの worktree で動く。BRIEF に `result.md` の絶対 path を書き、その 1 つだけは worktree の外に書いてよい。commit は製品のリポを真壁が、tech の `_contract/` を鷹野がする
+- 製品のリポには `briefs/` を新しく作らない。製品のリポに置くのはコードと SPEC・README の更新だけ
+- `_contract/` は意味検索の索引から外してある(harness の `isDocPath`)
+
 ## BRIEF ── 「現在地」「どこまで」「失敗例」の 3 節と止め線
 
 **BRIEF は段取りの専任がいない前提で書く。**真壁が BRIEF 1 本で作業域・完了条件・検収の手を読み取れること。長さは真壁の model で変える ── Sonnet には 1〜2 画面に刻み、api と画面を分ける(Sonnet は戻りが多かった、09-25)。Opus には刻まず、親の設計書と「どこまで」を渡して細かい設計を任せる(役員 人見 2026-10-12)。

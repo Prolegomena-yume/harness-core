@@ -22,7 +22,7 @@ description: セッションを締める。同義語で自然発火(締めて/�
 ## 注意
 
 - 締めの合図でも、走っている便・CI・委譲が残っていれば close-session を呼ばない。「n 本走っている、終わってから締める」と返す(2026-10-13、session-post-guard が止まるたびに block した)
-- 手順 1 の NN は、cloud でなくても書く直前に pull と ls で決める。Write の返りが created でなく updated なら他人のサマリを潰したと疑い、`git status` を見る(2026-10-25・11-10)
+- この session が `_contract/yyyy-mm-dd_NN/` の契約を開いていれば、サマリの NN はその契約の NN を使う。開いていなければ、手順 1 の NN は、cloud でなくても書く直前に pull と ls で決め、`_contract/` の同じ日の番号とも重ねない。Write の返りが created でなく updated なら他人のサマリを潰したと疑い、`git status` を見る(2026-10-25・11-10)
 
 ## cloud の締めは別の形
 
