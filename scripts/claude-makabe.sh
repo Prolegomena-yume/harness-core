@@ -36,11 +36,20 @@
 #   - 巡ループ・ゲート番号の概念を持たない(makabe は codex 版でも supports_loop=0)。--resume は受けない
 #     ── 続きは贄川が新しい指示書(前 run の sha を明記)で起こし直す(codex/makabe.md の「終端の見方」)。
 #
+#   - **契約モード(--contract <dir> --batch <名>、庵野 2026-11-13、役員 人見)**: brief・result を tech の
+#     `_contract/yyyy-mm-dd_NN/` に置く契約(docs/delegation.md「契約の置き場」)のための口。run_dir に契約の MCP
+#     (lib/contract-mcp.py)の設定を書いて --mcp-config で渡し(--strict-mcp-config で他の MCP は載せない)、最初の指示を
+#     「brief_get で読み、終わりは result_put」にする。path を持つのは MCP だけで、モデルは道具だけを使う。
+#     そのかわり **Write / Edit / NotebookEdit は作業ルートの外を一律に block する**(scripts/hooks/write-guard-claude.py、
+#     --dangerously-skip-permissions の下でも効く)。-f の今の形(BRIEF に result.md の絶対 path を書く)は従来のまま ──
+#     その形は worktree の外に 1 つ書かせるので、外を一律に塞ぐのは契約モードだけ。
+#
 # env:
 #   MAKABE_MODEL(渡されても記録のみ、実際は models.env の MAKABE_CLAUDE_MODEL か、--p0 のとき MAKABE_CLAUDE_P0_MODEL) /
 #   MAKABE_EFFORT(既定は models.env の MAKABE_CLAUDE_EFFORT、--p0 のときは MAKABE_CLAUDE_P0_EFFORT)
 #
 # 使い方: claude-makabe.sh [-C dir] -f <task.md> [--log path] [--p0] [--model id] [--effort level] [--dry-run]
+#         claude-makabe.sh [-C dir] --contract <契約のフォルダ> --batch <便名> [...]   ← 契約モード(下)
 # -f は複数可(codex-agent.sh と同じ、末尾のファイルを task 本文として読む)。task 引数(-f 以外)も付けられる。
 
 set -euo pipefail
@@ -56,6 +65,9 @@ options:
       --p0             ゲート 2 の P0 を直す巡。model と effort を models.env の MAKABE_CLAUDE_P0_MODEL / _EFFORT(opus / high)にする
       --model <id>     記録のみ(model は変わらない。通常は claude sonnet、--p0 のときは opus。env MAKABE_MODEL でも指定可)
       --effort <level> reasoning effort(既定 high、env MAKABE_EFFORT でも指定可。--p0 でもこちらが優先)
+      --contract <dir> 契約のフォルダ(tech の _contract/yyyy-mm-dd_NN/)。--batch と一緒に付ける契約モード。
+                       <dir>/<便名>/brief.md が無ければ die。-f は付けなくてよい(付ければ追加の本文として続ける)
+      --batch <名>     便名(/ \ : 空白 .. を含まない)。brief_get / result_put の対象
       --dry-run        起動コマンドを組み立てて stdout に出し、claude を起動せず exit 0(検算用)
   -h, --help           この usage を表示
 
@@ -102,6 +114,8 @@ source "$CORE/scripts/lib/git-run-diff.sh"
 source "$CORE/scripts/lib/batch-inbox.sh"
 # shellcheck source=lib/claude-acct-launch.sh
 source "$CORE/scripts/lib/claude-acct-launch.sh"
+# shellcheck source=lib/contract-launch.sh
+source "$CORE/scripts/lib/contract-launch.sh"
 [ -f "$CORE/roles/makabe.md" ] || die "人物像の正典が見つからない: $CORE/roles/makabe.md"
 [ -f "$CORE/claude/makabe.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/makabe.md"
 
@@ -123,6 +137,8 @@ p0=0
 task_files=()
 task_args=()
 dry_run=0
+contract_dir=""
+batch_name=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -157,6 +173,16 @@ while [ "$#" -gt 0 ]; do
       ;;
     --resume|--rounds)
       die "$1 はこの経路(claude-makabe)では受けない ── 続きは新しい指示書で起こし直す"
+      ;;
+    --contract)
+      [ "$#" -ge 2 ] || die "$1 には dir が必要"
+      contract_dir="$2"
+      shift 2
+      ;;
+    --batch)
+      [ "$#" -ge 2 ] || die "$1 には便名が必要"
+      batch_name="$2"
+      shift 2
       ;;
     --dry-run)
       dry_run=1
@@ -210,6 +236,14 @@ case "$current_branch" in
   main|master) die "作業ルートが $current_branch の上にある: $root ── 作業 branch の worktree を -C に渡す(main / master には触らない)" ;;
 esac
 
+# 契約モードの検査(run_dir を作る前)。--contract と --batch は対、便名は path に使えない形を断り、brief.md が無ければ die。
+contract_mode=0
+if [ -n "$contract_dir" ] || [ -n "$batch_name" ]; then
+  [ -n "$contract_dir" ] && [ -n "$batch_name" ] || die "--contract と --batch は一緒に付ける"
+  contract_check_args "$contract_dir" "$batch_name"
+  contract_mode=1
+fi
+
 for task_file in "${task_files[@]}"; do
   [ -f "$task_file" ] || die "タスクファイルが見つからない: $task_file"
   [ -r "$task_file" ] || die "タスクファイルを読めない: $task_file"
@@ -257,7 +291,18 @@ fi
 export CODEX_AGENT_RUN_DIR="$run_dir"
 
 task_path="$run_dir/task.md"
-if [ "${#task_files[@]}" -eq 0 ] && [ "${#task_args[@]}" -eq 0 ]; then
+if [ "$contract_mode" -eq 1 ]; then
+  {
+    contract_task_text makabe "$batch_name"
+    for task_file in "${task_files[@]}"; do
+      cat "$task_file"
+      printf '\n'
+    done
+    if [ "${#task_args[@]}" -gt 0 ]; then
+      printf '%s\n' "${task_args[*]}"
+    fi
+  } > "$task_path"
+elif [ "${#task_files[@]}" -eq 0 ] && [ "${#task_args[@]}" -eq 0 ]; then
   if [ -t 0 ]; then
     usage >&2
     exit 2
@@ -307,11 +352,12 @@ export GIT_AUTHOR_EMAIL="makabe@ai.yumemism.dev" GIT_COMMITTER_EMAIL="makabe@ai.
 export CLAUDE_MAKABE_ROOT="$root"
 hooks_dir="$CORE/scripts/hooks"
 settings_path="$run_dir/settings.json"
-python3 - "$hooks_dir" "$settings_path" <<'PY'
+python3 - "$hooks_dir" "$settings_path" "$contract_mode" "$root" <<'PY'
 import json
+import shlex
 import sys
 
-hooks_dir, out_path = sys.argv[1], sys.argv[2]
+hooks_dir, out_path, contract_mode, root = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
 guard = f"{hooks_dir}/worktree-guard-claude-makabe.sh"
 settings = {
     "hooks": {
@@ -338,9 +384,24 @@ settings = {
         ],
     }
 }
+if contract_mode:
+    # 契約モード: 作業ルートの外への Write/Edit/NotebookEdit を一律に block(禁止プレフィックスでなく「中だけ許可」)。
+    # 旧 guard は Bash だけに絞る(Write/Edit は新 guard が持つ)。root は command の引数で渡す(env に頼らない)。
+    wg = f"{hooks_dir}/write-guard-claude.py {shlex.quote(root)}"
+    settings["hooks"]["PreToolUse"] = [
+        {"matcher": "Write|Edit|MultiEdit|NotebookEdit", "hooks": [{"type": "command", "command": wg, "timeout": 10}]},
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": guard, "timeout": 10}]},
+    ]
 with open(out_path, "w") as f:
     json.dump(settings, f, ensure_ascii=False, indent=2)
 PY
+
+# 契約モードの MCP 設定(path を持つのは MCP のプロセスだけ。モデルの env には CONTRACT_DIR を渡さない)
+mcp_config_path=""
+if [ "$contract_mode" -eq 1 ]; then
+  mcp_config_path="$run_dir/mcp.json"
+  write_contract_mcp_config "$mcp_config_path" "$CORE" "$contract_dir" "$batch_name" "brief_get,result_get,result_put,result_append"
+fi
 
 prompt_lines_path="$run_dir/prompt.md"
 {
@@ -364,6 +425,9 @@ fi
 if [ "$dry_run" -eq 1 ]; then
   echo "[makabe/claude] dry-run root=$root run_dir=$run_dir model=$model effort=$effort p0=$p0 model_requested=${model_requested:-(無し)}"
   echo "[makabe/claude] settings: $settings_path"
+  if [ "$contract_mode" -eq 1 ]; then
+    echo "[makabe/claude] contract: dir=$contract_dir batch=$batch_name mcp-config=$mcp_config_path(Write/Edit/NotebookEdit は作業ルートの外を block)"
+  fi
   echo "[makabe/claude] account: ${acct_label} ${acct_email:-(email 不明)}(pick: $run_dir/account.json)"
   echo "[makabe/claude] command prefix: ${acct_prefix[*]:-(無し、a は何も足さない)} claude -p ..."
   echo "[makabe/claude] input: stream-json(inbox: $run_dir/inbox.fifo、送り口 makabe-send)"
@@ -407,6 +471,9 @@ trap on_term TERM INT
 claude_args=("${acct_prefix[@]}" claude -p --model "$model" --effort "$effort" --dangerously-skip-permissions)
 claude_args+=(--input-format stream-json --output-format stream-json --verbose --replay-user-messages)
 claude_args+=(--append-system-prompt "$system_prompt" --settings "$settings_path")
+if [ "$contract_mode" -eq 1 ]; then
+  claude_args+=(--mcp-config "$mcp_config_path" --strict-mcp-config)
+fi
 
 inbox_fifo="$run_dir/inbox.fifo"
 stream_json="$run_dir/stream.jsonl"
