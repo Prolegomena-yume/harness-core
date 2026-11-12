@@ -37,9 +37,11 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 - `GOAL.md`:人見との契約(親ゴール・障害・デリバリーの定義)、便の配置、便ごとに 1 行の進捗。親の状態はここだけに置き、バトンの代わりにする。新しい親はまずこれを読む
 - 便ごとのフォルダ `<便名>/`:`brief.md`(鷹野)、`result.md`(真壁)、`gate.md`(柏木の所見)
 - NN は契約を開くときに取る。その日の `_sessions/` と `_contract/` の両方で重ならない番号にし、締めのサマリも同じ NN を使う。親が替わっても同じフォルダを引き継ぐ
-- 真壁は製品のリポの worktree で動く。BRIEF に `result.md` の絶対 path を書き、その 1 つだけは worktree の外に書いてよい。commit は製品のリポを真壁が、tech の `_contract/` を鷹野がする
+- commit は製品のリポを真壁が、tech の `_contract/` を鷹野がする
 - 製品のリポには `briefs/` を新しく作らない。製品のリポに置くのはコードと SPEC・README の更新だけ
 - `_contract/` は意味検索の索引から外してある(harness の `isDocPath`)
+- **brief・result・gate は契約の MCP の道具で渡す。**真壁・柏木は `claude-makabe --contract <_contract/yyyy-mm-dd_NN> --batch <便名>`(柏木は `claude-kashiwagi`)で起こす。brief は鷹野が `<便名>/brief.md` に先に置く(無ければランチャが断る)。モデルは path を持たず、`brief_get` で読み、真壁は `result_put`(途中は `result_append`)、柏木は `gate_put` で書く。契約モードでは Write・Edit・NotebookEdit が `-C` の worktree の外を断る(真壁も柏木も同じ縛り)。Bash の sandbox は入れない(PG・npm・systemd-run が壊れる、2026-11-13 の調べ)
+- **GOAL.md の便の進捗は、put と append のたびに機械が 1 行書き換える。**行は `- <便名>:` で始まり、`brief 有り / result 有り MM-DD HH:MM / gate 有り MM-DD HH:MM` を持つ。親が同じ行に書いた配置などは残る。行が無い便は `## 便の進捗` の節の末尾に足される
 
 ## BRIEF ── 「現在地」「どこまで」「失敗例」の 3 節と止め線
 
