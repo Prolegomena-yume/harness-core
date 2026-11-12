@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# 旧鷹野直下 codex 用、贄川体制では使わない(正典は docs/delegation.md、from-niekawa --wait --cap を使う、2026-09-20)。
+# 手を離す前に張る待ちの timer(役員 人見 2026-11-13、hooks/turn-end-guard.sh が turn end で見る)。
+# run_in_background の Bash で張る。使い方は 2 つ:
+#   bg の便を見る     : timer.sh 1800 <label> <log>   (log の終端・エラーで解除、無ければ 1800 秒で鳴る)
+#   人見の答えを待つ   : timer.sh 3000 wait-hitomi    (50 分で鳴る。答えが無ければ close-session で締める)
+# turn-end-guard.sh は、このセッションの claude の子孫に timer.sh が生きていれば turn end を通す。
 # usage: bash scripts/timer.sh <duration_seconds> [label] [log1 log2 ...]
 #   duration: 整数秒(例: 265, 600)
 #   label:    出力に乗せる識別子(任意、既定 "timer")

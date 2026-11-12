@@ -22,7 +22,7 @@
 | [docs/bg_session_lifecycle.md](docs/bg_session_lifecycle.md) | **bg セッションの終わらせ方。**`kill` では蘇る |
 | `hooks/` | SessionStart hook(git / session / mirror / Neon / reminders を注入)と cloud の install |
 | `setup/` | cloud setup script、Codex 委譲人格のインストーラ |
-| `scripts/` | `timer.sh`(Codex 監視)/ `ctr.sh`(transcript 出力)/ `codex-agent.sh`(git 境界ガード)/ bg TUI 駆動 |
+| `scripts/` | `timer.sh`(手を離す前に張る待ちの timer)/ `ctr.sh`(transcript 出力)/ `codex-agent.sh`(git 境界ガード)/ bg TUI 駆動 |
 | `schema/harness.schema.json` | **`.harness.json` の正典。**実例は [docs/example.harness.json](docs/example.harness.json) |
 | `commands/` | role 切替 slash command の雛形 |
 | [docs/consumer_setup.md](docs/consumer_setup.md) | **新規 consumer の起こし方。**手順はここだけが持つ |
