@@ -6,6 +6,8 @@
 # $YMOS_STORE/NAME の中身を env に入れて子として動かす(本物の ymos と同じく exec せず子を持つ = 親が死んでも子には signal が行かない)。
 # 使い方: bash scripts/test-claude-acct.sh
 set -uo pipefail
+# 契約なしの起動を断る規則(役員 人見 2026-11-19)の抜け道。test のためだけに開ける(運用では使わない)。
+export HARNESS_ALLOW_NO_CONTRACT=1
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACCT="$core/scripts/claude-acct.sh"
 n=0; fail=0

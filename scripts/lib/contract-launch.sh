@@ -16,6 +16,16 @@ contract_check_args() {
   [ ! -L "$contract_dir/$batch" ] || die "便のフォルダが symlink: $contract_dir/$batch"
 }
 
+# contract_require <真壁|柏木>: --contract も --batch も無い起動を断る(役員 人見 2026-11-19、docs/delegation.md「射程」)。
+# 契約の外では真壁・柏木を起こさない。--dry-run も同じ。HARNESS_ALLOW_NO_CONTRACT=1 は test のためだけの抜け道(運用では使わない)。
+# 片方だけの付け方は contract_check_args 側の「一緒に付ける」が断る。
+contract_require() {
+  local who="$1"
+  [ -z "$contract_dir" ] && [ -z "$batch_name" ] || return 0
+  [ "${HARNESS_ALLOW_NO_CONTRACT:-}" = 1 ] && return 0
+  die "契約の外では${who}を起こさない。/t-contract で契約を起こし、--contract <dir> --batch <便名> を付ける"
+}
+
 # contract_task_text <makabe|kashiwagi> <batch>: 契約モードの最初の指示(task.md の頭)。path は書かない。
 contract_task_text() {
   local who="$1" batch="$2"

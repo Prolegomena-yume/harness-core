@@ -7,6 +7,8 @@
 # 差し替え: WRITE_GUARD_UNDER_TEST=<hook の path>(壊した版で B が落ちることの確認用)
 # 使い方: bash scripts/test-contract-mcp.sh
 set -uo pipefail
+# 契約なしの起動を断る規則(役員 人見 2026-11-19)の抜け道。test のためだけに開ける(運用では使わない)。
+export HARNESS_ALLOW_NO_CONTRACT=1
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${WRITE_GUARD_UNDER_TEST:-$core/scripts/hooks/write-guard-claude.py}"
 GAS="$core/scripts/git-as"
@@ -153,6 +155,14 @@ chk "C4a --contract だけ(--batch 無し)は断る" bash -c "! bash '$core/scri
 chk "C4b --batch に .. や / があれば断る" bash -c "! bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' --contract '$lc/contract' --batch '../b1' --dry-run >/dev/null 2>&1 && ! bash '$core/scripts/claude-kashiwagi.sh' -C '$lc/wt' --contract '$lc/contract' --batch 'a/b' --dry-run >/dev/null 2>&1"
 chk "C4c brief.md が無い便は断る" bash -c "! bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' --contract '$lc/contract' --batch nobrief --dry-run >/dev/null 2>&1"
 chk "C4d 断ったときは run_dir を作らない" is "$(ls "$lc/state/runs" | wc -l)" "$nr_before"
+
+# C6. 契約の外では断る(役員 人見 2026-11-19)。抜け道の env を外して、--dry-run も含めて断ること・契約ありは通ることを見る
+chk "C6a makabe は --contract 無しの起動を断り、文言に /t-contract と --contract --batch が出る" bash -c "out=\$(env -u HARNESS_ALLOW_NO_CONTRACT bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' -f '$lc/f.md' 2>&1); rc=\$?; [ \$rc -ne 0 ] && echo \"\$out\" | grep -q '/t-contract' && echo \"\$out\" | grep -q -- '--contract'"
+chk "C6b kashiwagi は --contract 無しの起動を断り、文言に /t-contract と --contract --batch が出る" bash -c "out=\$(env -u HARNESS_ALLOW_NO_CONTRACT bash '$core/scripts/claude-kashiwagi.sh' --no-loop -C '$lc/wt' -f '$lc/f.md' 2>&1); rc=\$?; [ \$rc -ne 0 ] && echo \"\$out\" | grep -q '/t-contract' && echo \"\$out\" | grep -q -- '--batch'"
+chk "C6c makabe は --dry-run でも断る" bash -c "! env -u HARNESS_ALLOW_NO_CONTRACT bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' -f '$lc/f.md' --dry-run >/dev/null 2>&1"
+chk "C6d kashiwagi は --dry-run でも断る" bash -c "! env -u HARNESS_ALLOW_NO_CONTRACT bash '$core/scripts/claude-kashiwagi.sh' --no-loop -C '$lc/wt' -f '$lc/f.md' --dry-run >/dev/null 2>&1"
+chk "C6e 契約ありは env 無しでも通る(makabe・kashiwagi の --dry-run が exit 0)" bash -c "env -u HARNESS_ALLOW_NO_CONTRACT bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' --contract '$lc/contract' --batch b1 --dry-run >/dev/null 2>&1 && env -u HARNESS_ALLOW_NO_CONTRACT bash '$core/scripts/claude-kashiwagi.sh' --no-loop -C '$lc/wt' --contract '$lc/contract' --batch b1 --dry-run >/dev/null 2>&1"
+chk "C6g 抜け道の env を付ければ契約なしでも通る(test 用)" bash -c "HARNESS_ALLOW_NO_CONTRACT=1 bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' -f '$lc/f.md' --dry-run >/dev/null 2>&1"
 
 # C5. 契約モードのログは <contract>/<便>/logs/ へ(--log 無し)。ランチャの出力も launcher.out に写す。契約モードでないときは今の場所
 mkdir -p "$lc/contract/b5" "$lc/state5"; echo "b5" >"$lc/contract/b5/brief.md"

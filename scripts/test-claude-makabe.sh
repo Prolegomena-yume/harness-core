@@ -5,6 +5,8 @@
 # `comm -3` が post 側の空行に tab だけの行を作り、`${line:3}` が空キーになって bash が落ちた。
 # 使い方: bash scripts/test-claude-makabe.sh
 set -uo pipefail
+# 契約なしの起動を断る規則(役員 人見 2026-11-19)の抜け道。test のためだけに開ける(運用では使わない)。
+export HARNESS_ALLOW_NO_CONTRACT=1
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAUNCHER="${CLAUDE_MAKABE_UNDER_TEST:-$core/scripts/claude-makabe.sh}"
 GAS="$core/scripts/git-as"
