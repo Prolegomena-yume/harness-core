@@ -13,6 +13,8 @@
 # 軽量・実処理無し。再実行可能($CODEX_AGENT_STATE_DIR と便ディレクトリを毎回新規の temp に作る)。
 
 set -euo pipefail
+# 契約なしの起動を断る規則(役員 人見 2026-11-19)の抜け道。test のためだけに開ける(運用では使わない)。
+export HARNESS_ALLOW_NO_CONTRACT=1
 
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 core_dir="$(dirname "$(dirname "$script_dir")")"

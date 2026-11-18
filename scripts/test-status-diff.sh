@@ -10,6 +10,8 @@
 #   STATUS_DIFF_SCRIPTS=<dir> で別の版の scripts/ を試せる(直す前の版で「落ちること」を確かめるのに使う)。
 #   STATUS_DIFF_ONLY=<launcher 名> で 1 本だけ(例 kimi-makabe)。
 set -uo pipefail
+# 契約なしの起動を断る規則(役員 人見 2026-11-19)の抜け道。test のためだけに開ける(運用では使わない)。
+export HARNESS_ALLOW_NO_CONTRACT=1
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 W="${STATUS_DIFF_SCRIPTS:-$core/scripts}"
 GAS="$core/scripts/git-as"

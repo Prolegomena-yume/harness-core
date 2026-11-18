@@ -244,6 +244,7 @@ if is_tech_repo "$root"; then
 fi
 
 # 契約モードの検査(run_dir を作る前)。--contract と --batch は対、便名は path に使えない形を断り、brief.md が無ければ die。
+contract_require 真壁
 contract_mode=0
 if [ -n "$contract_dir" ] || [ -n "$batch_name" ]; then
   [ -n "$contract_dir" ] && [ -n "$batch_name" ] || die "--contract と --batch は一緒に付ける"

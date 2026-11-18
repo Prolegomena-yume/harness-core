@@ -107,13 +107,13 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 
 ## 起動コマンド
 
-仕様はファイルで渡す。真壁も柏木も `-f`。
+仕様は契約の便の brief で渡す。真壁も柏木も `--contract <契約のフォルダ> --batch <便名>` が要り、無い起動はランチャが断る(`--dry-run` も)。
 
 ```bash
-claude-makabe -C <worktree> -f <BRIEF>                                   # 真壁(Sonnet、既定)
-MAKABE_CLAUDE_MODEL=claude-opus-5-5 claude-makabe -C <worktree> -f <BRIEF> # 真壁(Opus に上書き)
-claude-makabe --p0 -C <worktree> -f <BRIEF-r2>                           # ゲート 2 の P0 を直すラウンド(opus)
-KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 -f <scratchpad>/gate2-<便>.md   # 柏木のゲート 2
+claude-makabe -C <worktree> --contract <契約のフォルダ> --batch <便名>                                   # 真壁(Sonnet、既定)
+MAKABE_CLAUDE_MODEL=claude-opus-5-5 claude-makabe -C <worktree> --contract <契約のフォルダ> --batch <便名> # 真壁(Opus に上書き)
+claude-makabe --p0 -C <worktree> --contract <契約のフォルダ> --batch <便名>                              # ゲート 2 の P0 を直すラウンド(opus)
+KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 --contract <契約のフォルダ> --batch <便名>   # 柏木のゲート 2
 makabe-send <run_dir> "<本文>"                                            # 走っている真壁に訂正を送る
 genai draft.md out.md                                                    # 源内。--k3 のフォールバックは使わない
 harness-route                                                            # 今日の配役表(read-only、起動しない)
