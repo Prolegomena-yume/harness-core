@@ -264,6 +264,46 @@ git -C "$sbx/c-main" checkout -q --detach
 launch "$sbx/c-main" --dry-run
 chk "14g detached HEAD は kimi-makabe と同じく通る" exit_c_is 0
 
+# ---- 14h-k. yumemism git flow(役員 人見 2026-11-19): staging・canon も main / master と同じ守り ----
+mkrepo c-staging staging; mkrepo c-canon canon
+launch "$sbx/c-staging" --dry-run
+chk "14h HEAD が staging は exit 2、文言に staging / canon が並ぶ" bash -c "[ \"\$(cat '$sbx/c.exit')\" = 2 ] && grep -q '作業ルートが staging の上にある' '$sbx/c.err' && grep -q 'main / master / staging / canon' '$sbx/c.err'"
+launch "$sbx/c-canon" --dry-run
+chk "14i HEAD が canon は exit 2" exit_c_is 2
+chk "14j 断った run は claude を起動していない" test -z "$(ls "$sbx"/c-state/runs/*/last.json 2>/dev/null)"
+
+# ---- 16. run の間の staging・canon の移動は main と同じ規則(真壁名義は exit 3、別名義は警告 + exit 0) ----
+for br in staging canon; do
+  d="$(new_case b-foreign-$br)"
+  git -C "$d/base" branch $br
+  "$GAS" anno -C "$d/base" commit -q --allow-empty -m ahead
+  cat >"$d/scenario.sh" <<S
+env $other_env git -C "$d/base" update-ref refs/heads/$br "\$(git -C "$d/base" rev-parse main)"
+S
+  run_case "$d"
+  chk "16 別名義の $br の移動は exit 0 + 警告" bash -c "[ \"\$(cat '$d/exit')\" = 0 ] && grep -q '警告.*refs/heads/$br' '$d/launcher.err'"
+  d="$(new_case b-makabe-$br)"
+  git -C "$d/base" branch $br
+  "$GAS" anno -C "$d/base" commit -q --allow-empty -m ahead
+  cat >"$d/scenario.sh" <<S
+git -C "$d/base" update-ref refs/heads/$br "\$(git -C "$d/base" rev-parse main)"
+S
+  run_case "$d"
+  chk "16 真壁名義の $br の移動は exit 3" exit_is "$d" 3
+  chk "16 権限逸脱: refs/heads/$br" has_violation "$d" refs/heads/$br
+done
+
+# ---- 14l-n. tech(origin が company/tech)は作業 branch の上でも断る。製品のリポは通る(役員 人見 2026-11-19) ----
+mkrepo c-tech work/t; git -C "$sbx/c-tech" remote add origin https://git.yumemism.com/company/tech.git
+launch "$sbx/c-tech" --dry-run
+chk "14l origin が company/tech は exit 2、文言は tech では真壁を起こさない" bash -c "[ \"\$(cat '$sbx/c.exit')\" = 2 ] && grep -q 'tech では真壁を起こさない' '$sbx/c.err'"
+mkrepo c-tech-ssh work/t; git -C "$sbx/c-tech-ssh" remote add origin git@git.yumemism.com:company/tech
+launch "$sbx/c-tech-ssh" --dry-run
+chk "14m scp 形式・.git 無しの URL も断る" exit_c_is 2
+mkrepo c-prod work/t; git -C "$sbx/c-prod" remote add origin https://git.yumemism.com/company/musearch.git
+launch "$sbx/c-prod" --dry-run
+chk "14n 製品のリポ(別の origin)は通る" exit_c_is 0
+
 # ---- 15. Claude Max 2 枚の選択(claude-acct.sh、親ゴール: a の枠が尽きても人見の手なしで b で起きる)----
 # 偽 rates は CLAUDE_CONFIG_DIR の下の rates.json を返す。偽 claude が見た CLAUDE_CODE_OAUTH_TOKEN・_B・CLAUDE_CONFIG_DIR・account 情報を $FAKE_SEEN に書く。b は B の 1 年 token(偽 ymos の secret CLAUDE_CODE_OAUTH_TOKEN_B)を CLAUDE_CODE_OAUTH_TOKEN で受ける。
 cat >"$sbx/bin/rates-acct" <<'S'

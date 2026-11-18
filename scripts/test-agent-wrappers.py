@@ -415,6 +415,18 @@ sys.exit(int(os.environ.get('FAKE_MK_STATUS', '0')))
     mk_repo_main = mk_repo('mk-main', branch='main')
     result = run_mk('-C', mk_repo_main, '-f', mk_brief)
     assert result.returncode == 2 and 'main の上にある' in result.stderr
+    for protected in ('staging', 'canon'):
+        result = run_mk('-C', mk_repo(f'mk-{protected}', branch=protected), '-f', mk_brief)
+        assert result.returncode == 2 and f'{protected} の上にある' in result.stderr and 'main / master / staging / canon' in result.stderr, protected
+    # tech(origin が company/tech)は作業 branch の上でも断る。製品のリポ(別の origin)は通る
+    for n, url in enumerate(('https://git.yumemism.com/company/tech.git', 'git@git.yumemism.com:company/tech', 'ssh://git@git.yumemism.com/company/tech.git/')):
+        tech = mk_repo(f'mk-tech{n}')
+        git(tech, 'remote', 'add', 'origin', url)
+        result = run_mk('-C', tech, '-f', mk_brief, '--dry-run')
+        assert result.returncode == 2 and 'tech では真壁を起こさない' in result.stderr, (url, result.returncode, result.stderr)
+    product = mk_repo('mk-product')
+    git(product, 'remote', 'add', 'origin', 'https://git.yumemism.com/company/musearch.git')
+    assert run_mk('-C', product, '-f', mk_brief, '--dry-run').returncode == 0
     assert run_mk('-C', mk_repo_done, '-f', mk_brief, '--resume', 'x').returncode == 2
     assert run_mk('-C', root / 'absent', '-f', mk_brief).returncode == 2
     assert run_mk('-C', root, '-f', mk_brief).returncode == 2  # git リポジトリ外

@@ -24,7 +24,7 @@ options:
       --rounds <n>         巡数上限(既定 12)。verdict が「継続」の間、新しい session で次の巡を起こす。
                             kashiwagi は既定で巡ループ off、この option を明示した時だけ on。niekawa は既定で on
       --no-loop             1 session だけ走らせる(巡ループ無し)。kashiwagi / niekawa に対して有効
-      --allow-push          事後ガードの「ref 変化を検出」のうち push 相当(main/master/remote-tracking の移動)を
+      --allow-push          事後ガードの「ref 変化を検出」のうち push 相当(守る branch・remote-tracking の移動)を
                             記録しない。BRIEF 本文に「push: 可」の行があるときも同じ扱いになる(niekawa 専用)
       --batch <name>        便名を明示する(既定: BRIEF 本文の「便: <名>」行、niekawa のみ)
       --inbox <path>        鷹野の箱(to-takano.tsv)を明示する(niekawa のみ)
@@ -97,6 +97,8 @@ script_path="$(resolve_self)"
 CORE="$(dirname "$(dirname "$script_path")")"
 # shellcheck source=models.env
 source "$CORE/scripts/models.env"
+# shellcheck source=lib/protected-refs.sh
+source "$CORE/scripts/lib/protected-refs.sh"
 # 真壁の実行経路(models.env の MAKABE_ROUTE、既定 claude)。claude なら codex-makabe の呼び出しをそのまま
 # claude-makabe.sh へ渡して終わる ── 贄川の呼び出しコマンドは codex-makabe のまま変えない。分岐は ~/bin の wrapper
 # ではなくここに置く(wrapper は installer が上書きするため、手で足した分岐は 2026-09-24 に消えた)。
@@ -847,8 +849,9 @@ capture_refs() {
       # shellcheck disable=SC2034
       refs_ref["$label|$ref"]="$oid"
     done < <(git -C "$repo_dir" for-each-ref --format='%(objectname) %(refname)')
-    # main/master の commit → reset も記録が残る限り検出する。
-    for ref in refs/heads/main refs/heads/master; do
+    # 守る branch(lib/protected-refs.sh)の commit → reset も記録が残る限り検出する。
+    for _b in "${PROTECTED_BRANCHES[@]}"; do
+      ref="refs/heads/$_b"
       # shellcheck disable=SC2034
       reflogs_ref["$label|$ref"]="$(git -C "$repo_dir" reflog show --format='%H %gs' "$ref" 2>/dev/null || true)"
     done
@@ -1168,13 +1171,15 @@ if [ "$git_repo" -eq 1 ]; then
       [ "${pre_refs[$key]:-}" != "${post_refs[$key]:-}" ] || continue
       label="${key%%|*}"
       ref="${key#*|}"
+      if is_protected_ref "$ref" || [[ "$ref" == refs/remotes/* ]]; then
+        if [ "$push_allowed" -eq 1 ]; then
+          echo "[$persona] push 許可により記録しない: $label $ref" >&2
+        else
+          violations+=("ref 変化を検出: $label $ref")
+        fi
+        continue
+      fi
       case "$ref" in
-        refs/heads/main|refs/heads/master|refs/remotes/*)
-          if [ "$push_allowed" -eq 1 ]; then
-            echo "[$persona] push 許可により記録しない: $label $ref" >&2
-          else
-            violations+=("ref 変化を検出: $label $ref")
-          fi ;;
         refs/heads/*)
           if [ -n "${other_worktree_branch[$key]+present}" ]; then
             echo "[$persona] 他 worktree の作業 branch のため記録しない: $label $ref" >&2

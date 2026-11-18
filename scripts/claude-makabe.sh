@@ -60,7 +60,7 @@ usage() {
 
 options:
   -f, --file <path>   タスク本文をファイルから読む。複数指定可
-  -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)。main / master の上では起動しない
+  -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)。main / master / staging / canon の上では起動しない
       --log <path>     ログ出力先
       --p0             ゲート 2 の P0 を直す巡。model と effort を models.env の MAKABE_CLAUDE_P0_MODEL / _EFFORT(opus / high)にする
       --model <id>     記録のみ(model は変わらない。通常は claude sonnet、--p0 のときは opus。env MAKABE_MODEL でも指定可)
@@ -110,6 +110,8 @@ CORE="$(dirname "$(dirname "$script_path")")"
 source "$CORE/scripts/models.env"
 # shellcheck source=lib/git-run-diff.sh
 source "$CORE/scripts/lib/git-run-diff.sh"
+# shellcheck source=lib/protected-refs.sh
+source "$CORE/scripts/lib/protected-refs.sh"
 # shellcheck source=lib/batch-inbox.sh
 source "$CORE/scripts/lib/batch-inbox.sh"
 # shellcheck source=lib/claude-acct-launch.sh
@@ -233,8 +235,13 @@ fi
 # --dry-run でも断る(この位置は dry-run の前)。
 current_branch="$(git -C "$root" symbolic-ref --short -q HEAD 2>/dev/null || true)"
 case "$current_branch" in
-  main|master) die "作業ルートが $current_branch の上にある: $root ── 作業 branch の worktree を -C に渡す(main / master には触らない)" ;;
+  *) if is_protected_branch "$current_branch"; then die "作業ルートが $current_branch の上にある: $root ── 作業 branch の worktree を -C に渡す($(protected_branches_label) には触らない)"; fi ;;
 esac
+# tech のリポは作業ルートにしない(tech の CLAUDE.md は鷹野宛てで、真壁が起きると指示が混線する。役員 人見 2026-11-19)。
+# 起動してよいのは庵野と梅田だけ。path でなく origin の URL で見る(tech の worktree・別 clone も同じ扱い)。
+if is_tech_repo "$root"; then
+  die "tech では真壁を起こさない(CLAUDE.md が鷹野宛で混線する): $root ── 製品のリポの作業木を -C に渡す"
+fi
 
 # 契約モードの検査(run_dir を作る前)。--contract と --batch は対、便名は path に使えない形を断り、brief.md が無ければ die。
 contract_mode=0
@@ -443,11 +450,14 @@ pre_head="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
 # Stop hook(commit-stop-claude-makabe.sh)は別プロセスなのでこの bash 変数を読めない。
 # ファイルへ写しておく(役員 人見 2026-09-24)。
 printf '%s' "$pre_head" > "$run_dir/pre_head.txt"
-pre_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
-pre_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
+declare -A pre_prot_head=() pre_prot_log_n=()
+for _b in "${PROTECTED_BRANCHES[@]}"; do
+  pre_prot_head["$_b"]="$(git -C "$git_root" rev-parse --verify "refs/heads/$_b" 2>/dev/null || true)"
+done
 # 事後ガードが「run の間に積まれた reflog」を切り出すための件数(reflog は worktree 間で共有される)。
-pre_main_log_n="$(git_ref_log_count "$git_root" refs/heads/main)"
-pre_master_log_n="$(git_ref_log_count "$git_root" refs/heads/master)"
+for _b in "${PROTECTED_BRANCHES[@]}"; do
+  pre_prot_log_n["$_b"]="$(git_ref_log_count "$git_root" "refs/heads/$_b")"
+done
 
 echo "[makabe/claude] Claude 起動 root=$root log=$log_path model=$model effort=$effort"
 
@@ -589,19 +599,15 @@ fi
 # 値の変化だけで逸脱にすると別窓の操作を真壁の逸脱と誤記録する(2026-10-03)ため、run の間に積まれた reflog の
 # うち、この launcher が真壁に与えた committer 名義(上の GIT_COMMITTER_EMAIL)のエントリがあるときだけ逸脱にする。
 # 別名義だけなら警告 1 行で続行。reflog が無い・起動時の値が見つからないときは従来どおり「変化 = 逸脱」。
-post_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
-post_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
 violations=()
-if guard_msg="$(git_ref_guard "$git_root" refs/heads/main "$pre_main_head" "$pre_main_log_n" "$post_main_head" "$GIT_COMMITTER_EMAIL")"; then
-  :
-else
-  violations+=("$guard_msg")
-fi
-if guard_msg="$(git_ref_guard "$git_root" refs/heads/master "$pre_master_head" "$pre_master_log_n" "$post_master_head" "$GIT_COMMITTER_EMAIL")"; then
-  :
-else
-  violations+=("$guard_msg")
-fi
+for _b in "${PROTECTED_BRANCHES[@]}"; do
+  post_prot_head="$(git -C "$git_root" rev-parse --verify "refs/heads/$_b" 2>/dev/null || true)"
+  if guard_msg="$(git_ref_guard "$git_root" "refs/heads/$_b" "${pre_prot_head[$_b]}" "${pre_prot_log_n[$_b]}" "$post_prot_head" "$GIT_COMMITTER_EMAIL")"; then
+    :
+  else
+    violations+=("$guard_msg")
+  fi
+done
 
 echo "persona: makabe"
 echo "engine: claude"
