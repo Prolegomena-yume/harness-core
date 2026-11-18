@@ -83,7 +83,7 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 
 ## 1 便の流れ ── ゲートは 1 回、検収は鷹野
 
-1. **鷹野が BRIEF を書く**(ファイル)。worktree は基点(本番に出すリポは `staging`、ほかは main)から鷹野が切る ── claude-makabe は main / master の上では起動しない
+1. **鷹野が BRIEF を書く**(ファイル)。worktree は基点(本番に出すリポは `staging`、ほかは main)から鷹野が切る ── claude-makabe は main / master / staging / canon の上では起動しない。tech(origin が company/tech)も作業ルートにしない
 2. **真壁を bg で起こす** ── `claude-makabe -C <worktree> -f <BRIEF>`。**真壁の便どうしは並べて起こす**(壁時計が一番貴重、役員 人見 2026-10-17)。走っている間の訂正は `makabe-send`(下の「走っている真壁に訂正を送る」)。起こす**直前**に `ls -td ~/.codex-agents/runs/makabe-* | head` と、同じ件の生きているセッションの最新を見る。同じ範囲が起きていれば起こさず、渡した側に一問返す。起こしたセッションへの依頼文には「終わりは次の手を 1 行で」と書く(2026-10-22、同じ範囲の真壁が 8 本並んだ)
 3. **終端を受ける** ── footer の `makabe_commit_sha:` で commit まで届いたかを見る。`(無し)` なら同じ BRIEF で起こし直す
 4. **柏木のゲート 2** ── 依頼文 `gate2-<便>.md` を scratchpad に書き(run_dir の下に置かない)、`KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 -f <scratchpad>/gate2-<便>.md`。依頼文の file を渡さないと「タスク本文が空白のみ」で起きない(10-12)。所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。所要は 7〜10 分。起こす前に、真壁が柏木を起こしていないか(`ls -t ~/.codex-agents/runs | grep kashiwagi` と results の「ゲート」)を見る。依頼文に「test は真壁の results の件数を使う。回すなら新しく足した test file だけ、全体は回さない」を入れる(2026-10-31、27 分かかった)
@@ -151,13 +151,13 @@ harness-route                                                            # 今�
 | 庵野 | リポ全域 | 可(庵野名義、作業 branch) | 不可 |
 | 源内 | **書かない**(整えた本文を返すだけ) | ── | ── |
 
-**`main` / `master` への直接 commit と push は全員不可。**外へ出る境界は鷹野の merge と push で越える。事後ガードは真壁・水無瀬に既定 on(現 branch への commit は逸脱にしない ── `main` の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする)、柏木は既定 off(自分で worktree を動かすため)。
+**`main` / `master` / `staging` / `canon` への直接 commit と push は全員不可**(守る branch の一覧は `scripts/lib/protected-refs.sh` の 1 か所)。外へ出る境界は鷹野の merge と push で越える。事後ガードは真壁・水無瀬に既定 on(現 branch への commit は逸脱にしない ── 守る branch の HEAD 移動・他 ref の移動・remote-tracking ref の移動・水無瀬の非 Markdown 書き込みだけを逸脱とする)、柏木は既定 off(自分で worktree を動かすため)。
 
-**同じリポの他 worktree が動かしている作業 branch は「他 ref の移動」に数えない。**`git worktree list` で他 worktree の branch を除外してから判定する(BRIEF-inbox-limits、2026-09-21 ── 並列真壁が別 worktree で自分の branch に commit すると、もう一方の真壁の事後ガードが「権限逸脱: ref 変化」と誤記録した事故の再発防止)。`main` / `master` / remote-tracking の移動は worktree 経由でも引き続き逸脱。
+**同じリポの他 worktree が動かしている作業 branch は「他 ref の移動」に数えない。**`git worktree list` で他 worktree の branch を除外してから判定する(BRIEF-inbox-limits、2026-09-21 ── 並列真壁が別 worktree で自分の branch に commit すると、もう一方の真壁の事後ガードが「権限逸脱: ref 変化」と誤記録した事故の再発防止)。守る branch・remote-tracking の移動は worktree 経由でも引き続き逸脱。
 
 閉じた便の plan・findings・task を材料にレビュー・再審を回すときは、材料の中の「`<path>` に書け」の実パスの指示を剥がし、実の run_dir を read-only にする(役員 人見 2026-09-22、再審の Opus が本物の gate2.md を上書きした)。
 
-**claude-makabe・kimi-makabe の `main` / `master` の移動は reflog の名義で見分ける。**worktree は refs を共有し、別セッション(鷹野・人見)の `main` への commit・merge・pull でも値が動くため、run の間に積まれた reflog に真壁名義(launcher の `GIT_COMMITTER_EMAIL`)の更新があるときだけ逸脱にし、別名義だけなら警告で通す。reflog で見分けられなければ従来どおり逸脱。claude-makabe は `main` / `master` の上では起動しない(役員 人見 2026-10-03 の裁定 案 A+C、判定は `scripts/lib/git-run-diff.sh`)。**ゲートの間は main を動かさない** ── 柏木の終端が権限逸脱で落ちる(10-14)。
+**claude-makabe・kimi-makabe の守る branch(`main` / `master` / `staging` / `canon`)の移動は reflog の名義で見分ける。**worktree は refs を共有し、別セッション(鷹野・人見)の守る branch への commit・merge・pull でも値が動くため、run の間に積まれた reflog に真壁名義(launcher の `GIT_COMMITTER_EMAIL`)の更新があるときだけ逸脱にし、別名義だけなら警告で通す。reflog で見分けられなければ従来どおり逸脱。claude-makabe は守る branch の上では起動しない(役員 人見 2026-10-03 の裁定 案 A+C、判定は `scripts/lib/git-run-diff.sh`)。**ゲートの間は main を動かさない** ── 柏木の終端が権限逸脱で落ちる(10-14)。
 
 ## 走っている真壁に訂正を送る
 

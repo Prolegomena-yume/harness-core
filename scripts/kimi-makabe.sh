@@ -41,7 +41,7 @@ usage() {
 
 options:
   -f, --file <path>   タスク本文をファイルから読む。複数指定可
-  -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)。main / master の上では起動しない
+  -C, --cd <dir>       作業ルート(既定: 起動時ディレクトリの git toplevel)。main / master / staging / canon の上では起動しない
       --log <path>     ログ出力先(既定 ~/.codex-agents/logs/<run_id>.log)
       --model <id>     記録のみ(この経路では常に models.env の MAKABE_KIMI_MODEL = K3 を使う。env MAKABE_MODEL でも指定可)
       --effort <level> low|high|max(既定 high)。kimi -p に渡す手段が無く記録のみ(config.toml の既定 high が効く)
@@ -93,6 +93,8 @@ CORE="$(dirname "$(dirname "$script_path")")"
 source "$CORE/scripts/models.env"
 # shellcheck source=lib/git-run-diff.sh
 source "$CORE/scripts/lib/git-run-diff.sh"
+# shellcheck source=lib/protected-refs.sh
+source "$CORE/scripts/lib/protected-refs.sh"
 [ -f "$CORE/roles/makabe.md" ] || die "人物像の正典が見つからない: $CORE/roles/makabe.md"
 [ -f "$CORE/kimi/makabe.md" ] || die "Kimi 起動契約が見つからない: $CORE/kimi/makabe.md"
 [ -x "$CORE/scripts/hooks/worktree-guard-kimi-makabe.sh" ] || die "hook が見つからないか実行できない: $CORE/scripts/hooks/worktree-guard-kimi-makabe.sh"
@@ -185,8 +187,13 @@ git_root="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" || die "kimi-
 
 current_branch="$(git -C "$root" symbolic-ref --short -q HEAD 2>/dev/null || true)"
 case "$current_branch" in
-  main|master) die "作業ルートが $current_branch の上にある: $root ── 作業 branch の worktree を -C に渡す(main / master には触らない)" ;;
+  *) if is_protected_branch "$current_branch"; then die "作業ルートが $current_branch の上にある: $root ── 作業 branch の worktree を -C に渡す($(protected_branches_label) には触らない)"; fi ;;
 esac
+# tech のリポは作業ルートにしない(tech の CLAUDE.md は鷹野宛てで、真壁が起きると指示が混線する。役員 人見 2026-11-19)。
+# 起動してよいのは庵野と梅田だけ。path でなく origin の URL で見る(tech の worktree・別 clone も同じ扱い)。
+if is_tech_repo "$root"; then
+  die "tech では真壁を起こさない(CLAUDE.md が鷹野宛で混線する): $root ── 製品のリポの作業木を -C に渡す"
+fi
 
 for task_file in "${task_files[@]}"; do
   [ -f "$task_file" ] || die "タスクファイルが見つからない: $task_file"
@@ -330,11 +337,14 @@ git_status_records "$root" > "$run_dir/pre_status.z"
 pre_head="$(git -C "$git_root" rev-parse --verify HEAD 2>/dev/null || true)"
 # Stop hook(commit-stop-kimi-makabe.sh)は別プロセスなのでこの bash 変数を読めない。ファイルへ写しておく。
 printf '%s' "$pre_head" > "$run_dir/pre_head.txt"
-pre_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
-pre_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
+declare -A pre_prot_head=() pre_prot_log_n=()
+for _b in "${PROTECTED_BRANCHES[@]}"; do
+  pre_prot_head["$_b"]="$(git -C "$git_root" rev-parse --verify "refs/heads/$_b" 2>/dev/null || true)"
+done
 # 事後ガードが「run の間に積まれた reflog」を切り出すための件数(reflog は worktree 間で共有される)。
-pre_main_log_n="$(git_ref_log_count "$git_root" refs/heads/main)"
-pre_master_log_n="$(git_ref_log_count "$git_root" refs/heads/master)"
+for _b in "${PROTECTED_BRANCHES[@]}"; do
+  pre_prot_log_n["$_b"]="$(git_ref_log_count "$git_root" "refs/heads/$_b")"
+done
 
 echo "[makabe/kimi] Kimi 起動 root=$root log=$log_path model=$model effort=$effort run_dir=$run_dir"
 
@@ -435,19 +445,15 @@ fi
 # (claude-makabe.sh と同じ、役員 人見 2026-10-03 の裁定 案 A)ため、run の間に積まれた reflog のうち、この launcher が
 # 真壁に与えた committer 名義(上の GIT_COMMITTER_EMAIL)のエントリがあるときだけ逸脱にする。別名義だけなら警告 1 行で続行。
 # reflog が無い・起動時の値が見つからないときは従来どおり「変化 = 逸脱」。
-post_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
-post_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
 violations=()
-if guard_msg="$(git_ref_guard "$git_root" refs/heads/main "$pre_main_head" "$pre_main_log_n" "$post_main_head" "$GIT_COMMITTER_EMAIL")"; then
-  :
-else
-  violations+=("$guard_msg")
-fi
-if guard_msg="$(git_ref_guard "$git_root" refs/heads/master "$pre_master_head" "$pre_master_log_n" "$post_master_head" "$GIT_COMMITTER_EMAIL")"; then
-  :
-else
-  violations+=("$guard_msg")
-fi
+for _b in "${PROTECTED_BRANCHES[@]}"; do
+  post_prot_head="$(git -C "$git_root" rev-parse --verify "refs/heads/$_b" 2>/dev/null || true)"
+  if guard_msg="$(git_ref_guard "$git_root" "refs/heads/$_b" "${pre_prot_head[$_b]}" "${pre_prot_log_n[$_b]}" "$post_prot_head" "$GIT_COMMITTER_EMAIL")"; then
+    :
+  else
+    violations+=("$guard_msg")
+  fi
+done
 
 # 終端の判定(stuck.md があれば詰まり、無く HEAD が動いていれば完了、どちらも無ければ未達)。
 stuck_reason=""

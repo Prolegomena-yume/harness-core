@@ -121,6 +121,8 @@ source "$CORE/scripts/models.env"
 source "$CORE/scripts/lib/claude-acct-launch.sh"
 # shellcheck source=lib/git-run-diff.sh
 source "$CORE/scripts/lib/git-run-diff.sh"
+# shellcheck source=lib/protected-refs.sh
+source "$CORE/scripts/lib/protected-refs.sh"
 # shellcheck source=lib/contract-launch.sh
 source "$CORE/scripts/lib/contract-launch.sh"
 [ -f "$CORE/roles/kashiwagi.md" ] || die "人物像の正典が見つからない: $CORE/roles/kashiwagi.md"
@@ -482,14 +484,14 @@ if [ "$dry_run" -eq 1 ]; then
   exit 0
 fi
 
-pre_main_head=""
-pre_master_head=""
+declare -A pre_prot_head=()
 if [ "$git_repo" -eq 1 ]; then
   # status は NUL 区切りの record(lib/git-run-diff.sh)で比べる ── 改行区切りの comm -3 は、起動時に汚れた作業木を
   # run の中で全部 commit して clean に戻すと post 側の空行が tab だけの行になり、件数が 1 ずれる(2026-10-03)。
   git_status_records "$root" > "$run_dir/pre_status.z"
-  pre_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
-  pre_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
+  for _b in "${PROTECTED_BRANCHES[@]}"; do
+    pre_prot_head["$_b"]="$(git -C "$git_root" rev-parse --verify "refs/heads/$_b" 2>/dev/null || true)"
+  done
 fi
 
 echo "[kashiwagi/claude] Claude 起動 root=$root log=$log_path model=$model effort=$effort"
@@ -588,14 +590,12 @@ violations=()
 if [ "$git_repo" -eq 1 ]; then
   git_status_records "$root" > "$run_dir/post_status.z"
   changed_count="$(git_status_diff_count "$run_dir/pre_status.z" "$run_dir/post_status.z")"
-  post_main_head="$(git -C "$git_root" rev-parse --verify refs/heads/main 2>/dev/null || true)"
-  post_master_head="$(git -C "$git_root" rev-parse --verify refs/heads/master 2>/dev/null || true)"
-  if [ "$pre_main_head" != "$post_main_head" ]; then
-    violations+=("ref 変化を検出: refs/heads/main")
-  fi
-  if [ "$pre_master_head" != "$post_master_head" ]; then
-    violations+=("ref 変化を検出: refs/heads/master")
-  fi
+  for _b in "${PROTECTED_BRANCHES[@]}"; do
+    post_prot_head="$(git -C "$git_root" rev-parse --verify "refs/heads/$_b" 2>/dev/null || true)"
+    if [ "${pre_prot_head[$_b]}" != "$post_prot_head" ]; then
+      violations+=("ref 変化を検出: refs/heads/$_b")
+    fi
+  done
 fi
 
 echo "persona: kashiwagi"

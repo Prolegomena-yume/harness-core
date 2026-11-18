@@ -715,6 +715,16 @@ assert_status master 3
 assert_output master 'refs/heads/master'
 pass 'master HEAD changes are rejected'
 
+for br in staging canon; do
+  repo="$test_root/$br"
+  init_repo "$repo"
+  git -C "$repo" branch -m "$br"
+  run_launcher "$br" makabe "$repo" commit
+  assert_status "$br" 3
+  assert_output "$br" "refs/heads/$br"
+  pass "$br HEAD changes are rejected"
+done
+
 repo="$test_root/superproject"
 run_launcher submodule-commit makabe "$repo" submodule_commit
 assert_status submodule-commit 3
