@@ -21,7 +21,7 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 
 **親の鷹野の GOAL は、人見が最初に出した GOAL を達成し、最後の CI を通して merge し、要れば deploy するまで。**設計を振る、要件を決める、BRIEF を書く、レビューさせる、はそのための手段にすぎない。途中では、不可逆なミスを弾くこと、次の鷹野が保守できるかを天秤にかけること、最短を目指すことをする(役員 人見 2026-11-13)。
 
-- **CI はデリバリーの時に 1 回だけ。**便を branch に分けるのは、壁時計を稼ぐためとドメインを分けるため。便を鷹野の卓(統合の枝:Dleam は `main`、musearch は `staging`)へ merge するときは、その便の test だけを見る。全段 CI は、鷹野がデリバリーするとき(統合の枝 → 本番の枝・publish)に 1 回流す。全段 CI が赤なら、直しの便を起こす
+- **CI はデリバリーの時に 1 回だけ。**便を branch に分けるのは、壁時計を稼ぐためとドメインを分けるため。便を鷹野の卓(統合の枝 `staging`、下の「yumemism git flow」)へ merge するときは、その便の test だけを見る。全段 CI は、鷹野がデリバリーするとき(`staging` → `canon`・publish)に 1 回流す。全段 CI が赤なら、直しの便を起こす
 - **便を起こす前に、人見の GOAL に効くかを見る。**GOAL の便が全部卓に載ったら、次の手はデリバリーにする。揺れの縛り直し・P1 の受け皿・CI の鍵の番を GOAL より先に回さない(Dleam は 11-12 11:10 に GOAL の便が全部 main に入り、00:50 に全段 CI も通ったのに、親は揺れの便を起こし続けた)
 - **本番へ入れる「次は人見の一声」を書く前に、台で効くまでの手(設定 1 行の便・infra の配線・deb の入れ替え)を全部並べる。**一声の後に穴が出たら、直しの便を重ねず、穴の大きさ(幅・頻度・止まるか消えるか)と締め切りを並べて「入れて後で直す」か「止める」かを 1 行で出す(役員 人見 2026-11-01)
 - **直す道が一つで人見の What が要らない不具合(publish を塞ぐもの)は、聞いて止めずに BRIEF を書いて起こし、動いてから報告する**(役員 人見 2026-11-12「止めないで。やって。」)
@@ -43,6 +43,18 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 - `_contract/` は意味検索の索引から外してある(harness の `isDocPath`)
 - **brief・result・gate は契約の MCP の道具で渡す。**真壁・柏木は `claude-makabe --contract <_contract/yyyy-mm-dd_NN> --batch <便名>`(柏木は `claude-kashiwagi`)で起こす。brief は鷹野が `<便名>/brief.md` に先に置く(無ければランチャが断る)。モデルは path を持たず、`brief_get` で読み、真壁は `result_put`(途中は `result_append`)、柏木は `gate_put` で書く。契約モードでは Write・Edit・NotebookEdit が `-C` の worktree の外を断る(真壁も柏木も同じ縛り)。Bash の sandbox は入れない(PG・npm・systemd-run が壊れる、2026-11-13 の調べ)
 - **GOAL.md の便の進捗は、put と append のたびに機械が 1 行書き換える。**行は `- <便名>:` で始まり、`brief 有り / result 有り MM-DD HH:MM / gate 有り MM-DD HH:MM` を持つ。親が同じ行に書いた配置などは残る。行が無い便は `## 便の進捗` の節の末尾に足される
+
+## yumemism git flow ── 便は `staging` へ、本番は `canon` から
+
+**本番に出すリポは `staging` と `canon` の 2 本で回す。**git flow の develop を `staging`、master を `canon` と呼び、release ブランチは置かない(web アプリで版を束ねないため)。`main` は置かない(役員 人見 2026-10-22 に musearch、2026-11-19 に Dleam を「margeしたのはstagingに、最終的にはcanonへ」で切り替え、同日この節を正典にした)。
+
+- **feature**:`staging` から切り、`staging` へ merge する。便の branch(`impl/*`・`fix/*` ほか)はここに入り、その便の test だけで merge する
+- **hotfix**:`canon` から切り、`canon` と `staging` の両方へ merge する
+- **昇格**:`staging` をそのまま `canon` へ merge して push する。全段 CI はここで 1 回回り、本番(deploy・deb・台)は通った `canon` から出す。合図は役員 人見、merge と本番への入れは鷹野[PDM]
+- **Forgejo**:既定ブランチ(clone・PR の向き先)は `staging`。`staging`・`canon` は shukan だけが push でき、旧 `main` は保護で push 不可にする(残すと古い手順で誰かが打つ)。GitHub のミラーを持つリポ(musearch)は `branch_filter` を `canon,staging` にする
+- **切り替えの手**:Forgejo で main を `canon` に改名し、同じ commit から `staging` を切る(本番の枝が別にあるリポは、main → `staging`、本番の枝 → `canon`)。CI の `on.push.branches`・dispatch の既定 ref・リポの README か CLAUDE.md の「ブランチ」の節を同じ日に直す
+- **今の対象**:musearch・Dleam。doc のリポ(tech・keiei)と harness-core は deploy が無いので `main` 1 本のまま
+- CD(merge で自動 deploy)は人見が後で詰める(2026-10-22)
 
 ## BRIEF ── 「現在地」「どこまで」「失敗例」の 3 節と止め線
 
@@ -71,7 +83,7 @@ model と effort の値は `scripts/models.env`、モデルの特性と配役の
 
 ## 1 便の流れ ── ゲートは 1 回、検収は鷹野
 
-1. **鷹野が BRIEF を書く**(ファイル)。worktree は基点(多くは main)から鷹野が切る ── claude-makabe は main / master の上では起動しない
+1. **鷹野が BRIEF を書く**(ファイル)。worktree は基点(本番に出すリポは `staging`、ほかは main)から鷹野が切る ── claude-makabe は main / master の上では起動しない
 2. **真壁を bg で起こす** ── `claude-makabe -C <worktree> -f <BRIEF>`。**真壁の便どうしは並べて起こす**(壁時計が一番貴重、役員 人見 2026-10-17)。走っている間の訂正は `makabe-send`(下の「走っている真壁に訂正を送る」)。起こす**直前**に `ls -td ~/.codex-agents/runs/makabe-* | head` と、同じ件の生きているセッションの最新を見る。同じ範囲が起きていれば起こさず、渡した側に一問返す。起こしたセッションへの依頼文には「終わりは次の手を 1 行で」と書く(2026-10-22、同じ範囲の真壁が 8 本並んだ)
 3. **終端を受ける** ── footer の `makabe_commit_sha:` で commit まで届いたかを見る。`(無し)` なら同じ BRIEF で起こし直す
 4. **柏木のゲート 2** ── 依頼文 `gate2-<便>.md` を scratchpad に書き(run_dir の下に置かない)、`KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <worktree> --gate 2 -f <scratchpad>/gate2-<便>.md`。依頼文の file を渡さないと「タスク本文が空白のみ」で起きない(10-12)。所見は柏木の footer の `^run_dir:` の行から run_dir を取り、`<run_dir>/last-message.md` を読む。所要は 7〜10 分。起こす前に、真壁が柏木を起こしていないか(`ls -t ~/.codex-agents/runs | grep kashiwagi` と results の「ゲート」)を見る。依頼文に「test は真壁の results の件数を使う。回すなら新しく足した test file だけ、全体は回さない」を入れる(2026-10-31、27 分かかった)
