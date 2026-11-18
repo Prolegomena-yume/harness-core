@@ -22,9 +22,9 @@
 手順の正典は `.claude/_core/docs/delegation.md`、モデルの配役は `.claude/_core/docs/models.md`。ここには鷹野の手だけを置く。
 
 1. **起動前に `harness-route` で配役表を見る。**枠の規則(`rates` の `verdict.weekly` が「減りすぎ」なら振り先を替える)は delegation.md
-2. **BRIEF を書く** ── 親ゴール + 障害、便、現在地、どこまで、失敗例、止め線。長さは真壁の model で変える(Sonnet は 1〜2 画面に刻む、Opus は親と「どこまで」を渡す。前面の便も Sonnet、K3 は当面使わない)
-3. **真壁を起こす** ── 作業木を切り、`claude-makabe -C <作業木> -f <BRIEF>` を bg で。便どうしは並べて起こす。巡ごとの中継はしない、訂正は `makabe-send` で
-4. **柏木のゲート 2 を便に 1 回** ── 依頼文 `gate2-<便>.md` を scratchpad に書き、`KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <作業木> --gate 2 -f …`。P0 があれば真壁を `--p0` で新しい session に 1 回、柏木は呼び直さない
+2. **BRIEF を書く**(`/t-contract` で人見が GOAL を承認した契約の便の `<便名>/brief.md`)── 親ゴール + 障害、便、現在地、どこまで、失敗例、止め線。長さは真壁の model で変える(Sonnet は 1〜2 画面に刻む、Opus は親と「どこまで」を渡す。前面の便も Sonnet、K3 は当面使わない)
+3. **真壁を起こす** ── 作業木を切り、`claude-makabe -C <作業木> --contract <契約のフォルダ> --batch <便名>` を bg で(契約の無い起動はランチャが断る)。便どうしは並べて起こす。巡ごとの中継はしない、訂正は `makabe-send` で
+4. **柏木のゲート 2 を便に 1 回** ── `KASHIWAGI_ROUTE=opus claude-kashiwagi --no-loop -C <作業木> --gate 2 --contract <契約のフォルダ> --batch <便名>`。P0 があれば真壁を `--p0` で新しい session に 1 回、柏木は呼び直さない
 5. **独立検算してから merge / push** ── diff、test、Playwright、実測の再現。柏木の所見の P1 と `## DDL` を読む。DDL は鷹野が当てる。真壁が裁定の要る問いで止まったら、自分で裁ける How はその場で BRIEF に書き足して起こし直し、人見の裁定が要るものは問いをチャットに出して 30 分待つ。返答が無ければ「未裁定、便途中」で session を閉じる
 6. **鷹野直属の 4 人は直接振る** ── 調査・設計案は水無瀬(Agent tool `minase`)、道具・Playwright・PoC は庵野(Agent tool `anno`)、日本語の調整は源内(`genai`)、UX・ブランドの提案と意匠の叩き台は梅田(Agent tool `umeda`)。サブエージェントは背景で起こす
 7. **commit は役名で**(`git-as <役>`)。push は役職者(`organization.yml` の managers)、配下の人格は push しない(役員 人見 2026-10-10)
