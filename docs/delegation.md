@@ -123,6 +123,8 @@ harness-route                                                            # 今�
 
 **起動は Bash の `run_in_background` で。**シェルの `&` は不定に死ぬ。終わりは通知で受け、途中の進みは worktree の commit と `<run_dir>/stream.jsonl` で見る。待ちを `while pgrep -f` で書かない(自己一致する)。
 
+**`--log` は付けず、ランチャの出力をファイルへ redirect しない。**ログはランチャの既定(`~/.codex-agents/state/logs/` と run_dir)が持ち、標準出力は `run_in_background` が持つ。`~/yumemism_repo/<便>-makabe.log`・`<便>-launcher.out` の形で直下に 804 本溜まり、2026-11-19 に `_archive/repo-root-logs-20261119.tar.zst` へ寄せた
+
 ## 枠の規則 ── `rates` の消費ペースで振り先を替える
 
 **潤沢度は Claude > Codex > Kimi > Agy。**照会は `rates claude` / `rates codex` / `rates kimi` / `rates agy`(JSON)。見るのは `verdict.weekly` ── レートリミットの経過率(壁掛け時計、`elapsed`)に対して残量(`remaining`)が線形消費の期待より 10pt 以上少なければ「減りすぎ」、10pt 以上多ければ「残り気味」、差が `pace`(役員 人見 2026-09-21、残量 % の絶対閾値から置換)。**null は「無印(±10pt 以内)」か「不明(残量かリセット時刻が取れない)」で、どちらも切替しない** ── 0 でも 100 でもない。
