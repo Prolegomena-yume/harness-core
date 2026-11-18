@@ -61,6 +61,10 @@ w_("close_prev_turn.jsonl", [user("締めて"), asst_skill("close-session"), too
 w_("close_ns.jsonl", [user("締めて"), asst_skill("anthropic-skills:close-session"), tool_result(), skill_body()])
 w_("close_then_notification.jsonl", [user("締めて"), asst_skill("close-session"), tool_result(), skill_body(),
                                      notification(), asst_text("通知を見た")])
+w_("close_then_side_event.jsonl", [user("締めて"), asst_skill("close-session"), tool_result(), skill_body(),
+                                  user("<side-sessions-event>\nsession x ended its turn\n</side-sessions-event>"), asst_text("見た")])
+w_("close_then_cross_msg.jsonl", [user("締めて"), asst_skill("close-session"), tool_result(), skill_body(),
+                                  user('<cross-session-message from="w">\n伝言\n</cross-session-message>'), asst_text("見た")])
 w_("close_then_stop_feedback.jsonl", [user("締めて"), asst_skill("close-session"), tool_result(), skill_body(),
                                       stop_feedback(), asst_text("直した")])
 w_("typed_close.jsonl", [user("<command-name>/close-session</command-name>\n<command-args></command-args>"),
@@ -129,6 +133,8 @@ check "7 timer.sh が終わった後(子孫に居ない)"                "$hook"
 check "8 timer.sh の語だけ持つ別プロセス(tail -f)は数えない" "$hook" block conv.jsonl false fakeonly
 check "9 名前空間付き close-session(anthropic-skills:)"        "$hook" pass  close_ns.jsonl false plain
 check "10 close 後に task-notification(timer の鳴り)は境にしない" "$hook" pass close_then_notification.jsonl false plain
+check "10b close 後の side-sessions-event は境にしない"     "$hook" pass  close_then_side_event.jsonl false plain
+check "10c close 後のセッション間の伝言は境にしない"         "$hook" pass  close_then_cross_msg.jsonl false plain
 check "11 close 後の Stop hook 返し文(isMeta)は境にしない"    "$hook" pass  close_then_stop_feedback.jsonl false plain
 check "12 user が打った /close-session"                        "$hook" pass  typed_close.jsonl false plain
 check "13 別の Skill は close にならない"                      "$hook" block other_skill.jsonl false plain

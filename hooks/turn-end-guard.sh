@@ -176,6 +176,10 @@ def is_real_user(row):
     head = texts[0].lstrip()
     if head.startswith("<task-notification>") or head.startswith("This session is being continued"):
         return False
+    # 起こしたセッションの知らせ(side-sessions-event)と、セッション間の伝言は人の発言でない
+    joined = "\n".join(texts)
+    if "<side-sessions-event>" in joined or "<cross-session-message" in joined:
+        return False
     return True
 
 
