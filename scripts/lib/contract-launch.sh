@@ -64,3 +64,27 @@ with open(out, "w") as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
 PY
 }
+
+# contract_logs_setup <makabe|kashiwagi> <run_id>: 契約モードのログを <contract>/<便>/logs/ へ寄せる(役員 人見 2026-11-19)。
+# グローバルの log_path が空なら <役>-<run_id>.log にする。ランチャ自身の stdout/stderr は画面に出したまま
+# <役>-<run_id>.launcher.out にも写す(tee)。終了コードは変えない ── EXIT trap が fd を閉じて tee の終わりを待つだけ。
+# 契約モードでないときは呼ばない(呼び側が判定する)。EXIT trap は claude-makabe/kashiwagi では他に使っていない。
+contract_logs_setup() {
+  local who="$1" rid="$2" ldir="$contract_dir/$batch_name/logs"
+  mkdir -p "$ldir" || return 0
+  [ -n "$log_path" ] || { log_path="$ldir/$who-$rid.log"; log_path_was_default=1; }
+  local out="$ldir/$who-$rid.launcher.out"
+  : > "$out" 2>/dev/null || return 0
+  exec > >(tee -a "$out")
+  _contract_tee_pids="$!"
+  exec 2> >(tee -a "$out" >&2)
+  _contract_tee_pids="$_contract_tee_pids $!"
+  trap '_contract_logs_flush' EXIT
+}
+_contract_logs_flush() {
+  local rc=$?
+  exec >&- 2>&-
+  # shellcheck disable=SC2086
+  [ -z "${_contract_tee_pids:-}" ] || wait $_contract_tee_pids 2>/dev/null
+  exit "$rc"
+}

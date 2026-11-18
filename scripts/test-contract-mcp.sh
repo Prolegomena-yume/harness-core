@@ -79,6 +79,7 @@ if printf '%s\n' "$@" | grep -qx 'stream-json'; then
 else
   printf '{"session_id":"fake","is_error":false,"result":"P0 無し"}\n'
 fi
+[ -z "${FAKE_CLAUDE_RC:-}" ] || exit "$FAKE_CLAUDE_RC"
 S
 printf '#!/bin/sh\nexit 1\n' >"$sbx/bin/rates"
 chmod +x "$sbx/bin/claude" "$sbx/bin/rates"
@@ -152,6 +153,32 @@ chk "C4a --contract だけ(--batch 無し)は断る" bash -c "! bash '$core/scri
 chk "C4b --batch に .. や / があれば断る" bash -c "! bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' --contract '$lc/contract' --batch '../b1' --dry-run >/dev/null 2>&1 && ! bash '$core/scripts/claude-kashiwagi.sh' -C '$lc/wt' --contract '$lc/contract' --batch 'a/b' --dry-run >/dev/null 2>&1"
 chk "C4c brief.md が無い便は断る" bash -c "! bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' --contract '$lc/contract' --batch nobrief --dry-run >/dev/null 2>&1"
 chk "C4d 断ったときは run_dir を作らない" is "$(ls "$lc/state/runs" | wc -l)" "$nr_before"
+
+# C5. 契約モードのログは <contract>/<便>/logs/ へ(--log 無し)。ランチャの出力も launcher.out に写す。契約モードでないときは今の場所
+mkdir -p "$lc/contract/b5" "$lc/state5"; echo "b5" >"$lc/contract/b5/brief.md"
+export_state="$lc/state5"
+for who in makabe kashiwagi; do
+  extra=(); [ "$who" = kashiwagi ] && extra=(--no-loop)
+  rm -rf "$lc/contract/b5/logs" "$export_state"; mkdir -p "$export_state"
+  CODEX_AGENT_STATE_DIR="$export_state" FAKE_CLAUDE_LOG="$lc/c5$who" bash "$core/scripts/claude-$who.sh" "${extra[@]}" -C "$lc/wt" --contract "$lc/contract" --batch b5 >"$lc/c5$who.out" 2>"$lc/c5$who.err"; rc=$?
+  ld="$lc/contract/b5/logs"
+  chk "C5a $who 契約モードの終了コードは 0" is "$rc" 0
+  chk "C5b $who ログが <contract>/<便>/logs/$who-<run_id>.log にできる" bash -c "ls '$ld'/$who-*.log >/dev/null 2>&1"
+  chk "C5c $who launcher.out が logs/ にでき、footer と同じ中身(persona・log: の行)を持つ" bash -c "f=\$(ls '$ld'/$who-*.launcher.out) && grep -q '^persona: $who' \"\$f\" && grep -q '^log: $ld/$who-' \"\$f\""
+  chk "C5d $who 画面(stdout)にも出ている・footer の log: は新しい path" bash -c "grep -q '^log: $ld/$who-.*\\.log\$' '$lc/c5$who.out'"
+  chk "C5e $who 既定の state/logs/ には作らない" bash -c "! ls '$export_state'/logs/*.log >/dev/null 2>&1"
+  chk "C5f $who launcher.out は stdout と同じ行を含む(log: の行が 1 回)" bash -c "[ \$(grep -c '^log: ' \$(ls '$ld'/$who-*.launcher.out)) = 1 ]"
+  # 終了コード: 偽 claude が 7 で落ちる。契約モードと(同じ便の)--log 明示で変わらない・tee が残らない
+  rm -rf "$export_state"; mkdir -p "$export_state"
+  FAKE_CLAUDE_RC=7 CODEX_AGENT_STATE_DIR="$export_state" FAKE_CLAUDE_LOG="$lc/c5r$who" bash "$core/scripts/claude-$who.sh" "${extra[@]}" -C "$lc/wt" --contract "$lc/contract" --batch b5 >/dev/null 2>&1; rc_c=$?
+  FAKE_CLAUDE_RC=7 CODEX_AGENT_STATE_DIR="$export_state" FAKE_CLAUDE_LOG="$lc/c5n$who" bash "$core/scripts/claude-$who.sh" "${extra[@]}" -C "$lc/wt" -f "$lc/f.md" --log "$lc/c5n$who.log" >/dev/null 2>&1; rc_n=$?
+  chk "C5g $who 偽 claude が非 0 で終わるとき、契約モードの終了コードは契約でないときと同じ($rc_n)" is "$rc_c" "$rc_n"
+  chk "C5h $who 契約でない起動はログを state/logs/ か --log に置き、契約の logs/ を作らない" bash -c "[ -e '$lc/c5n$who.log' ] && [ ! -d '$lc/contract/nolog' ]"
+  rm -rf "$export_state"; mkdir -p "$export_state"
+  CODEX_AGENT_STATE_DIR="$export_state" FAKE_CLAUDE_LOG="$lc/c5d$who" bash "$core/scripts/claude-$who.sh" "${extra[@]}" -C "$lc/wt" -f "$lc/f.md" >/dev/null 2>&1
+  chk "C5i $who 契約モードでなければ既定のログは state/logs/ にできる" bash -c "ls '$export_state'/logs/$who-*.log >/dev/null 2>&1"
+  chk "C5j $who 終わったあと tee が残っていない" bash -c "! pgrep -f '[t]ee -a $ld/$who-' >/dev/null"
+done
 
 echo "1..$n"
 exit "$fail"

@@ -318,6 +318,10 @@ if [ -n "$gate_batch_dir" ] && [ -n "$gate_num" ]; then
 fi
 
 log_path_was_default=0
+# 契約モードは <contract>/<便>/logs/ へ(log_path の既定と launcher.out)。それ以外は従来どおり。
+if [ -n "$contract_dir" ] && [ -n "$batch_name" ]; then
+  contract_logs_setup kashiwagi "$run_id"
+fi
 if [ -z "$log_path" ]; then
   log_path="$agent_state_dir/logs/$run_id.log"
   log_path_was_default=1

@@ -123,7 +123,7 @@ harness-route                                                            # 今�
 
 **起動は Bash の `run_in_background` で。**シェルの `&` は不定に死ぬ。終わりは通知で受け、途中の進みは worktree の commit と `<run_dir>/stream.jsonl` で見る。待ちを `while pgrep -f` で書かない(自己一致する)。
 
-**`--log` は付けず、ランチャの出力をファイルへ redirect しない。**ログはランチャの既定(`~/.codex-agents/state/logs/` と run_dir)が持ち、標準出力は `run_in_background` が持つ。`~/yumemism_repo/<便>-makabe.log`・`<便>-launcher.out` の形で直下に 804 本溜まり、2026-11-19 に `_archive/repo-root-logs-20261119.tar.zst` へ寄せた
+**`--log` は付けず、ランチャの出力をファイルへ redirect しない。**契約モード(`--contract`)ではランチャがログと標準出力・標準エラーを `<contract>/<便>/logs/`(`<役>-<run_id>.log`・`.launcher.out`、tech で ignore)へ書き、それ以外は既定(`~/.codex-agents/state/logs/` と run_dir)が持つ。`~/yumemism_repo/<便>-makabe.log`・`<便>-launcher.out` の形で直下に 804 本溜まり、2026-11-19 に `_archive/repo-root-logs-20261119.tar.zst` へ寄せた
 
 ## 枠の規則 ── `rates` の消費ペースで振り先を替える
 
