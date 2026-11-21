@@ -128,6 +128,25 @@ source "$CORE/scripts/lib/contract-launch.sh"
 [ -f "$CORE/roles/kashiwagi.md" ] || die "人物像の正典が見つからない: $CORE/roles/kashiwagi.md"
 [ -f "$CORE/claude/kashiwagi.md" ] || die "Claude 起動契約が見つからない: $CORE/claude/kashiwagi.md"
 
+# 便を Claude デスクトップの scope から切り離し、systemd --user の service に載せて上限(MemoryMax)を掛ける
+# (lib/unit-wrap.sh、案 A。2026-11-22 03:52 に真壁の重い試し 7 本が母艦を OOM にして desktop が落ちた再発防止)。
+# 上限は母艦 30GB で「真壁 2 本 + 柏木 1 本 + 鷹野の Claude + desktop」が同時でも足りる値(根拠は docs/delegation.md の担保)。
+# 上書き: KASHIWAGI_UNIT_MEMORY_MAX(既定 6G)/ KASHIWAGI_UNIT_MEMORY_SWAP_MAX(既定 2G)。
+# 退避口 NIEKAWA_NO_UNIT=1。--dry-run は組み立てを見るだけなので wrap しない。wrap したらここで終わる。
+if [ -f "$CORE/scripts/lib/unit-wrap.sh" ]; then
+  _unit_skip=0
+  for _a in "$@"; do [ "$_a" = "--dry-run" ] && _unit_skip=1; done
+  if [ "$_unit_skip" -eq 0 ]; then
+    # shellcheck source=lib/unit-wrap.sh
+    source "$CORE/scripts/lib/unit-wrap.sh"
+    if NIEKAWA_UNIT_MEMORY_MAX="${KASHIWAGI_UNIT_MEMORY_MAX:-6G}" \
+       NIEKAWA_UNIT_MEMORY_SWAP_MAX="${KASHIWAGI_UNIT_MEMORY_SWAP_MAX:-2G}" \
+       niekawa_unit_wrap "kashiwagi" "$script_path" "$@"; then
+      exit "$NIEKAWA_UNIT_WRAP_EXIT_CODE"
+    fi
+  fi
+fi
+
 command -v claude >/dev/null 2>&1 || die 'claude が見つからない。PATH を確認してください'
 command -v python3 >/dev/null 2>&1 || die 'JSON 解析に必要な python3 が見つからない'
 

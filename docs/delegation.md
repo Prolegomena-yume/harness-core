@@ -176,6 +176,7 @@ harness-route                                                            # 今�
 1. **同 persona の起動は 2 秒ずらす。**同秒起動で run_dir が衝突し `prompt.md` が上書きされる(09-13 の実測)
 2. **検収の build は 1 つずつ、`systemd-run --user -p MemoryMax=…` で。**真壁が走る間に並べると OOM で desktop の scope ごと落ちる(10-14)。長い CI の置き場を tmpfs(scratchpad の /tmp)にしない
 3. **codex 経路を並べる前に 1 本だけ先に走らせる。**codex の access token は 10 日有効で、競合(openai/codex#10332)が起きる時間窓は「並列中に期限が切れて 2 本が同時に refresh する」時だけ
+4. **真壁・柏木は unit に載り、上限が掛かる**(`claude-makabe` 真壁 1 本 MemoryMax=8G、`claude-kashiwagi` 柏木 1 本 6G、いずれも MemorySwapMax=2G。`MAKABE_UNIT_MEMORY_MAX` 等で上書き、退避口 `NIEKAWA_NO_UNIT=1`)。母艦 30GB から desktop・鷹野の Claude・PG・OS の約 8GB を引いた約 22GB に、真壁 2 本と柏木 1 本の上限の和 22GB が収まる値。超えたら unit の中だけが落ち desktop は落ちない(2026-11-22 03:52 に重い試し 7 本の並列で母艦が OOM になった再発防止)。**真壁の BRIEF で、重い試し(1 本 2GB 超など)の並列は本数をメモリで決める**(上限 ÷ 1 本の RSS)
 
 ランチャに分岐は入れない。担保は契約(本節)に焼く。
 

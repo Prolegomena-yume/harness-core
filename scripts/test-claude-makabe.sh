@@ -7,6 +7,8 @@
 set -uo pipefail
 # 契約なしの起動を断る規則(役員 人見 2026-11-19)の抜け道。test のためだけに開ける(運用では使わない)。
 export HARNESS_ALLOW_NO_CONTRACT=1
+# 便は unit に載るのが本番だが、この test は偽の claude と sandbox の env を使うので unit を介さず in-process で走らせる。
+export NIEKAWA_NO_UNIT=1
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAUNCHER="${CLAUDE_MAKABE_UNDER_TEST:-$core/scripts/claude-makabe.sh}"
 GAS="$core/scripts/git-as"

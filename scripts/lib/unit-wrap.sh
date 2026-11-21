@@ -117,7 +117,7 @@ niekawa_unit_wrap() {
     case "$var" in
       NIEKAWA_UNIT_WRAPPED) continue ;;
       PATH|HOME|LANG|LC_ALL|LC_CTYPE|TERM|USER|LOGNAME|SHELL|TZ|TMPDIR) ;;
-      CODEX_*|CLAUDE_*|ANTHROPIC_*|KASHIWAGI_*|MAKABE_*|MINASE_*|NIEKAWA_*|KIMI_*|ANNO_*|TAKANO_*|GIT_*|ORCH_*) ;;
+      CODEX_*|CLAUDE_*|ANTHROPIC_*|KASHIWAGI_*|MAKABE_*|MINASE_*|NIEKAWA_*|KIMI_*|ANNO_*|TAKANO_*|GIT_*|ORCH_*|HARNESS_*) ;;
       *) continue ;;
     esac
     setenv_args+=(-E "${var}=${!var}")
