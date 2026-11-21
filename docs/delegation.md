@@ -180,7 +180,7 @@ harness-route                                                            # 今�
 ランチャに分岐は入れない。担保は契約(本節)に焼く。
 
 - **同じ口(型・共通の検査)を触る便は、その型と検査を先に 1 便で決めてから並べる。**BRIEF の段で、同じ file の同じ関数・型を触るかを grep で見る(画像の Screen 2b・3・4、2026-10-25)
-- **真壁とゲートが走る間は、同じリポの統合の枝(musearch は `staging`)も fetch・merge・push しない。**並べた 2 便は、先に上がった便の merge も後の便のゲートの終端まで待つ(2026-10-14・10-18)
+- **真壁とゲートが走る間は、同じリポの統合の枝(musearch は `staging`)も fetch・merge・push しない。**並べた 2 便は、先に上がった便の merge も後の便のゲートの終端まで待つ(2026-10-14・10-18)。**2 つの契約が同じ統合の枝を使う時は、merge の前に相手の親の鷹野へ「今ゲートを掛けている便は無いか」を聞き、「無い」を受けてから入れる**(2026-11-21、Dleam の 21 と 22。片方の merge が相手のゲートの最中に staging を動かし、柏木が逸脱の印を出した)
 - **孤児の真壁・柏木は run_dir・pid・自分が `--unit` で付けた名で名指しして止める。**広い `pgrep -f` や scope の中身では拾わない(別の便のゲートと Claude アプリを巻き添えにした、2026-09-21・10-22)。落ちた run の続きを起こす前に、その run の `claude -p` が残っていないかを見る
 
 **便の worktree の片付けは、鷹野が便を merge した後に `scripts/wt-sweep.sh --only <worktree> --apply` を手で呼ぶ。**溜まりは引数なしの dry-run(何も消さない)で見て、一覧を検収してから `--apply` する。消すのは「HEAD が main(または origin/main)に merge 済み」「`git status --porcelain` が空(submodule 込み)」「cwd・引数にその worktree を持つプロセスが無い」「`.git/worktrees/<name>/HEAD` が 12 時間より古い」を全部満たす worktree だけで、reflog と index の mtime は判定に使わない(全 worktree が同時刻に書き換わる / `git status` が書く)。リポ本体・locked・`*/.claude/worktrees/*`(Claude のアプリが持つ worktree)・`~/.codex` などは対象外。ランチャの終端には入れない ── ランチャの cwd が worktree の中にあり、自分を使用中と判定して必ず残すか、判定を緩めて走る真壁・柏木の worktree を巻き込むかになるため。
