@@ -145,5 +145,20 @@ fi
 unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 rm -rf "$sm"
 
+# 無線(harness-radio R2): cloud では「届かない」の 1 行を出し、母艦では出さない
+radio_msg='無線は母艦だけで、このセッションには届かない。急ぎは SendMessage'
+cloud_out="$(CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$repo_root" bash "$hook" 2>/dev/null)"
+cloud_ctx="$(printf '%s' "$cloud_out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"])' 2>/dev/null)"
+if [ "$(printf '%s\n' "$cloud_ctx" | grep -cF -- "- $radio_msg")" = 1 ]; then
+  ok "CLAUDE_CODE_REMOTE=true で無線は届かない 1 行が 1 回出る"
+else
+  not_ok "cloud で無線の 1 行が出ない(または重複)"
+fi
+if printf '%s' "$ctx" | grep -qF -- "$radio_msg"; then
+  not_ok "母艦(CLAUDE_CODE_REMOTE 無し)に無線の 1 行が出ている"
+else
+  ok "母艦には無線の 1 行を出さない"
+fi
+
 echo "1..$count"
 exit $fail

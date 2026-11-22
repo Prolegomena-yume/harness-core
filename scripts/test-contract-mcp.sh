@@ -149,6 +149,35 @@ FAKE_CLAUDE_LOG="$lc/kf" bash "$core/scripts/claude-kashiwagi.sh" --no-loop -C "
 rd="$(runs kashiwagi)"
 chk "C3d kashiwagi -f: --mcp-config・--allowedTools を渡さず、write-guard も入らない" bash -c "! grep -q -- 'mcp-config\|allowedTools' '$lc/kf.argv' && ! grep -q 'write-guard' '$rd/settings.json'"
 
+# C3r. 無線(harness-radio R2): 契約モードでも -f でも、settings に読む hook 3 つと RADIO_ROLE が入る(利用者の settings と別に --settings で付く)
+radio_settings_ok() { # radio_settings_ok <settings.json> <role> <core>
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, os, sys
+s = json.load(open(sys.argv[1])); role = sys.argv[2]; core = sys.argv[3]
+if s.get("env", {}).get("RADIO_ROLE") != role:
+    sys.exit(1)
+canon = os.path.realpath(os.path.expanduser("~/canonical/tech/.claude/_core"))
+want = 'bash "$HOME/canonical/tech/.claude/_core/hooks/radio.sh"' if os.path.realpath(core) == canon else 'bash "%s/hooks/radio.sh"' % core
+for ev in ("UserPromptSubmit", "PostToolBatch", "SessionStart"):
+    hs = [h for g in s["hooks"].get(ev, []) for h in g["hooks"]]
+    if len(hs) != 1 or hs[0]["command"] != want or hs[0]["timeout"] != 5 or hs[0]["type"] != "command":
+        sys.exit(1)
+if "PostToolUse" in s["hooks"]:      # PostToolUse は tool 1 本ごとに走る。読む口に付けない
+    sys.exit(1)
+sys.exit(0)
+PY
+}
+rd="$(runs makabe)"
+chk "C3r1 makabe(-f)の settings に radio の 3 hook(timeout 5)と RADIO_ROLE=makabe。PostToolUse には付けない" radio_settings_ok "$rd/settings.json" makabe "$core"
+chk "C3r2 kashiwagi(-f)の settings に radio の 3 hook と RADIO_ROLE=kashiwagi" radio_settings_ok "$(runs kashiwagi)/settings.json" kashiwagi "$core"
+chk "C3r3 既存の PreToolUse・Stop は残る(radio は足しただけ)" python3 - "$rd/settings.json" <<'PY'
+import json, sys
+h = json.load(open(sys.argv[1]))["hooks"]
+sys.exit(0 if [p["matcher"] for p in h["PreToolUse"]] == ["Write", "Edit", "NotebookEdit", "Bash"] and h.get("Stop") else 1)
+PY
+rdc="$(ls -d "$lc"/state/runs/makabe-* | head -1)"
+chk "C3r4 契約モードの makabe の settings にも radio が入る" radio_settings_ok "$rdc/settings.json" makabe "$core"
+
 # C4. 断る形(run_dir を作る前)
 nr_before="$(ls "$lc/state/runs" | wc -l)"
 chk "C4a --contract だけ(--batch 無し)は断る" bash -c "! bash '$core/scripts/claude-makabe.sh' -C '$lc/wt' --contract '$lc/contract' --dry-run >/dev/null 2>&1"

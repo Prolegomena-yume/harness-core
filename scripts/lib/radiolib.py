@@ -13,6 +13,7 @@
 テスト用に RADIO_NOW(epoch 秒)で時計を固定できる。
 """
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -233,7 +234,8 @@ REARM = 15 * 60
 JOIN_SCAN = 60
 DROP_AFTER = 6 * 3600
 MAX_REPOS = 12
-SYNC_RE = re.compile(r"\bgit\b[^|;&\n]*\b(merge|pull|rebase|reset|push)\b")
+# 自分の手で base を動かす git の動詞(自分の push・merge・commit は自分に出さない)
+SYNC_VERBS = {"merge", "pull", "rebase", "reset", "push", "commit", "cherry-pick", "revert", "am", "checkout", "switch"}
 
 
 def cut(s, n=MAX_LINE_CHARS):
@@ -358,12 +360,185 @@ def extract_paths(tool_calls):
     return res[:20]
 
 
-def bundle_has_sync(tool_calls):
+def _shell_tokens(cmd):
+    """シェル文字列を (word|op) の列にする。op は && || ; | & 改行 ( ) { }。引用は外す。展開はしない。"""
+    toks, buf, i, n, have = [], [], 0, len(cmd), False
+
+    def flush():
+        nonlocal buf, have
+        if have:
+            toks.append(("w", "".join(buf)))
+        buf, have = [], False
+
+    while i < n:
+        ch = cmd[i]
+        if ch == "\\" and i + 1 < n:
+            buf.append(cmd[i + 1]); have = True; i += 2; continue
+        if ch in "'\"":
+            j = cmd.find(ch, i + 1)
+            if j < 0:
+                j = n
+            buf.append(cmd[i + 1:j]); have = True; i = j + 1; continue
+        if ch in " \t":
+            flush(); i += 1; continue
+        if ch == "#" and not have:
+            while i < n and cmd[i] != "\n":
+                i += 1
+            continue
+        if ch in "&|;\n(){}":
+            flush()
+            two = cmd[i:i + 2]
+            if two in ("&&", "||"):
+                toks.append(("op", two)); i += 2
+            else:
+                toks.append(("op", ch)); i += 1
+            continue
+        buf.append(ch); have = True; i += 1
+    flush()
+    return toks
+
+
+def _expand_dir(w, cur):
+    home = os.path.expanduser("~")
+    w = w.replace("${HOME}", home).replace("$HOME", home)
+    if "$" in w or "`" in w:
+        return None                                      # 展開できない(変数・置換)
+    w = os.path.expanduser(w)
+    if not os.path.isabs(w):
+        if not cur:
+            return None
+        w = os.path.join(cur, w)
+    return os.path.normpath(w)
+
+
+def _git_sync_target(words, cur):
+    """git の引数列(git 自身は除く)。base を動かす動詞なら ("hit", 触るリポの dir) を返す。"""
+    d, i = cur, 0
+    while i < len(words):
+        a = words[i]
+        if a == "-C" and i + 1 < len(words):
+            d = _expand_dir(words[i + 1], d)
+            i += 2
+        elif a in ("-c", "--exec-path", "--namespace") and i + 1 < len(words):
+            i += 2
+        elif a.startswith("--git-dir="):
+            d = _expand_dir(a.split("=", 1)[1], d)
+            i += 1
+        elif a == "--git-dir" and i + 1 < len(words):
+            d = _expand_dir(words[i + 1], d)
+            i += 2
+        elif a.startswith("-"):
+            i += 1
+        else:
+            break
+    if i < len(words) and words[i] in SYNC_VERBS:
+        return ("hit", d)
+    return None
+
+
+def _sync_dirs(cmd, cwd, depth=0):
+    """束の 1 本の Bash から、自分の手で base を動かした git が向く dir を集める。
+    cd / pushd の追跡、git -C、git-as <役> git引数、( ) の中の cd は外へ漏らさない、bash -c の中を再帰。"""
+    hits, unknown = [], False
+    if depth > 3:
+        return hits, unknown
+    cur, stack = cwd, []
+    seg, toks = [], _shell_tokens(cmd)
+
+    def run(seg):
+        nonlocal cur, unknown
+        w = list(seg)
+        while w and "=" in w[0] and w[0].split("=", 1)[0].isidentifier():
+            w.pop(0)                                       # FOO=bar git ...
+        while w and w[0] in ("sudo", "env", "command", "time", "nice", "exec", "nohup", "timeout"):
+            w.pop(0)
+            while w and (w[0].startswith("-") or ("=" in w[0] and w[0].split("=", 1)[0].isidentifier())):
+                w.pop(0)
+        if not w:
+            return
+        c = os.path.basename(w[0])
+        if c in ("cd", "pushd"):
+            nd = _expand_dir(w[1], cur) if len(w) >= 2 else None
+            if nd is None:
+                unknown = True                             # 行き先が読めない: 以後の git の dir は不明
+            cur = nd
+            return
+        if c in ("bash", "sh", "zsh") and "-c" in w[1:-1]:
+            k = w.index("-c")
+            h, u = _sync_dirs(w[k + 1], cur, depth + 1)
+            hits.extend(h)
+            unknown = unknown or u
+            return
+        args = None
+        if c == "git":
+            args = w[1:]
+        elif c == "git-as":
+            args = w[2:]
+        if args is not None:
+            r = _git_sync_target(args, cur)
+            if r:
+                if r[1] is None:
+                    unknown = True
+                else:
+                    hits.append(r[1])
+
+    for kind, v in toks:
+        if kind == "w":
+            seg.append(v)
+            continue
+        run(seg)
+        seg = []
+        if v == "(":
+            stack.append(cur)
+        elif v == ")":
+            if stack:
+                cur = stack.pop()
+    run(seg)
+    return hits, unknown
+
+
+def sync_repos(tool_calls, cwd, resolve=None):
+    """束の中で、自分の手で base を動かした(merge・pull・push・commit など)リポの名前の集合。"""
+    resolve = resolve or resolve_repo
+    names = set()
     for c in tool_calls or []:
         ti = c.get("tool_input") if isinstance(c, dict) else None
-        if isinstance(ti, dict) and isinstance(ti.get("command"), str) and SYNC_RE.search(ti["command"]):
-            return True
-    return False
+        cmd = ti.get("command") if isinstance(ti, dict) else None
+        if not isinstance(cmd, str) or "git" not in cmd:
+            continue
+        try:
+            hits, _ = _sync_dirs(cmd, cwd)
+        except Exception:
+            continue
+        for d in hits:
+            if d:
+                n, _c = resolve(d)
+                if n:
+                    names.add(n)
+    return names
+
+
+_LOCKS = []
+
+
+def lock_cursor(cdir, name):
+    """同じセッションの hook が並んで走っても(利用者の settings と --settings の字面が違って 2 本になったとき)、
+    cursor の読み・進めを直列にして、同じ行を 2 回出さない。取れなくても 3 秒で諦めて進む。"""
+    try:
+        os.makedirs(cdir, exist_ok=True)
+        f = open(os.path.join(cdir, name + ".lock"), "a")
+        _LOCKS.append(f)
+        t0 = time.time()
+        while True:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except OSError:
+                if time.time() - t0 > 3:
+                    return
+                time.sleep(0.01)
+    except Exception:
+        pass
 
 
 def hook_main():
@@ -391,6 +566,7 @@ def hook_main():
     t = now()
     cdir = os.path.join(root, "cursor")
     cpath = os.path.join(cdir, sid + ("." + safe_name(str(agent)) if is_sub else ""))
+    lock_cursor(cdir, os.path.basename(cpath))
     cur = load_cursor(cpath)
     first = cur is None
     dirty = first
@@ -512,12 +688,7 @@ def hook_main():
 
     # ---- base の進み ----
     if flow_wanted and flows_repo and repos:
-        sync_touch = set()
-        if bundle_has_sync(tool_calls):
-            for d in ([cwd] if cwd else []) + extract_paths(tool_calls):
-                n_ = cur["dircache"].get(d)
-                if n_:
-                    sync_touch.add(n_)
+        sync_touch = sync_repos(tool_calls, cwd)
         for name, r in repos.items():
             base, common = r.get("base"), r.get("common")
             if not base or not common:
