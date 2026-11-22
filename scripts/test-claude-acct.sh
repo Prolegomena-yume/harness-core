@@ -8,6 +8,8 @@
 set -uo pipefail
 # 契約なしの起動を断る規則(役員 人見 2026-11-19)の抜け道。test のためだけに開ける(運用では使わない)。
 export HARNESS_ALLOW_NO_CONTRACT=1
+# ランチャは既定で systemd の unit に載る(fa0d0b9)。unit には FAKE_SEEN が届かないので、退避口で in-process にする。
+export NIEKAWA_NO_UNIT=1
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACCT="$core/scripts/claude-acct.sh"
 n=0; fail=0

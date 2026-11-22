@@ -2,12 +2,12 @@
 # cloud 起動処理・guard の test。母艦で走らせて、(A)母艦では何も起きない (D)母艦の SessionStart の出力が
 # 変わらない を確かめ、(B)cloud を sandbox で模して起動処理が通る (C)guard が期待どおり止める を確かめる。
 #   使い方: bash scripts/test-cloud-bootstrap.sh
-#   env: TECH_MAIN(既定 ~/canonical/tech、settings の「前」= その HEAD)  TECH_NEW(既定 TECH_MAIN/.claude/worktrees/cloud-3、「後」)
+#   env: TECH_MAIN(既定 ~/canonical/tech、settings の「前」= その HEAD)  TECH_NEW(既定 この _core を持つ tech の作業木 = _core の 2 つ上、「後」)
 # 実ネットワークには出ない(musearch・yumemi・ymos の clone は sandbox の bare repo、npm は偽物)。D は session-init.sh を実際に走らせる(Neon を読むので母艦だけ)。
 set -uo pipefail
 core="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TECH_MAIN="${TECH_MAIN:-$HOME/canonical/tech}"
-TECH_NEW="${TECH_NEW:-$TECH_MAIN/.claude/worktrees/cloud-3}"
+TECH_NEW="${TECH_NEW:-$(cd -P "$core/../.." && pwd)}"
 n=0; fail=0
 ok()  { n=$((n+1)); echo "ok $n - $1"; }
 nok() { n=$((n+1)); echo "not ok $n - $1"; fail=1; }
@@ -166,16 +166,21 @@ if [ -r "$real" ]; then
   mkdir -p "$sbx/rt" "$sbx/rk"; cp "$real" "$sbx/rt/MEMORY.md"; [ -r "$realk" ] && cp "$realk" "$sbx/rk/MEMORY.md"
   for p in tech-1 tech-2 keiei; do inj $p CTX_TECH_MEM="$sbx/rt" CTX_KEIEI_MEM="$sbx/rk" >"$sbx/r.$p"; done
   c1="$(python3 "$sbx/jc.py" "$sbx/r.tech-1" "$sbx/r1.txt")"; c2="$(python3 "$sbx/jc.py" "$sbx/r.tech-2" "$sbx/r2.txt")"; ck="$(python3 "$sbx/jc.py" "$sbx/r.keiei" "$sbx/rk.txt")"
+  # 実物の索引が 1 本に収まる大きさなら tech-2 は空(割る必要が無い)。割る大きさのときだけ 2 本とも中身を見る
+  [ "$c2" = EMPTY ] && c2=0
   chk "E2 実物の索引($(python3 -c 'import sys;print(len(open(sys.argv[1],encoding="utf-8").read()))' "$real") 字): 3 本とも 9,500 字以下(tech-1 $c1 / tech-2 $c2 / keiei $ck)" bash -c "[ '$c1' -le 9500 ] && [ '$c2' -le 9500 ] && [ '$ck' -le 9500 ]"
   chk "E2b 前半と後半を足すと原本の全行が 1 度ずつ、後半は '## ' 見出しから始まる" python3 - "$real" "$sbx/r1.txt" "$sbx/r2.txt" <<'PYEOF'
 import sys
 orig = open(sys.argv[1], encoding="utf-8").read().splitlines(keepends=True)
 def body(p):
-    t = open(p, encoding="utf-8").read().split("\n\n", 1)[1]   # 見出し + 注記の後の空行から本文
+    try: raw = open(p, encoding="utf-8").read()
+    except FileNotFoundError: return []   # 後半が EMPTY なら jc.py は書かない
+    t = raw.split("\n\n", 1)[1]   # 見出し + 注記の後の空行から本文
     return t.splitlines(keepends=True)
 a, b = body(sys.argv[2]), body(sys.argv[3])
 assert a + b == orig, "行が欠けた/重複した"
-assert b and b[0].startswith("## "), "後半が見出しで始まらない"
+# 1 本に収まる大きさ(後半が空)なら、後半の見出しの検査は要らない
+assert not b or b[0].startswith("## "), "後半が見出しで始まらない"
 PYEOF
   if [ -r "$realk" ]; then chk "E2c keiei の実物が原本のまま入る" bash -c "grep -qF -- \"\$(sed -n 1p '$sbx/rk/MEMORY.md')\" '$sbx/rk.txt'"; fi
 fi
@@ -240,7 +245,8 @@ o1="$(runD "$old" old)"; r1=$?; o2="$(runD "$new" new)"; r2=$?
 norm() { sed -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.+Z-]+//g'; }
 same='[.hooks.SessionStart[0].hooks[1], .hooks.Stop[0].hooks[0], .hooks.PreToolUse[0], .autoMemoryDirectory, .outputStyle]'
 chk "D1 command 文字列以外の SessionStart(session-install)・Stop・commit guard・autoMemoryDirectory・outputStyle が同じ" test "$(git -C "$TECH_MAIN" show HEAD:.claude/settings.json | jq -c "$same")" = "$(jq -c "$same" "$TECH_NEW/.claude/settings.json")"
-chk "D1b Stop に memory-sync が足され、guard の後ろで、常に exit 0" test "$(jq -r '.hooks.Stop[0].hooks[1].command' "$TECH_NEW/.claude/settings.json" | grep -c 'memory-sync.sh.*exit 0')" = 1
+# Stop の並びは guard(turn-end-guard・session-post-guard ほか)が先、memory-sync は最後(guard が増えても添字に縛らない)
+chk "D1b Stop に memory-sync が足され、guard の後ろ(最後)で、常に exit 0" test "$(jq -r '.hooks.Stop[0].hooks | (length > 1) and (last.command | test("memory-sync.sh.*exit 0")) and (map(select(.command | test("memory-sync"))) | length == 1)' "$TECH_NEW/.claude/settings.json")" = true
 chk "D2 exit code が同じ($r1 / $r2)" test "$r1" = "$r2"
 chk "D3 標準出力が同じ(日時の揺れは除く、$(printf %s "$o1" | wc -c) バイト)" test -n "$o1" -a "$(printf %s "$o1" | norm)" = "$(printf %s "$o2" | norm)"
 chk "D4 標準エラーが同じ" test "$(norm <"$sbx/errD.old")" = "$(norm <"$sbx/errD.new")"
