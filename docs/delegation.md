@@ -165,6 +165,16 @@ harness-route                                                            # 今�
 
 **bg で起こした claude-makabe には、走っている間に訂正を送れる。**`makabe-send <run_dir> "<本文>"`(`scripts/makabe-send.sh`、`~/bin` に symlink)が `<run_dir>/inbox.fifo` へ書き、駆動役 `scripts/lib/makabe-stream.py` が claude の標準入力(stream-json)へ中継する ── 止めて起こし直さない。走っていない run(result 済み)には書かずエラーで返り、送った本文は `<run_dir>/sent/` に時刻付きで残る。**宛先の run_dir は便名を見てフルパスで渡す** ── 「最新」で決め打ちすると並べた便の別の真壁に届く。本文は長ければファイル経由。`last.json`・`parse.env`・`last-message.md`・footer は従来どおり、全行は `<run_dir>/stream.jsonl`。run が `CODEX_AGENT_STATE_DIR` を替えて起こされているときは送る側にも同じ env を渡す。
 
+## 無線 ── 母艦のセッション同士へ、起こさずに知らせる
+
+**母艦のセッション同士の知らせは `radio` で流す。読む hook が、次の発言かツールの区切りで未読の行だけを差す(1 回 8 行・1,500 字まで)ので、誰も起こさない**(役員 人見 2026-11-22、設計は tech `_drafts/harness-radio/design.v0.md`)。チャンネルはハーネスに 1 本、リポはリポごとに 1 本。置き場は `~/.local/state/harness-radio/`。
+
+- **裁定の変更は、人見から聞いた役が `radio post --from <役> --kind 裁定 --ref <正典か _sessions の path> "<要旨>"` を 1 回打つ。**動いている鷹野へ 1 通ずつ SendMessage しない。正典への書き込みは今のまま要る
+- **台(Dleam・Forgejo・母艦など)を入れ替えるときは札を立てる。**`radio board set <台> --from <役> --until <時刻> --match <字面> "<要旨>"`、終わりに `radio board clear <台> --from <役> "<結果>"`。札の立った台で 503 を見ても直しに走らない
+- **base の枝が進んだことは誰も流さない。**読む hook が ref を比べて出し、自分の worktree と同じ file に当たれば「重なり」と添える
+- 真壁・柏木(`RADIO_ROLE=makabe|kashiwagi`)は裁定と工事だけを受ける。cloud のセッションと母艦の外には届かない。急ぎや寝ているセッションを止めたいときは今どおり SendMessage
+- 秘密を書かない。人見の本業を載せない。流れは母艦の全セッションの文脈に入る
+
 ## 真壁の終端は commit sha
 
 **`.out` の footer の `makabe_commit_sha:` 行で「commit まで届いたか」を判定する。**`codex-agent.sh` / `claude-makabe.sh` が起動時と終了時の HEAD を比較して機械的に出し、モデルの報告文はパースしない。`(無し)` は起こし直し(指示は差し替えない)、届いていれば検収へ(役員 人見 2026-09-21、H1 ── 真壁は完了条件ごとに checkpoint commit を打ち、全部満たしたら 1 本へ squash する。詳細は [../codex/makabe.md](../codex/makabe.md))。claude 経路は `--resume` が無く、続きは新しい BRIEF(前 run の sha を明記)で起こし直す([../claude/makabe.md](../claude/makabe.md))。
