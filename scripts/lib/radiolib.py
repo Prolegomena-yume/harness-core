@@ -235,7 +235,7 @@ JOIN_SCAN = 60
 DROP_AFTER = 6 * 3600
 MAX_REPOS = 12
 # 自分の手で base を動かす git の動詞(自分の push・merge・commit は自分に出さない)
-SYNC_VERBS = {"merge", "pull", "rebase", "reset", "push", "commit", "cherry-pick", "revert", "am", "checkout", "switch", "fetch"}
+SYNC_VERBS = {"merge", "pull", "rebase", "reset", "push", "commit", "cherry-pick", "revert", "am", "checkout", "switch"}
 
 
 def cut(s, n=MAX_LINE_CHARS):
