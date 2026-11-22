@@ -207,6 +207,14 @@ rm -rf "$RADIO_HOME/cursor"; setnow $T0; HC UserPromptSubmit $SA "$TC" >/dev/nul
 setnow $((T0+7*3600)); HC UserPromptSubmit $SA '{"cwd":"/nonexistent","tool_calls":[]}' >/dev/null
 python3 -c "import json;d=json.load(open('$RADIO_HOME/cursor/$SA'));print(len(d['repos']))" | grep -qx 0 && ok "6 時間触れないリポから降りる" || ng "降りる"
 
+echo "== 同じ session の hook が並んで走っても 1 回だけ出す(利用者の settings と --settings の字面が違う場合の保険)"
+rm -rf "$RADIO_HOME"; mkdir -p "$RADIO_HOME"; setnow $T0
+HC UserPromptSubmit $SA >/dev/null
+"$radio" post --from 鷹野 --kind 告知 --session $SB "並走テスト" >/dev/null
+for i in 1 2 3 4 5 6 7 8; do ( HC UserPromptSubmit $SA > "$work/par.$i" ) & done; wait
+n=$(grep -l '並走テスト' "$work"/par.* | wc -l); [ "$n" = 1 ] && ok "8 本が並走しても行は 1 本にだけ出る" || ng "並走" "$n"
+rm -f "$work"/par.*
+
 echo "== 後始末"
 rm -rf "$RADIO_HOME/cursor"; mkdir -p "$RADIO_HOME/cursor"; echo '{}' > "$RADIO_HOME/cursor/old"; touch -d '10 days ago' "$RADIO_HOME/cursor/old"; echo '{}' > "$RADIO_HOME/cursor/new"
 setnow $(date +%s); "$radio" rotate >/dev/null; [ ! -e "$RADIO_HOME/cursor/old" ] && [ -e "$RADIO_HOME/cursor/new" ] && ok "rotate が 7 日触られていない位置 file だけ消す" || ng "cursor 掃除"

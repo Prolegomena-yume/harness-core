@@ -383,12 +383,14 @@ export GIT_AUTHOR_EMAIL="makabe@ai.yumemism.dev" GIT_COMMITTER_EMAIL="makabe@ai.
 export CLAUDE_MAKABE_ROOT="$root"
 hooks_dir="$CORE/scripts/hooks"
 settings_path="$run_dir/settings.json"
-python3 - "$hooks_dir" "$settings_path" "$contract_mode" "$root" <<'PY'
+python3 - "$hooks_dir" "$settings_path" "$contract_mode" "$root" "makabe" "$CORE" <<'PY'
 import json
+import os
 import shlex
 import sys
 
 hooks_dir, out_path, contract_mode, root = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
+radio_role, core_dir = sys.argv[5], sys.argv[6]
 guard = f"{hooks_dir}/worktree-guard-claude-makabe.sh"
 settings = {
     "hooks": {
@@ -423,6 +425,17 @@ if contract_mode:
         {"matcher": "Write|Edit|MultiEdit|NotebookEdit", "hooks": [{"type": "command", "command": wg, "timeout": 10}]},
         {"matcher": "Bash", "hooks": [{"type": "command", "command": guard, "timeout": 10}]},
     ]
+# 無線(harness-radio)の読む口。利用者の settings(~/.claude・~/.claude-b)にも同じ handler があり、command の字面が
+# 同じなら Claude Code が 1 回にまとめる(測った: _drafts/harness-radio/r2-results.md)。正典の core の位置なら利用者の字面に揃える。
+# RADIO_ROLE は流れを裁定・工事だけに絞る(真壁・柏木には base の進みと告知を出さない)。
+_canon = os.path.expanduser("~/canonical/tech/.claude/_core")
+if os.path.realpath(core_dir) == os.path.realpath(_canon):
+    radio_cmd = 'bash "$HOME/canonical/tech/.claude/_core/hooks/radio.sh"'
+else:
+    radio_cmd = 'bash "%s/hooks/radio.sh"' % core_dir
+for _ev in ("UserPromptSubmit", "PostToolBatch", "SessionStart"):
+    settings["hooks"][_ev] = [{"hooks": [{"type": "command", "command": radio_cmd, "timeout": 5}]}]
+settings["env"] = {"RADIO_ROLE": radio_role}
 with open(out_path, "w") as f:
     json.dump(settings, f, ensure_ascii=False, indent=2)
 PY

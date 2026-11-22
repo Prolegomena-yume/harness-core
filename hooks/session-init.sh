@@ -297,6 +297,8 @@ close_reminder = cfg["close_session_reminder"]
 if close_reminder:
     canonical_md += f" / {close_reminder}"
 
+radio_line = "- 無線は母艦だけで、このセッションには届かない。急ぎは SendMessage\n" if is_cloud else ""
+
 ctx = f"""## SessionStart context (auto-injected by hooks/session-init.sh)
 {config_section}
 ### status
@@ -308,7 +310,7 @@ ctx = f"""## SessionStart context (auto-injected by hooks/session-init.sh)
 {latest_session_line}{mirror_line}{core_line}
 ### startup reminders
 - {canonical_md}
-"""
+{radio_line}"""
 
 def index_sql_client(url):
     """url の host で索引 DB に問う client を選ぶ。(argv0, エラーの文) を返す。

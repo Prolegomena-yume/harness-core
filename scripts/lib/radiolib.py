@@ -13,6 +13,7 @@
 テスト用に RADIO_NOW(epoch 秒)で時計を固定できる。
 """
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -517,6 +518,29 @@ def sync_repos(tool_calls, cwd, resolve=None):
     return names
 
 
+_LOCKS = []
+
+
+def lock_cursor(cdir, name):
+    """同じセッションの hook が並んで走っても(利用者の settings と --settings の字面が違って 2 本になったとき)、
+    cursor の読み・進めを直列にして、同じ行を 2 回出さない。取れなくても 3 秒で諦めて進む。"""
+    try:
+        os.makedirs(cdir, exist_ok=True)
+        f = open(os.path.join(cdir, name + ".lock"), "a")
+        _LOCKS.append(f)
+        t0 = time.time()
+        while True:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except OSError:
+                if time.time() - t0 > 3:
+                    return
+                time.sleep(0.01)
+    except Exception:
+        pass
+
+
 def hook_main():
     root = home()
     if not os.path.isdir(root):
@@ -542,6 +566,7 @@ def hook_main():
     t = now()
     cdir = os.path.join(root, "cursor")
     cpath = os.path.join(cdir, sid + ("." + safe_name(str(agent)) if is_sub else ""))
+    lock_cursor(cdir, os.path.basename(cpath))
     cur = load_cursor(cpath)
     first = cur is None
     dirty = first
