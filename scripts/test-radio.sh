@@ -156,6 +156,43 @@ echo n > "$work/r1/c.txt"; git -C "$work/r1" add -A; git -C "$work/r1" commit -q
 out=$(HC UserPromptSubmit $SA "$TC"); grep -q '重なりなし' <<<"$out" && ok "重ならない進みは『重なりなし』" || ng "重なりなし" "$out"
 echo o > "$work/r1/d.txt"; git -C "$work/r1" add -A; git -C "$work/r1" commit -qm "自分の merge"
 out=$(HC PostToolBatch $SA "{\"cwd\":\"$work/w1\",\"tool_calls\":[{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git -C $work/r1 merge x\"},\"tool_response\":\"\"}]}"); [ -z "$out" ] && ok "自分の束が merge なら、その進みは出さない" || ng "自分 merge" "$out"
+echo "-- 自分の push・merge・commit を黙る(cwd が別のリポ、cd・git -C・相対 cd・git-as・subshell)"
+mkrepo "$work/r2" bar
+mkdir -p "$work/r1/sub"; JF="$work/r1/a.txt"   # 加入に使う file(subdir 経由だと cd 先の dir は未知になる)
+quiet_case() { # quiet_case <説明> <cwd> <command> : r1 の main を 1 commit 進め、その束で黙るか
+  rm -rf "$RADIO_HOME"; mkdir -p "$RADIO_HOME"; setnow $T0
+  # r1 は file_path で、r2 は cwd で乗る。2 回目以降の prompt は 60 秒以内(加入の走査は due でない)
+  HC PostToolBatch $SA "{\"cwd\":\"$work/r2\",\"tool_calls\":[{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$JF\"}}]}" >/dev/null
+  echo q >> "$work/r1/a.txt"; git -C "$work/r1" commit -qam "q $RANDOM"
+  setnow $((T0+10))
+  local ev; ev=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[1],"tool_calls":[{"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"tool_response":""}]}))' "$2" "$3")
+  local out; out=$(HC PostToolBatch $SA "$ev")
+  [ -z "$out" ] && ok "$1" || ng "$1" "$out"
+}
+JF="$work/r1/sub/x.txt"
+quiet_case "cd <dir>(加入時と別の dir 表記)&& git-as .. commit && git push で黙る(外れの形)" "$work/r2" "cd $work/r1 && git-as 鷹野 commit -qm x; git push -q origin main"
+JF="$work/r1/a.txt"
+quiet_case "git -C <dir> push で黙る" "$work/r2" "git -C $work/r1 push -q origin main"
+quiet_case "cwd のリポで git push(cd なし)も黙る" "$work/r1" "git push -q origin main"
+quiet_case "git-as 鷹野 -C <dir> push で黙る" "$work/r2" "git-as 鷹野 -C $work/r1 push"
+quiet_case "(cd <dir>; git push) の subshell で黙る" "$work/r2" "(cd $work/r1; git push)"
+quiet_case "相対 cd(cwd からの相対)で黙る" "$work" "cd r1 && git push"
+quiet_case "bash -c の中の cd && git push で黙る" "$work/r2" "bash -c 'cd $work/r1 && git push'"
+quiet_case "FOO=1 git -C <dir> merge で黙る" "$work/r2" "FOO=1 git -C $work/r1 merge x"
+# 黙ってはいけない側(他人の進みを隠さない)
+loud_case() { # loud_case <説明> <cwd> <command>
+  rm -rf "$RADIO_HOME"; mkdir -p "$RADIO_HOME"; setnow $T0
+  HC PostToolBatch $SA "{\"cwd\":\"$work/r2\",\"tool_calls\":[{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$JF\"}}]}" >/dev/null
+  echo q >> "$work/r1/a.txt"; git -C "$work/r1" commit -qam "他人の進み $RANDOM"
+  setnow $((T0+10))
+  local ev; ev=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[1],"tool_calls":[{"tool_name":"Bash","tool_input":{"command":sys.argv[2]},"tool_response":""}]}))' "$2" "$3")
+  local out; out=$(HC PostToolBatch $SA "$ev")
+  grep -q '進んだ' <<<"$out" && ok "$1" || ng "$1" "$out"
+}
+loud_case "別のリポの push では r1 の進みを隠さない" "$work/r2" "git push -q origin main"
+loud_case "echo の中の git push 文字列では黙らない" "$work/r2" "cd $work/r1 && echo 'git push'"
+loud_case "(cd <dir>) を抜けた後の git push は cwd 側(r2)" "$work/r2" "(cd $work/r1); git push"
+loud_case "cd <dir> で ls だけなら黙らない" "$work/r2" "cd $work/r1 && git log -1 && git status"
 git -C "$work/r1" branch -q staging main
 rm -rf "$RADIO_HOME/cursor"; HC UserPromptSubmit $SC "$TC" >/dev/null
 git -C "$work/r1" checkout -q staging; echo s > "$work/r1/s.txt"; git -C "$work/r1" add -A; git -C "$work/r1" commit -qm "staging 側"; git -C "$work/r1" checkout -q main
