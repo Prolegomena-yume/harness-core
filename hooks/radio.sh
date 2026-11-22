@@ -4,5 +4,5 @@
 # 何があっても exit 0(PostToolBatch で exit 2 を返すとループが止まり、UserPromptSubmit で返すと発言が塞がる)。
 # 置き場は $RADIO_HOME(既定 ~/.local/state/harness-radio)。失敗は radio.log に 1 行。
 d="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHONDONTWRITEBYTECODE=1 python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import radiolib; sys.exit(radiolib.hook_entry())' "$d/../scripts/lib" 2>/dev/null || true
+python3 -B -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import radiolib; sys.exit(radiolib.hook_entry())' "$d/../scripts/lib" 2>/dev/null || true
 exit 0
