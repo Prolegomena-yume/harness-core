@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""radio ── 母艦のセッション同士の無線(harness-radio)の書く口。
+
+  radio post --from <役> [--kind 裁定|工事|告知|凍結] [--repo <path>] [--target T] [--ref R] "<要旨>"
+  radio board set <台> --from <役> [--until HH:MM|+30m|ISO] [--match 字面]... [--repo <path>] [--force] "<要旨>"
+  radio board clear <台> --from <役> [--repo <path>] ["<結果>"]
+  radio board [list]
+  radio tail [-n N] [--repo <path>]
+  radio rotate [--force]
+
+ハーネスのチャンネルが既定。--repo <path> でそのリポ(origin の URL で名を決める)のチャンネル。
+種別: ハーネス=裁定・工事・告知 / リポ=告知・凍結。工事・凍結は board set/clear が自分で流す(post では打てない)。
+秘密を書かない。人見の本業を載せない。置き場は $RADIO_HOME(既定 ~/.local/state/harness-radio/)。
+exit: 0 成功 / 2 使い方 / 3 札が既にある / 4 入力が不正。
+"""
+import argparse
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "lib"))
+sys.dont_write_bytecode = True
+import radiolib as R  # noqa: E402
+
+
+def die(msg, code=4):
+    print("radio: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def resolve_channel(repo):
+    if not repo:
+        return R.HARNESS
+    name, _ = R.resolve_repo(os.path.abspath(repo))
+    if not name:
+        die("リポを同定できない(git のリポで origin が要る): %s" % repo)
+    return name
+
+
+def check_text(*ss):
+    for s in ss:
+        if s and R.SECRET_RE.search(s):
+            die("秘密に見える字面が有る。流れは母艦の全セッションの文脈に入る。書かない")
+
+
+def parse_until(s, t):
+    if not s:
+        return t + 2 * 3600
+    m = re.fullmatch(r"\+(\d+)([mh])", s)
+    if m:
+        return t + int(m.group(1)) * (60 if m.group(2) == "m" else 3600)
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", s)
+    if m:
+        import datetime
+        base = datetime.datetime.fromtimestamp(t)
+        c = base.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+        if c.timestamp() <= t:
+            c += datetime.timedelta(days=1)
+        return c.timestamp()
+    v = R.parse_iso(s)
+    if v is None:
+        die("--until は HH:MM か +30m か ISO8601: %s" % s)
+    return v
+
+
+def cmd_post(a):
+    root = R.home()
+    ch = resolve_channel(a.repo)
+    kinds = R.HARNESS_KINDS if ch == R.HARNESS else R.REPO_KINDS
+    kind = a.kind or "告知"
+    if kind in ("工事", "凍結"):
+        die("工事・凍結は札の側(radio board set/clear)が流す。post では打てない")
+    if kind not in kinds:
+        die("種別は %s のどれか(このチャンネル): %s" % ("・".join(k for k in kinds if k not in ("工事", "凍結")), kind))
+    if not a.from_:
+        die("--from <役> が要る", 2)
+    text = " ".join(a.text).strip()
+    if not text:
+        die("要旨が空", 2)
+    check_text(text, a.target, a.ref)
+    line = R.append_line(R.channel_file(root, ch), [R.iso(R.now()), R.sender(a.from_, a.session), kind, a.target, text, a.ref], root)
+    sys.stdout.write(line)
+
+
+def cmd_board(a):
+    root = R.home()
+    sub = a.sub or "list"
+    if sub == "list":
+        chans = [R.HARNESS]
+        try:
+            chans += [n for n in sorted(os.listdir(os.path.join(root, "board"))) if n != R.HARNESS]
+        except OSError:
+            pass
+        t = R.now()
+        n = 0
+        for b in R.list_boards(root, chans):
+            n += 1
+            exp = b["until_ts"] is not None and b["until_ts"] < t
+            print("%s\t%s\t%s\t%s\t%s%s" % (b["ch"], b["dev"], b["from"], b["until"], b["summary"], "\t[期限切れ、終わりの報が無い]" if exp else ""))
+        return
+    if not a.dev:
+        die("台名が要る", 2)
+    dev = R.safe_name(a.dev)
+    ch = resolve_channel(a.repo)
+    kind = "工事" if ch == R.HARNESS else "凍結"
+    bdir = R.board_dir(root, ch)
+    path = os.path.join(bdir, dev)
+    if not a.from_:
+        die("--from <役> が要る", 2)
+    t = R.now()
+    text = " ".join(a.text).strip()
+    if sub == "set":
+        if not text:
+            die("要旨が空", 2)
+        check_text(text, *(a.match or []))
+        for m in a.match or []:
+            if "|" in m or re.search(r"[\t\n]", m):
+                die("--match に | と改行と TAB は使えない: %s" % m)
+        until = parse_until(a.until, t)
+        os.makedirs(bdir, exist_ok=True)
+        old = R.read_board(path)
+        if old and not a.force:
+            print("radio: 札が既に立っている(%s %s、%s まで): %s" % (old["from"], old["set"], old["until"], old["summary"]), file=sys.stderr)
+            print("radio: 上書きは --force(上書きしたことは流れに出る)", file=sys.stderr)
+            sys.exit(3)
+        row = "\t".join([R.iso(t), R.clean(R.sender(a.from_, a.session)), dev, R.iso(until), R.clean(text), "|".join(a.match or [dev])]) + "\n"
+        tmp = os.path.join(bdir, ".tmp.%d" % os.getpid())
+        with open(tmp, "w") as f:
+            f.write(row)
+        if a.force:
+            os.replace(tmp, path)
+        else:
+            try:
+                os.link(tmp, path)    # 同時に立てた者がいれば失敗する
+            except FileExistsError:
+                os.unlink(tmp)
+                print("radio: 札が同時に立てられた", file=sys.stderr)
+                sys.exit(3)
+            os.unlink(tmp)
+        note = "上書き(先の札: %s %s)。" % (old["from"], old["summary"]) if old else ""
+        summ = "%s%s %s まで: %s" % (note, "入れ替え中" if kind == "工事" else "凍結中", R.hhmm(until), text)
+    elif sub == "clear":
+        old = R.read_board(path)
+        if not old:
+            die("札が無い: %s" % dev, 3)
+        os.unlink(path)
+        summ = "終わり: %s" % (text or "(結果の記載なし)")
+    else:
+        die("board のサブコマンドは set/clear/list", 2)
+    check_text(summ)
+    line = R.append_line(R.channel_file(root, ch), [R.iso(t), R.sender(a.from_, a.session), kind, dev, summ, "-"], root)
+    sys.stdout.write(line)
+
+
+def cmd_tail(a):
+    root = R.home()
+    ch = resolve_channel(a.repo)
+    path = R.channel_file(root, ch)
+    try:
+        with open(path, errors="replace") as f:
+            rows = [l.rstrip("\n") for l in f if l.strip()]
+    except OSError:
+        return
+    for r in rows[-a.n:]:
+        print(r)
+
+
+def cmd_rotate(a):
+    """今月でないファイルを切り替える。読み手は inode で位置を持つので、切り替えの後も読み落とさず二度出さない。"""
+    import datetime
+    import time
+    root = R.home()
+    t = R.now()
+    ym = datetime.datetime.fromtimestamp(t).strftime("%Y%m")
+    files = [os.path.join(root, "harness.tsv")]
+    rd = os.path.join(root, "repo")
+    try:
+        files += [os.path.join(rd, n) for n in sorted(os.listdir(rd)) if n.endswith(".tsv")]
+    except OSError:
+        pass
+    done = 0
+    for p in files:
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        mym = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y%m")
+        if st.st_size == 0 or (mym == ym and not a.force):
+            continue
+        dest = "%s.%s" % (p, mym if not a.force else datetime.datetime.fromtimestamp(t).strftime("%Y%m%dT%H%M%S"))
+        n = 0
+        while os.path.exists(dest):
+            n += 1
+            dest = "%s.%s.%d" % (p, mym, n)
+        os.rename(p, dest)
+        open(p, "a").close()
+        done += 1
+        print("rotated %s -> %s" % (p, dest))
+    # 7 日触られていない位置の file を消す
+    cd = os.path.join(root, "cursor")
+    removed = 0
+    try:
+        for n in os.listdir(cd):
+            fp = os.path.join(cd, n)
+            if time.time() - os.stat(fp).st_mtime > 7 * 86400:   # file の mtime は実時計
+                os.unlink(fp)
+                removed += 1
+    except OSError:
+        pass
+    print("rotate: %d 本切り替え、位置 %d 本削除" % (done, removed))
+
+
+def main():
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--from", dest="from_")
+    common.add_argument("--repo")
+    common.add_argument("--session", help="差出人のセッション id(既定 env CLAUDE_CODE_SESSION_ID)")
+    argv = sys.argv[1:]
+    cmd = argv[0] if argv else ""
+    if cmd not in ("post", "board", "tail", "rotate"):
+        print(__doc__, file=sys.stderr)
+        sys.exit(0 if cmd in ("-h", "--help") else 2)
+    p = argparse.ArgumentParser(prog="radio " + cmd, parents=[common] if cmd in ("post", "board") else [])
+    if cmd == "post":
+        p.add_argument("--kind")
+        p.add_argument("--target", default="-")
+        p.add_argument("--ref", default="-")
+        p.add_argument("text", nargs="*")
+    elif cmd == "board":
+        p.add_argument("rest", nargs="*")
+        p.add_argument("--until")
+        p.add_argument("--match", action="append")
+        p.add_argument("--force", action="store_true")
+    elif cmd == "tail":
+        p.add_argument("-n", type=int, default=20)
+        p.add_argument("--repo")
+    else:
+        p.add_argument("--force", action="store_true")
+    a = p.parse_intermixed_args(argv[1:])
+    a.cmd = cmd
+    if cmd == "board":
+        rest = a.rest
+        a.sub = rest[0] if rest else "list"
+        if a.sub not in ("set", "clear", "list"):
+            die("board のサブコマンドは set/clear/list", 2)
+        a.dev = rest[1] if len(rest) > 1 else None
+        a.text = rest[2:]
+    {"post": cmd_post, "board": cmd_board, "tail": cmd_tail, "rotate": cmd_rotate}[cmd](a)
+
+
+if __name__ == "__main__":
+    main()
