@@ -212,7 +212,10 @@ def cmd_pick(argv):
         else:
             out["candidates"]["b"]["exhausted"] = True
     if unavailable is None:
-        # a は線以下、b も止める線以下 ── 両方尽きた
+        # b が止める線以下(5 時間枠を含む)。止めずに a へ寄せる(役員 人見 2026-11-27「止めずにAに寄せること」)
+        if not below(a["remaining"], model, c["stop_at"]):
+            return finish("a", "b-exhausted-stay-a")
+        # a も止める線以下 ── 両方尽きた
         return finish(None, "both-exhausted", EX_TEMPFAIL)
     # b が使えない(尽きたのではなく、rates が読めない・secret が引けない・env が塞ぐ)。a が止める線より上なら a で続ける(従来の挙動)
     if not below(a["remaining"], model, c["stop_at"]):

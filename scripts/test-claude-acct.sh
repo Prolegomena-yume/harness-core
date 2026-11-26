@@ -92,12 +92,17 @@ chk "2c 線ちょうど(weekly 5)は割った扱い → b" label_is b
 
 new_case t3; rates_json "$c/a" 4 50; rates_json "$c/b" 2 60
 pick --model claude-sonnet-5
-chk "3a A 4・B 2 → exit 75(label null)" label_is None 75
-chk "3b 理由 both-exhausted" test "$(reason)" = both-exhausted
+chk "3a A 4・B の 5h 2 → 止めずに a" label_is a
+chk "3b 理由 b-exhausted-stay-a" test "$(reason)" = b-exhausted-stay-a
 
 new_case t3b; rates_json "$c/a" 4 50; rates_json "$c/b" 60 3
 pick
-chk "3c B の weekly がちょうど 3(止める線)→ 尽きた扱いで 75" label_is None 75
+chk "3c B の weekly がちょうど 3(止める線)→ 尽きた扱いで a" label_is a
+
+new_case t3x; rates_json "$c/a" 3 50; rates_json "$c/b" 2 60
+pick --model claude-sonnet-5
+chk "3x A 3(止める線)・B 2 → 両方尽きて 75" label_is None 75
+chk "3y 理由 both-exhausted" test "$(reason)" = both-exhausted
 
 new_case t4; touch "$c/a/rates.fail"; rates_json "$c/b" 60 60
 pick
@@ -163,9 +168,9 @@ new_case t7j; rates_json "$c/a" 50 50; rates_json "$c/b" 60 60
 pick
 chk "7j a に余裕があれば ymos を呼ばない(secret を引かない)" test "$(label)" = a -a "$(ymos_calls)" = 0
 
-new_case t7k; rates_json "$c/a" 4 50; rates_json "$c/b" 2 60
+new_case t7k; rates_json "$c/a" 3 50; rates_json "$c/b" 2 60
 pick
-chk "7k B が尽きていれば secret を引かずに 75" label_is None 75
+chk "7k A も B も尽きていれば secret を引かずに 75" label_is None 75
 chk "7l その pick は ymos を呼ばない" test "$(ymos_calls)" = 0
 
 # ---- 3. exec ----
@@ -304,7 +309,7 @@ d="$(kashiwagi k-b 4 50 60 60)"
 chk "17a kashiwagi: a が 4 → b で exit 0、claude は B の token を CLAUDE_CODE_OAUTH_TOKEN で受け(_B は無く CLAUDE_CONFIG_DIR も無い)起動する" bash -c '[ "$(cat "$1/exit")" = 0 ] && [ "$(cat "$1/seen.txt")" = "unset|$2|unset" ]' _ "$d" "$BTOKEN"
 chk "17b footer に account: b" grep -qx 'account: b acct-b@example.com' "$d/launcher.out"
 chk "17c その run の gates.tsv にゲート 2 の記録が 1 件" test "$(wc -l <"$d/batch/gates.tsv")" = 1
-d="$(kashiwagi k-none 4 50 2 60)"
+d="$(kashiwagi k-none 3 50 2 60)"
 chk "17d kashiwagi: 両方尽きた → exit 75・claude は起動しない" bash -c '[ "$(cat "$1/exit")" = 75 ] && [ ! -e "$1/seen.txt" ]' _ "$d"
 chk "17e 起動しなかったゲートは gates.tsv に残らない(便に 1 回を使い切らない)" bash -c '! [ -s "$1/batch/gates.tsv" ]' _ "$d"
 d="$(kashiwagi k-dry 4 50 60 60 --dry-run)"
