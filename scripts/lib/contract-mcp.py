@@ -100,12 +100,14 @@ def batch_file(name: str, make_dir: bool) -> str:
 
 
 def read_text(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+    # 壊れた UTF-8(途中で切れた多バイト文字など)があっても落ちない。surrogateescape で元の byte を保ったまま読み、
+    # write_atomic で同じ byte に戻す(GOAL.md を人や他の道具が byte で切って壊したときに、道具が巻き添えで死なない)
+    with open(path, "r", encoding="utf-8", errors="surrogateescape") as f:
         return f.read()
 
 
 def write_atomic(path: str, text: str) -> None:
-    data = text.encode("utf-8")
+    data = text.encode("utf-8", errors="surrogateescape")
     if len(data) > MAX_BYTES:
         raise ToolError(f"本文が大きすぎる({MAX_BYTES} バイトまで)")
     d = os.path.dirname(path)
@@ -167,7 +169,14 @@ def progress_segments(existing_rest: str | None, kind: str, stamp: str, batch_di
 
 
 def update_goal(kind: str) -> str:
-    """GOAL.md のその便の行を書き換える。返すのは報告用の 1 行。"""
+    """GOAL.md のその便の行を書き換える(本文は書き済み。ここの失敗は本文の成功を隠さず、報告の 1 行にする)。"""
+    try:
+        return _update_goal(kind)
+    except (OSError, ValueError) as e:
+        return f"GOAL.md の進捗の行は書けなかった({e})"
+
+
+def _update_goal(kind: str) -> str:
     root = contract_root()
     batch = validate_batch(os.environ.get("BATCH", ""))
     goal = os.path.join(root, "GOAL.md")
@@ -319,6 +328,8 @@ def handle(req: dict) -> None:
             reply(msg_id, {"content": [{"type": "text", "text": f"断った: {e}"}], "isError": True})
         except OSError as e:
             reply(msg_id, {"content": [{"type": "text", "text": f"書けなかった: {e.strerror or e}"}], "isError": True})
+        except Exception as e:  # 想定外でもプロセスは死なせない(死ぬと客には Connection closed としか見えない)
+            reply(msg_id, {"content": [{"type": "text", "text": f"内部エラー: {type(e).__name__}: {e}"}], "isError": True})
     elif is_notification:
         return
     else:

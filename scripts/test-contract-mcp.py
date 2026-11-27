@@ -241,5 +241,31 @@ with tempfile.TemporaryDirectory() as tmp:
     check("5 4 便が同時に append しても GOAL.md に便ごとの行が 1 本ずつ(取りこぼし・重複なし)",
           all(g.count(f"- {b}:") == 1 for b in ("p1", "p2", "p3", "p4")), g)
 
+    # ---- 6. GOAL.md が壊れた UTF-8 でも gate_put が通る(11-27 の落ち:byte で切られた多バイト文字で Connection closed) ----
+    c7 = new_contract("c7", "# GOAL\n\n## 便の進捗\n\n- E7:brief 有り\n")
+    os.makedirs(f"{c7}/E7")
+    open(f"{c7}/E7/brief.md", "w").write("b")
+    bad = "あ".encode("utf-8")[:2]
+    with open(f"{c7}/GOAL.md", "ab") as f:
+        f.write("- 壊れた行 ".encode("utf-8") + bad + " 続き\n".encode("utf-8"))  # 多バイトの途中で切れた行
+    s = Server(c7, "E7", tools="brief_get,result_get,gate_put")
+    err, text = s.call("gate_put", md="所見\n" * 1000)
+    after = open(f"{c7}/GOAL.md", "rb").read()
+    check("6a GOAL.md に壊れた UTF-8 があっても gate_put は落ちず、gate.md を書く",
+          not err and read(f"{c7}/E7/gate.md") == "所見\n" * 1000, text)
+    check("6b 壊れた byte はそのまま残り、E7 の行は gate 有りに更新される",
+          bad + " 続き\n".encode("utf-8") in after and "- E7:brief 有り / gate 有り".encode("utf-8") in after, after[-200:])
+    err2, _ = s.call("gate_put", md="2 回目")
+    check("6c 続けて呼んでも同じ MCP が生きている(Connection closed にならない)", not err2 and s.p.poll() is None)
+    s.close()
+    # 想定外の例外でもプロセスは死なず isError で返す(lone surrogate は JSON で来うる)
+    s = Server(c7, "E7", tools="brief_get,result_get,gate_put")
+    s.p.stdin.write('{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"gate_put","arguments":{"md":"\\ud800"}}}\n')
+    s.p.stdin.flush()
+    line = s.p.stdout.readline()
+    err3, _ = s.call("brief_get")
+    check("6d 本文が不正な文字列でも MCP は死なず、次の呼びが通る", line != "" and not err3 and s.p.poll() is None, line)
+    s.close()
+
 print(f"1..{n}")
 sys.exit(1 if failed else 0)
