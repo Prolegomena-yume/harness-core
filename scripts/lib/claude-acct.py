@@ -174,16 +174,27 @@ def cmd_pick(argv):
     if c["disable"]:
         return finish("a", "disabled")
 
-    a, a_err = run_rates(c, c["a_dir"])
-    if a is None or not has_value(a["remaining"], model):
-        out["candidates"]["a"] = {"ok": False, "error": a_err or "枠の値が無い", "dir": c["a_dir"]}
-        warn(f"a の rates を読めない(a に倒す): {out['candidates']['a']['error']}")
-        return finish("a", "a-rates-failed")
-    a_below = below(a["remaining"], model, c["switch_at"])
-    out["candidates"]["a"] = {"ok": True, "email": a.get("email"), "remaining": a["remaining"],
-                              "below_switch": a_below, "dir": c["a_dir"], "rates": a}
-    if not a_below:
-        return finish("a", "a-above-line")
+    # switch_at が 100 以上なら a の値は要らない(どの値でも線以下)。a を打たずに b を見る(rates の呼びも半分になる)。
+    # a が読めない時も、a に倒す前に b を見る。b も読めない時だけ a-rates-failed で a に倒す。
+    a, a_failed = None, False
+
+    def load_a():
+        nonlocal a, a_failed
+        a, a_err = run_rates(c, c["a_dir"])
+        if a is None or not has_value(a["remaining"], model):
+            a, a_failed = None, True
+            out["candidates"]["a"] = {"ok": False, "error": a_err or "枠の値が無い", "dir": c["a_dir"]}
+            warn(f"a の rates を読めない(b を見る): {out['candidates']['a']['error']}")
+            return
+        a_below = below(a["remaining"], model, c["switch_at"])
+        out["candidates"]["a"] = {"ok": True, "email": a.get("email"), "remaining": a["remaining"],
+                                  "below_switch": a_below, "dir": c["a_dir"], "rates": a}
+
+    a_skipped = c["switch_at"] >= 100
+    if not a_skipped:
+        load_a()
+        if a is not None and not below(a["remaining"], model, c["switch_at"]):
+            return finish("a", "a-above-line")
 
     # a のどれかが切り替えの線以下 ── b を見る
     b, b_err = run_rates(c, c["b_dir"])
@@ -205,12 +216,16 @@ def cmd_pick(argv):
                 ok, why = check_b_secret(c)
                 out["candidates"]["b"]["secret"] = c["b_secret"] if ok else None
                 if ok:
-                    return finish("b", "a-below-switch-line")
+                    return finish("b", "a-rates-failed-use-b" if a_failed else "a-below-switch-line")
                 unavailable = "b-no-secret"
                 out["candidates"]["b"]["secret_error"] = why
                 warn(f"b を選べない: {c['b_secret']} を ymos から引けない({why})")
         else:
             out["candidates"]["b"]["exhausted"] = True
+    if a_skipped:
+        load_a()  # b を選べなかった。a で続けるか決めるのに a の値が要る
+    if a is None:
+        return finish("a", "a-rates-failed")  # a も b も読めない/使えない: 従来どおり a に倒す
     if unavailable is None:
         # b が止める線以下(5 時間枠を含む)。止めずに a へ寄せる(役員 人見 2026-11-27「止めずにAに寄せること」)
         if not below(a["remaining"], model, c["stop_at"]):

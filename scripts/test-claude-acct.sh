@@ -106,8 +106,32 @@ chk "3y 理由 both-exhausted" test "$(reason)" = both-exhausted
 
 new_case t4; touch "$c/a/rates.fail"; rates_json "$c/b" 60 60
 pick
-chk "4a A の rates 失敗 → a" label_is a
-chk "4b 理由 a-rates-failed・b は見ない" test "$(reason)" = a-rates-failed -a "$(calls "$c/b")" = 0
+chk "4a A の rates 失敗でも B が読めて線より上 → b(すぐ a に倒れない)" label_is b
+chk "4b 理由 a-rates-failed-use-b" test "$(reason)" = a-rates-failed-use-b
+
+new_case t4c; touch "$c/a/rates.fail" "$c/b/rates.fail"
+pick
+chk "4c A も B も rates 失敗 → 従来どおり a" label_is a
+chk "4d 理由 a-rates-failed" test "$(reason)" = a-rates-failed
+
+# 親ゴール: 429 で A が読めなくても CLAUDE_ACCT_SWITCH_AT=100(人見の裁定「B 使え」)で B を選ぶ
+new_case t4e; touch "$c/a/rates.fail"; rates_json "$c/b" 60 60
+CLAUDE_ACCT_SWITCH_AT=100 pick
+chk "4e SWITCH_AT=100・A の rates 失敗 → b" label_is b
+chk "4f A は打たない(呼び 0 回)・B は 1 回" test "$(calls "$c/a")" = 0 -a "$(calls "$c/b")" = 1
+chk "4g 理由 a-below-switch-line(A の値は要らない)" test "$(reason)" = a-below-switch-line
+
+new_case t4h; rates_json "$c/a" 50 50; rates_json "$c/b" 60 60
+CLAUDE_ACCT_SWITCH_AT=100 pick
+chk "4h SWITCH_AT=100・A が読める → b・A は打たない" test "$(label)" = b -a "$(calls "$c/a")" = 0
+
+new_case t4i; rates_json "$c/a" 50 50; rates_json "$c/b" 2 60
+CLAUDE_ACCT_SWITCH_AT=100 pick
+chk "4i SWITCH_AT=100・B が止める線以下 → a で続ける(A はここで初めて読む)" test "$(label)" = a -a "$(reason)" = b-exhausted-stay-a -a "$(calls "$c/a")" = 1
+
+new_case t4j; touch "$c/a/rates.fail" "$c/b/rates.fail"
+CLAUDE_ACCT_SWITCH_AT=100 pick
+chk "4j SWITCH_AT=100・A も B も読めない → 従来どおり a-rates-failed" test "$(label)" = a -a "$(reason)" = a-rates-failed
 
 new_case t5; rates_json "$c/a" 50 50 '"weekly_sonnet":2'; rates_json "$c/b" 60 60 '"weekly_sonnet":60'
 pick --model claude-sonnet-5
